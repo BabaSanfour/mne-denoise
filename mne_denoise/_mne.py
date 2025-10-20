@@ -54,7 +54,7 @@ def apply_zapline_to_raw(
     except Exception as exc:  # pragma: no cover - optional dependency
         raise ImportError(
             "apply_zapline_to_raw requires the 'mne' extra. "
-            "Install with 'pip install pyzaplineplus[mne]' "
+            "Install with 'pip install mne-denoise[mne]' "
             "or 'pip install mne'."
         ) from exc
 
@@ -97,4 +97,3 @@ def apply_zapline_to_raw(
     raw_out._data[pick_idx, :] = clean
 
     return raw_out, config, analytics, figs
-

@@ -1,0 +1,126 @@
+[build-system]
+requires = [
+  "setuptools>=64",
+  "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mne-denoise"
+version = "0.0.1"
+description = "Narrow-band artefact suppression utilities integrated with MNE-Python."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Sina Esmaeili" },
+]
+keywords = [
+  "mne",
+  "denoising",
+  "neuroscience",
+  "electrophysiology",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: BSD License",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+  "mne>=1.0",
+  "numpy>=1.21",
+  "scipy>=1.6",
+  "matplotlib>=3.5",
+]
+
+[project.optional-dependencies]
+dev = [
+  "black>=24.3.0",
+  "flake8>=6.1.0",
+  "isort>=5.12.0",
+  "mypy>=1.6.0",
+  "pre-commit>=3.4.0",
+  "pytest>=7.4.0",
+  "pytest-cov>=4.1.0",
+  "types-setuptools",
+]
+docs = [
+  "mne>=1.0",
+  "numpydoc>=1.6.0",
+  "pydata-sphinx-theme>=0.15.2",
+  "sphinx>=7.1.0",
+  "sphinx-copybutton>=0.5.2",
+  "sphinx-design>=0.5.0",
+]
+sklearn = [
+  "scikit-learn>=1.0",
+]
+all = [
+  "black>=24.3.0",
+  "flake8>=6.1.0",
+  "isort>=5.12.0",
+  "mypy>=1.6.0",
+  "pre-commit>=3.4.0",
+  "pytest>=7.4.0",
+  "pytest-cov>=4.1.0",
+  "types-setuptools",
+  "mne>=1.0",
+  "numpydoc>=1.6.0",
+  "pydata-sphinx-theme>=0.15.2",
+  "sphinx>=7.1.0",
+  "sphinx-copybutton>=0.5.2",
+  "sphinx-design>=0.5.0",
+  "scikit-learn>=1.0",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = [""]
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+known_first_party = ["mne_denoise"]
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = [
+  "E203",
+  "W503",
+]
+per-file-ignores = [
+  "mne_denoise/__init__.py:F401",
+]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra --strict-markers --strict-config --doctest-modules --cov=mne_denoise"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["mne_denoise"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.mypy]
+python_version = "3.9"
+warn_unused_configs = true
+ignore_missing_imports = true
+show_error_codes = true
+pretty = true
