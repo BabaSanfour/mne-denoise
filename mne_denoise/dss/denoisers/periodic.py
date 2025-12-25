@@ -29,11 +29,6 @@ class PeakFilterBias(LinearDenoiser):
     Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
     Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT":
 
-    "If... signals are characterised by having certain frequency components...
-    In the case of linear time-invariant (LTI) filtering... the filtering matrix
-    has a Toeplitz structure... and the denoising characteristics are
-    manifested only in the diagonal matrix."
-
     Parameters
     ----------
     freq : float

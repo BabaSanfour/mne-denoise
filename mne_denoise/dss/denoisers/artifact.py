@@ -28,13 +28,6 @@ class CycleAverageBias(LinearDenoiser):
     ----------
     Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
     Section 4.1.4 "DENOISING OF QUASIPERIODIC SIGNALS":
-    
-    "If the signal is quasiperiodic, that is, it consists of mutually similar
-    occurrences which do not necessarily repeat at regular intervals, we can
-    use the average over the occurrences to estimate the signal. The occurrences
-    must be identified first. The bias function is formed by averaging the data
-    over the occurrences and then concatenating the average pattern at the
-    occurrence locations."
 
     Parameters
     ----------

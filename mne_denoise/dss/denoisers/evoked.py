@@ -25,13 +25,8 @@ class TrialAverageBias(LinearDenoiser):
     Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
     Section 4.1.4 "DENOISING OF QUASIPERIODIC SIGNALS":
 
-    "If the signal is quasiperiodic... we can use the average over the occurrences
-    to estimate the signal... The bias function is formed by averaging the data
-    over the occurrences and then concatenating the average pattern."
-    (Here, "occurrences" corresponds to trials/epochs).
-
     de Cheveigné & Simon (2008). Denoising based on spatial filtering. J. Neurosci. Methods.
-    Section 2.1 "Denoising by projecting onto a reference".
+    Bias function
 
     Parameters
     ----------
