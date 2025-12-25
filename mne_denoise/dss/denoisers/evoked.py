@@ -1,6 +1,9 @@
 """Evoked response bias for DSS.
 
 Implements trial averaging to enhance stimulus-locked activity.
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 """
 
 from __future__ import annotations
@@ -14,8 +17,21 @@ class TrialAverageBias(LinearDenoiser):
     """Bias function for evoked response enhancement.
 
     Applies trial averaging to emphasize reproducible evoked responses
-    while canceling non-phase-locked noise. This is the classic DSS approach
-    from de Cheveigné & Simon (2008).
+    while canceling non-phase-locked noise. This maximizes the
+    reproducibility of the response across trials.
+
+    References
+    ----------
+    Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
+    Section 4.1.4 "DENOISING OF QUASIPERIODIC SIGNALS":
+
+    "If the signal is quasiperiodic... we can use the average over the occurrences
+    to estimate the signal... The bias function is formed by averaging the data
+    over the occurrences and then concatenating the average pattern."
+    (Here, "occurrences" corresponds to trials/epochs).
+
+    de Cheveigné & Simon (2008). Denoising based on spatial filtering. J. Neurosci. Methods.
+    Section 2.1 "Denoising by projecting onto a reference".
 
     Parameters
     ----------
