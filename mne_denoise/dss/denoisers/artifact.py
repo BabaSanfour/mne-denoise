@@ -35,9 +35,19 @@ class CycleAverageBias(LinearDenoiser):
     Examples
     --------
     >>> # ECG artifact removal
-    >>> r_peaks = find_r_peaks(ecg_channel)  # Get R-peak locations
-    >>> bias = CycleAverageBias(event_samples=r_peaks, window=(-0.1, 0.3), sfreq=1000)
-    >>> biased = bias.apply(eeg_data)  # Shape (n_channels, n_times)
+    >>> from mne.preprocessing import find_ecg_events
+    >>> r_peaks, _ = find_ecg_events(raw) # MNE returns events array
+    >>> # Extract sample indices (column 0)
+    >>> r_peak_samples = r_peaks[:, 0]
+    >>> bias = CycleAverageBias(event_samples=r_peak_samples, window=(-100, 200))
+    >>> biased_data = bias.apply(raw.get_data())
+
+    >>> # EOG (blink) artifact removal
+    >>> from mne.preprocessing import find_eog_events
+    >>> blinks = find_eog_events(raw)
+    >>> blink_samples = blinks[:, 0]
+    >>> bias_eog = CycleAverageBias(event_samples=blink_samples, window=(-200, 200))
+    >>> biased_eog = bias_eog.apply(raw.get_data())
     """
 
     def __init__(
@@ -82,8 +92,6 @@ class CycleAverageBias(LinearDenoiser):
         elif data.ndim == 2:
             data_2d = data
             n_channels, total_samples = data.shape
-            n_times = total_samples
-            n_epochs = 1
         else:
             raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
 
@@ -128,105 +136,3 @@ class CycleAverageBias(LinearDenoiser):
             biased = biased_2d
 
         return biased
-
-
-def find_ecg_events(
-    ecg_signal: np.ndarray,
-    sfreq: float,
-    *,
-    threshold_factor: float = 0.6,
-    min_distance_seconds: float = 0.4,
-) -> np.ndarray:
-    """Detect R-peaks in an ECG signal.
-
-    Simple peak detection for ECG artifact extraction. For more robust
-    detection, consider using MNE's find_ecg_events or dedicated
-    ECG processing libraries.
-
-    Parameters
-    ----------
-    ecg_signal : ndarray, shape (n_times,)
-        Single-channel ECG signal.
-    sfreq : float
-        Sampling frequency in Hz.
-    threshold_factor : float
-        Fraction of max amplitude for peak threshold. Default 0.6.
-    min_distance_seconds : float
-        Minimum distance between peaks in seconds. Default 0.4.
-
-    Returns
-    -------
-    r_peaks : ndarray
-        Sample indices of detected R-peaks.
-    """
-    # Bandpass filter to isolate QRS complex (5-15 Hz)
-    nyq = sfreq / 2
-    low = 5 / nyq
-    high = min(15 / nyq, 0.99)
-    
-    if low >= high:
-        # Can't filter, use raw signal
-        filtered = np.abs(ecg_signal)
-    else:
-        sos = signal.butter(4, [low, high], btype='band', output='sos')
-        filtered = np.abs(signal.sosfiltfilt(sos, ecg_signal))
-
-    # Find peaks
-    min_distance = int(min_distance_seconds * sfreq)
-    threshold = threshold_factor * np.max(filtered)
-    
-    peaks, _ = signal.find_peaks(
-        filtered,
-        height=threshold,
-        distance=max(1, min_distance),
-    )
-    
-    return peaks
-
-
-def find_eog_events(
-    eog_signal: np.ndarray,
-    sfreq: float,
-    *,
-    threshold_factor: float = 0.5,
-    min_distance_seconds: float = 0.5,
-) -> np.ndarray:
-    """Detect blink events in an EOG signal.
-
-    Simple peak detection for EOG artifact extraction. For more robust
-    detection, consider using MNE's find_eog_events.
-
-    Parameters
-    ----------
-    eog_signal : ndarray, shape (n_times,)
-        Single-channel vertical EOG signal.
-    sfreq : float
-        Sampling frequency in Hz.
-    threshold_factor : float
-        Fraction of max amplitude for peak threshold. Default 0.5.
-    min_distance_seconds : float
-        Minimum distance between peaks in seconds. Default 0.5.
-
-    Returns
-    -------
-    blink_events : ndarray
-        Sample indices of detected blink peaks.
-    """
-    # Low-pass filter to isolate blink component (< 5 Hz)
-    nyq = sfreq / 2
-    cutoff = min(5 / nyq, 0.99)
-    
-    sos = signal.butter(4, cutoff, btype='low', output='sos')
-    filtered = signal.sosfiltfilt(sos, eog_signal)
-
-    # Find positive peaks (upward deflection for blinks)
-    min_distance = int(min_distance_seconds * sfreq)
-    threshold = threshold_factor * np.max(filtered)
-    
-    peaks, _ = signal.find_peaks(
-        filtered,
-        height=threshold,
-        distance=max(1, min_distance),
-    )
-    
-    return peaks
