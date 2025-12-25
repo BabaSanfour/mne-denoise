@@ -1,0 +1,232 @@
+"""ICA-based nonlinearities for DSS (FastICA equivalence).
+
+This module implements nonlinear denoising functions $f(s)$ that correspond to
+maximizing non-Gaussianity (negentropy, kurtosis), effectively making DSS
+equivalent to FastICA or RobustICA.
+
+References
+----------
+.. [1] Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
+       Section 3.2 "Denoising based on kurtosis".
+.. [2] Hyvärinen, A. (1999). Fast and robust fixed-point algorithms for independent 
+       component analysis. IEEE Trans. Neural Netw., 10(3), 626-634.
+
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+"""
+
+from __future__ import annotations
+
+import numpy as np
+from .base import NonlinearDenoiser
+
+
+class TanhMaskDenoiser(NonlinearDenoiser):
+    """Tanh mask denoiser (Standard FastICA nonlinearity).
+
+    Implements the hyperbolic tangent nonlinearity used widely in ICA for super-Gaussian
+    source extraction. It is robust to outliers compared to kurtosis ($s^3$).
+    
+    Formula:
+        $s_{new} = \\tanh(\\alpha \\cdot s)$
+
+    Section 3.3 of [1] describes using tanh as a robust alternative to simple power functions.
+
+    Parameters
+    ----------
+    alpha : float
+        Scaling factor controlling the saturation slope. Default 1.0.
+    normalize : bool
+        If True, normalizes the source to unit variance before applying tanh, then
+        rescales back. This ensures $\\alpha=1$ has a consistent meaning. Default True.
+
+    Examples
+    --------
+    >>> # Use for robust ICA
+    >>> denoiser = TanhMaskDenoiser()
+    >>> dss = IterativeDSS(denoiser=denoiser, beta=beta_tanh)
+    """
+
+    def __init__(
+        self,
+        alpha: float = 1.0,
+        *,
+        normalize: bool = True,
+    ) -> None:
+        self.alpha = alpha
+        self.normalize = normalize
+
+    def denoise(self, source: np.ndarray) -> np.ndarray:
+        """Apply tanh nonlinearity."""
+        if self.normalize:
+            std = np.std(source)
+            if std > 1e-15:
+                source_scaled = source / std
+                denoised = np.tanh(self.alpha * source_scaled)
+                return denoised * std
+            else:
+                return source
+        
+        return np.tanh(self.alpha * source)
+
+
+class RobustTanhDenoiser(NonlinearDenoiser):
+    """Robust tanh denoiser (FastICA / RobustICA formulation).
+    
+    Implements:
+        $s_{new} = s - \\tanh(\\alpha \\cdot s)$
+
+    This form is often used in deflationary FastICA schemas (like `pow3`) where strictly
+    speaking the update is $w^+ = E[x g(w^T x)] - E[g'(w^T x)]w$. The `s - tanh(s)` 
+    structure relates to optimizing specific cost functions (like negentropy).
+
+    Parameters
+    ----------
+    alpha : float
+        Scaling factor. Default 1.0.
+
+    Examples
+    --------
+    >>> # Use for robust ICA
+    >>> denoiser = RobustTanhDenoiser()
+    >>> dss = IterativeDSS(denoiser=denoiser, beta=beta_tanh)
+    """
+
+    def __init__(self, alpha: float = 1.0) -> None:
+        self.alpha = alpha
+
+    def denoise(self, source: np.ndarray) -> np.ndarray:
+        """Apply robust tanh denoising."""
+        return source - np.tanh(self.alpha * source)
+
+
+class GaussDenoiser(NonlinearDenoiser):
+    """Gaussian nonlinearity (FastICA 'gauss').
+
+    Implements:
+        $s_{new} = s \\cdot \\exp(-a s^2 / 2)$
+
+    This nonlinearity is robust and works well for super-Gaussian distributions but
+    is also capable of separating sub-Gaussian sources depending on the sign of kurtosis.
+    It corresponds to the derivative of the Gaussian function.
+
+    Parameters
+    ----------
+    a : float
+        Parameter 'a_1' in FastICA literature. Default 1.0.
+
+    Examples
+    --------
+    >>> # Use for robust ICA
+    >>> denoiser = GaussDenoiser()
+    >>> dss = IterativeDSS(denoiser=denoiser, beta=beta_gauss)
+    """
+
+    def __init__(self, a: float = 1.0) -> None:
+        self.a = a
+
+    def denoise(self, source: np.ndarray) -> np.ndarray:
+        """Apply Gaussian nonlinearity."""
+        s2 = source ** 2
+        return source * np.exp(-self.a * s2 / 2)
+
+
+class SkewDenoiser(NonlinearDenoiser):
+    """Skewness nonlinearity (FastICA 'skew').
+
+    Implements:
+        $s_{new} = s^2$
+
+    Used for extracting sources with asymmetric probability distributions.
+    This maximizes skewness rather than kurtosis.
+
+    Examples
+    --------
+    >>> # Use for robust ICA
+    >>> denoiser = SkewDenoiser()
+    >>> dss = IterativeDSS(denoiser=denoiser, beta=beta_gauss)
+    """
+
+    def denoise(self, source: np.ndarray) -> np.ndarray:
+        """Apply skewness ($s^2$)."""
+        return source ** 2
+
+
+class KurtosisDenoiser(NonlinearDenoiser):
+    """Kurtosis maximization denoiser.
+    
+    Can wrap different nonlinearities ('tanh', 'cube', 'gauss') to maximize non-Gaussianity.
+    Included for checking various ICA contrasts.
+
+    Parameters
+    ----------
+    nonlinearity : {'tanh', 'cube', 'gauss'}
+        The function $g(s)$ to use. 'cube' ($s^3$) is the classic kurtosis maximization.
+    alpha : float
+        Scaling parameter.
+
+    Examples
+    --------
+    >>> denoiser = KurtosisDenoiser(nonlinearity='cube')
+    >>> denoised = denoiser.denoise(source)
+    """
+
+    def __init__(
+        self,
+        nonlinearity: str = 'tanh',
+        alpha: float = 1.0,
+    ) -> None:
+        if nonlinearity not in ('tanh', 'cube', 'gauss'):
+            raise ValueError(f"Unknown nonlinearity: {nonlinearity}")
+        self.nonlinearity = nonlinearity
+        self.alpha = alpha
+
+    def denoise(self, source: np.ndarray) -> np.ndarray:
+        """Apply nonlinearity."""
+        if self.nonlinearity == 'tanh':
+            return np.tanh(self.alpha * source)
+        elif self.nonlinearity == 'cube':
+            return source ** 3
+        elif self.nonlinearity == 'gauss':
+            return source * np.exp(-0.5 * (self.alpha * source) ** 2)
+        return source
+
+
+# =============================================================================
+# Helper functions for beta (Newton step)
+# =============================================================================
+
+def beta_tanh(source: np.ndarray) -> float:
+    """Compute beta for Tanh denoiser (FastICA Newton step).
+
+    Formula: $\\beta = -E[1 - \\tanh^2(s)]$
+    Legacy: `beta_tanh.m`
+
+    Returns
+    -------
+    beta : float
+        Scalar value.
+    """
+    return -np.mean(1 - np.tanh(source) ** 2)
+
+
+def beta_pow3(source: np.ndarray) -> float:
+    """Compute beta for Cubic ($s^3$) denoiser.
+
+    Formula: $\\beta = -3$ (constant expectation for $g(s)=s^3$, $g'(s)=3s^2$, assuming unit var)
+    Actually for $g(s)=s^3$, $g'(s)=3s^2$. $E[3s^2] = 3 E[s^2] = 3$ (if whitened).
+    So $\\beta = -3$.
+    Legacy: `beta_pow3.m`
+    """
+    return -3.0
+
+
+def beta_gauss(source: np.ndarray, a: float = 1.0) -> float:
+    """Compute beta for Gaussian denoiser.
+
+    Formula: $\\beta = -E[(1 - a s^2) \\exp(-a s^2 / 2)]$
+    Legacy: `beta_gauss.m`
+    """
+    s2 = source ** 2
+    return -np.mean((1 - a * s2) * np.exp(-a * s2 / 2))
