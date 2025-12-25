@@ -2,6 +2,9 @@
 
 Provides abstract interfaces for linear and nonlinear bias functions
 that can be plugged into the DSS pipeline.
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 """
 
 from __future__ import annotations
