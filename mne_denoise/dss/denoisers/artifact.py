@@ -2,6 +2,9 @@
 
 Implements cycle averaging for quasi-periodic artifacts like ECG and blinks.
 This emphasizes reproducible artifact morphology while canceling neural activity.
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 """
 
 from __future__ import annotations
@@ -9,17 +12,29 @@ from __future__ import annotations
 from typing import Optional, Sequence
 
 import numpy as np
-from scipy import signal
+
 
 from .base import LinearDenoiser
 
 
 class CycleAverageBias(LinearDenoiser):
-    """Bias function for quasi-periodic artifact extraction.
+    """Bias for removing quasi-periodic artifacts (e.g., ECG, EOG).
 
     Applies cycle averaging synchronized to artifact events (e.g., R-peaks
     for ECG, blink onsets for EOG). This emphasizes the stereotyped
     artifact waveform while canceling non-phase-locked neural activity.
+
+    References
+    ----------
+    Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
+    Section 4.1.4 "DENOISING OF QUASIPERIODIC SIGNALS":
+    
+    "If the signal is quasiperiodic, that is, it consists of mutually similar
+    occurrences which do not necessarily repeat at regular intervals, we can
+    use the average over the occurrences to estimate the signal. The occurrences
+    must be identified first. The bias function is formed by averaging the data
+    over the occurrences and then concatenating the average pattern at the
+    occurrence locations."
 
     Parameters
     ----------
