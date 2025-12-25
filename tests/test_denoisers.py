@@ -229,3 +229,67 @@ def test_comb_filter_bias():
     corr = np.corrcoef(biased_data[0], signal)[0, 1]
     assert corr > 0.85, f"Comb filter failed (corr={corr:.3f})"
 
+
+# ----------------------------------------------------------
+# Test Spectral Filters: Bandpass / Notch Bias
+# ----------------------------------------------------------
+
+def test_bandpass_bias():
+    """Test BandpassBias for rhythm extraction."""
+    from mne_denoise.dss.denoisers.spectral import BandpassBias
+    
+    sfreq = 250
+    times = np.arange(1000) / sfreq
+    
+    # Signal: 10 Hz Alpha
+    alpha = np.sin(2 * np.pi * 10 * times)
+    # Noise: 50 Hz Line
+    line = np.sin(2 * np.pi * 50 * times)
+    
+    data = (alpha + line)[np.newaxis, :]
+    
+    # Extract Alpha (8-12 Hz)
+    bias = BandpassBias(freq_band=(8, 12), sfreq=sfreq, order=4)
+    biased_data = bias.apply(data)
+    
+    # 1. 50 Hz should be gone
+    # Compute power ratio
+    from scipy.signal import welch
+    _, psd = welch(biased_data, fs=sfreq)
+    # This is a bit rough, let's use correlation
+    
+    corr_alpha = np.corrcoef(biased_data[0], alpha)[0, 1]
+    corr_line = np.corrcoef(biased_data[0], line)[0, 1]
+    
+    assert abs(corr_alpha) > 0.95, "Bandpass should preserve target rhythm"
+    assert abs(corr_line) < 0.1, "Bandpass should attenuate out-of-band noise"
+    
+    # Check zero phase shift (since we use filtfilt)
+    # A phase shift would reduce correlation with the original sine wave
+    # We already asserted > 0.95, which implies low phase shift
+
+def test_notch_bias_isolation():
+    """Test NotchBias isolates the target frequency (for later removal)."""
+    from mne_denoise.dss.denoisers.spectral import NotchBias
+    
+    sfreq = 250
+    times = np.arange(1000) / sfreq
+    
+    # Main signal (slow)
+    slow = np.sin(2 * np.pi * 5 * times)
+    # Line noise (50 Hz)
+    line = np.sin(2 * np.pi * 50 * times)
+    
+    data = (slow + line)[np.newaxis, :]
+    
+    # Bias to FIND the line noise (so we isolate 50 Hz)
+    bias = NotchBias(freq=50, sfreq=sfreq, bandwidth=2.0)
+    biased_data = bias.apply(data)
+    
+    # Output should correspond to the line noise, NOT the slow signal
+    corr_line = np.corrcoef(biased_data[0], line)[0, 1]
+    corr_slow = np.corrcoef(biased_data[0], slow)[0, 1]
+    
+    assert abs(corr_line) > 0.95, "NotchBias should isolate the target frequency"
+    assert abs(corr_slow) < 0.1, "NotchBias should reject other frequencies"
+

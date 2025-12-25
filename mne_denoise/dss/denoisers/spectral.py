@@ -2,6 +2,9 @@
 
 Implements bandpass and notch filters for narrow-band rhythm extraction
 and line noise isolation.
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 """
 
 from __future__ import annotations
@@ -19,6 +22,11 @@ class BandpassBias(LinearDenoiser):
 
     Applies a bandpass filter to emphasize a specific frequency band,
     useful for extracting oscillatory sources (alpha, beta, etc.).
+
+    References
+    ----------
+    Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
+    Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT":
 
     Parameters
     ----------
@@ -96,7 +104,6 @@ class BandpassBias(LinearDenoiser):
             raise RuntimeError("Filter not designed")
 
         # Handle 3D epoched data
-        original_shape = data.shape
         if data.ndim == 3:
             n_channels, n_times, n_epochs = data.shape
             # Process each epoch separately to avoid edge effects between epochs
@@ -117,7 +124,13 @@ class NotchBias(LinearDenoiser):
     """Notch filter bias for isolating a specific frequency.
 
     Applies a narrow notch (bandpass) filter to isolate power at a
-    specific frequency, useful for line noise extraction in ZapLine.
+    specific frequency. This is the core bias operation used in the
+    ZapLine algorithm (de Cheveigné, 2020) to find and remove line noise.
+
+    References
+    ----------
+    de Cheveigné, A. (2020). ZapLine: A simple and effective method to remove
+    power line artifacts. NeuroImage, 207, 116356.
 
     Parameters
     ----------
