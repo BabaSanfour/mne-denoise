@@ -29,6 +29,7 @@ from .spectral import (
     DCTDenoiser,
     TemporalSmoothnessDenoiser,
 )
+from .temporal import TimeShiftBias, SmoothingBias
 
 __all__ = [
     # Base classes
@@ -59,4 +60,7 @@ __all__ = [
     # Deprecated
     "VarianceMaskDenoiser",
     "TemporalSmoothnessDenoiser",
+    # Temporal biases
+    "TimeShiftBias",
+    "SmoothingBias",
 ]
