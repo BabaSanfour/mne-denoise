@@ -22,7 +22,7 @@ import numpy as np
 from scipy import signal
 from scipy.fft import fft, ifft
 
-from .core import compute_dss
+from ..dss.linear import compute_dss
 
 
 # =============================================================================
