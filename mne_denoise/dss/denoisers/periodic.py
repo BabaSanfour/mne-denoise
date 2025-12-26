@@ -5,6 +5,10 @@ signals, particularly useful for SSVEP analysis.
 
 Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
          Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+
+References
+----------
+.. [1] Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
 """
 
 from __future__ import annotations
@@ -12,9 +16,9 @@ from __future__ import annotations
 from typing import Optional, Tuple, List
 
 import numpy as np
-from scipy import signal
+from scipy import ndimage, signal
 
-from .base import LinearDenoiser
+from .base import LinearDenoiser, NonlinearDenoiser
 
 
 class PeakFilterBias(LinearDenoiser):
@@ -26,8 +30,7 @@ class PeakFilterBias(LinearDenoiser):
 
     References
     ----------
-    Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
-    Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT":
+    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
 
     Parameters
     ----------
@@ -130,6 +133,10 @@ class CombFilterBias(LinearDenoiser):
     Applies a comb filter that passes the fundamental frequency and its
     harmonics. Ideal for SSVEP analysis where stimulus frequency creates
     responses at multiple harmonic frequencies.
+    
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
 
     Parameters
     ----------
@@ -262,4 +269,161 @@ class CombFilterBias(LinearDenoiser):
             for h in range(1, self.n_harmonics + 1)
             if self.fundamental_freq * h < nyq * 0.95
         ]
+
+
+class QuasiPeriodicDenoiser(NonlinearDenoiser):
+    """Quasi-periodic denoiser via cycle averaging.
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.4 "DENOISING OF QUASIPERIODIC SIGNALS"
+
+    For signals with repeating structure (ECG, respiration, periodic artifacts):
+    1. Detect peaks/cycles in the source
+    2. Segment into individual cycles
+    3. Time-warp cycles to common length
+    4. Average to create template
+    5. Replace each cycle with time-warped template
+
+    Parameters
+    ----------
+    peak_distance : int
+        Minimum distance between peaks in samples. Default 100.
+    peak_height_percentile : float
+        Percentile of signal for peak detection threshold. Default 75.
+    warp_length : int, optional
+        Length to warp each cycle to. If None, use median cycle length.
+    smooth_template : bool
+        If True, smooth the template. Default True.
+
+    Examples
+    --------
+    >>> # For ECG-like signal at 250 Hz (peaks ~1 sec apart)
+    >>> denoiser = QuasiPeriodicDenoiser(peak_distance=200)
+    >>> denoised = denoiser.denoise(ecg_source)
+    """
+
+    def __init__(
+        self,
+        peak_distance: int = 100,
+        peak_height_percentile: float = 75.0,
+        *,
+        warp_length: Optional[int] = None,
+        smooth_template: bool = True,
+    ) -> None:
+        self.peak_distance = max(10, peak_distance)
+        self.peak_height_percentile = peak_height_percentile
+        self.warp_length = warp_length
+        self.smooth_template = smooth_template
+
+    def denoise(self, source: np.ndarray) -> np.ndarray:
+        """Apply quasi-periodic denoising.
+
+        Parameters
+        ----------
+        source : ndarray, shape (n_times,) or (n_times, n_epochs)
+            Source time series with quasi-periodic structure.
+
+        Returns
+        -------
+        denoised : ndarray, same shape as input
+            Denoised source with cycles replaced by template.
+        """
+        if source.ndim == 1:
+            return self._denoise_1d(source)
+        elif source.ndim == 2:
+            n_times, n_epochs = source.shape
+            denoised = np.zeros_like(source)
+            for ep in range(n_epochs):
+                denoised[:, ep] = self._denoise_1d(source[:, ep])
+            return denoised
+        else:
+            raise ValueError(f"Source must be 1D or 2D, got {source.ndim}D")
+
+    def _denoise_1d(self, source: np.ndarray) -> np.ndarray:
+        """Apply quasi-periodic denoising to 1D source."""
+        n_samples = len(source)
+
+        # Step 1: Detect peaks
+        height_threshold = np.percentile(np.abs(source), self.peak_height_percentile)
+        peaks, _ = signal.find_peaks(
+            np.abs(source),
+            height=height_threshold,
+            distance=self.peak_distance,
+        )
+
+        if len(peaks) < 3:
+            # Not enough cycles, return original
+            return source
+
+        # Step 2: Determine cycle boundaries (midpoints between peaks)
+        boundaries = np.zeros(len(peaks) + 1, dtype=int)
+        boundaries[0] = 0
+        boundaries[-1] = n_samples
+        for i in range(1, len(peaks)):
+            boundaries[i] = (peaks[i - 1] + peaks[i]) // 2
+
+        # Step 3: Extract cycles and determine warp length
+        cycles = []
+        cycle_lengths = []
+        for i in range(len(peaks)):
+            start = boundaries[i]
+            end = boundaries[i + 1]
+            if end > start:
+                cycles.append(source[start:end])
+                cycle_lengths.append(end - start)
+
+        if len(cycles) < 2:
+            return source
+
+        # Warp length: use provided or median
+        if self.warp_length is not None:
+            warp_len = self.warp_length
+        else:
+            warp_len = int(np.median(cycle_lengths))
+        warp_len = max(10, warp_len)
+
+        # Step 4: Time-warp all cycles to common length and average
+        warped_cycles = []
+        for cycle in cycles:
+            if len(cycle) >= 3:
+                # Resample to warp_len
+                warped = np.interp(
+                    np.linspace(0, 1, warp_len),
+                    np.linspace(0, 1, len(cycle)),
+                    cycle
+                )
+                warped_cycles.append(warped)
+
+        if len(warped_cycles) < 2:
+            return source
+
+        # Average to create template
+        template = np.mean(warped_cycles, axis=0)
+
+        # Optional smoothing
+        if self.smooth_template:
+            smooth_window = max(3, warp_len // 20)
+            template = ndimage.uniform_filter1d(template, size=smooth_window, mode='reflect')
+
+        # Step 5: Replace each cycle with time-warped template
+        denoised = np.zeros_like(source)
+        for i, cycle in enumerate(cycles):
+            start = boundaries[i]
+            end = boundaries[i + 1]
+            cycle_len = end - start
+            
+            if cycle_len >= 3:
+                # Warp template back to original cycle length
+                warped_template = np.interp(
+                    np.linspace(0, 1, cycle_len),
+                    np.linspace(0, 1, warp_len),
+                    template
+                )
+                # Match amplitude to original cycle
+                scale = np.std(cycle) / (np.std(warped_template) + 1e-15)
+                offset = np.mean(cycle) - np.mean(warped_template) * scale
+                denoised[start:end] = warped_template * scale + offset
+
+        return denoised
 
