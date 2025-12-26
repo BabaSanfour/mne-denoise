@@ -91,22 +91,15 @@ def robust_covariance(
         
     elif method == "oas":
         # Oracle Approximating Shrinkage
-        try:
-            from sklearn.covariance import OAS
-            oas = OAS().fit(data_centered.T)
-            cov = oas.covariance_
-        except ImportError:
-            # Fallback to shrinkage
-            return robust_covariance(data, method="shrinkage")
+        from sklearn.covariance import OAS
+        oas = OAS().fit(data_centered.T)
+        cov = oas.covariance_
             
     elif method == "mcd":
         # Minimum Covariance Determinant (robust)
-        try:
-            from sklearn.covariance import MinCovDet
-            mcd = MinCovDet().fit(data_centered.T)
-            cov = mcd.covariance_
-        except ImportError:
-            return robust_covariance(data, method="shrinkage")
+        from sklearn.covariance import MinCovDet
+        mcd = MinCovDet().fit(data_centered.T)
+        cov = mcd.covariance_
     else:
         raise ValueError(f"Unknown covariance method: {method}")
     
