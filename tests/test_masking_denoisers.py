@@ -64,13 +64,7 @@ def test_variance_mask_denoiser():
     
     # High values (10) should stay, low values (0.1) should be zeroed
     expected = np.array([0.0, 0.0, 10.0, 10.0, 0.0, 0.0])
-    # Note: boundary effects might smudge this with larger windows, but with window=1...
-    # Actually local_var calculation uses uniform_filter1d which averages. 
-    # Let's check logic:
-    # 10, 10 region has high var? No, constant. 
-    # Wait, variance of [10] is 0. 
-    # VarianceMaskDenoiser calcs variance of *signal* over window. E[x^2] - E[x]^2.
-    # If signal is DC 10, variance is 0.
+    assert_allclose(denoised, expected)
     
     # We need *fluctuating* signal to have variance.
     data = np.array([1, -1, 1, -1, 10, -10, 10, -10], dtype=float)
@@ -81,8 +75,6 @@ def test_variance_mask_denoiser():
     
     # Last part should be preserved
     assert np.all(denoised[4:] != 0) 
-    # First part might be zeroed if percentile works right
-    # (High var > Low var)
     
     # Soft
     denoiser_soft = VarianceMaskDenoiser(window_samples=2, percentile=50, soft=True)
