@@ -28,10 +28,6 @@ class PeakFilterBias(LinearDenoiser):
     specific frequency. More selective than BandpassBias, using a
     resonant filter design.
 
-    References
-    ----------
-    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
-
     Parameters
     ----------
     freq : float
@@ -54,6 +50,10 @@ class PeakFilterBias(LinearDenoiser):
     -----
     Uses a second-order IIR peak filter design. Q factor determines
     the bandwidth: bandwidth ≈ freq / Q.
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
     """
 
     def __init__(
@@ -134,10 +134,6 @@ class CombFilterBias(LinearDenoiser):
     harmonics. Ideal for SSVEP analysis where stimulus frequency creates
     responses at multiple harmonic frequencies.
     
-    References
-    ----------
-    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
-
     Parameters
     ----------
     fundamental_freq : float
@@ -169,6 +165,10 @@ class CombFilterBias(LinearDenoiser):
     -----
     Implements a sum of peak filters at each harmonic. Harmonics above
     Nyquist frequency are automatically excluded.
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
     """
 
     def __init__(
@@ -274,10 +274,6 @@ class CombFilterBias(LinearDenoiser):
 class QuasiPeriodicDenoiser(NonlinearDenoiser):
     """Quasi-periodic denoiser via cycle averaging.
 
-    References
-    ----------
-    Särelä & Valpola (2005). Section 4.1.4 "DENOISING OF QUASIPERIODIC SIGNALS"
-
     For signals with repeating structure (ECG, respiration, periodic artifacts):
     1. Detect peaks/cycles in the source
     2. Segment into individual cycles
@@ -301,6 +297,10 @@ class QuasiPeriodicDenoiser(NonlinearDenoiser):
     >>> # For ECG-like signal at 250 Hz (peaks ~1 sec apart)
     >>> denoiser = QuasiPeriodicDenoiser(peak_distance=200)
     >>> denoised = denoiser.denoise(ecg_source)
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.4 "DENOISING OF QUASIPERIODIC SIGNALS"
     """
 
     def __init__(

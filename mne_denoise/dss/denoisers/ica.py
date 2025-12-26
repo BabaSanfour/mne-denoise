@@ -4,16 +4,14 @@ This module implements nonlinear denoising functions $f(s)$ that correspond to
 maximizing non-Gaussianity (negentropy, kurtosis), effectively making DSS
 equivalent to FastICA or RobustICA.
 
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+
 References
 ----------
 .. [1] Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
-       Section 3.2 "Denoising based on kurtosis".
 .. [2] Hyvärinen, A. (1999). Fast and robust fixed-point algorithms for independent 
        component analysis. IEEE Trans. Neural Netw., 10(3), 626-634.
-
-
-Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
-         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 """
 
 from __future__ import annotations
@@ -31,8 +29,6 @@ class TanhMaskDenoiser(NonlinearDenoiser):
     Formula:
         $s_{new} = \\tanh(\\alpha \\cdot s)$
 
-    Section 3.3 of [1] describes using tanh as a robust alternative to simple power functions.
-
     Parameters
     ----------
     alpha : float
@@ -46,6 +42,10 @@ class TanhMaskDenoiser(NonlinearDenoiser):
     >>> # Use for robust ICA
     >>> denoiser = TanhMaskDenoiser()
     >>> dss = IterativeDSS(denoiser=denoiser, beta=beta_tanh)
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.2.2 "BETTER ESTIMATE FOR THE SIGNAL VARIANCE"
     """
 
     def __init__(
@@ -78,7 +78,6 @@ class RobustTanhDenoiser(NonlinearDenoiser):
         $s_{new} = s - \\tanh(\\alpha \\cdot s)$
 
     This form is often used in deflationary FastICA schemas (like `pow3`) where strictly
-    speaking the update is $w^+ = E[x g(w^T x)] - E[g'(w^T x)]w$. The `s - tanh(s)` 
     structure relates to optimizing specific cost functions (like negentropy).
 
     Parameters
@@ -91,6 +90,10 @@ class RobustTanhDenoiser(NonlinearDenoiser):
     >>> # Use for robust ICA
     >>> denoiser = RobustTanhDenoiser()
     >>> dss = IterativeDSS(denoiser=denoiser, beta=beta_tanh)
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.2.2 "BETTER ESTIMATE FOR THE SIGNAL VARIANCE"
     """
 
     def __init__(self, alpha: float = 1.0) -> None:
@@ -121,6 +124,10 @@ class GaussDenoiser(NonlinearDenoiser):
     >>> # Use for robust ICA
     >>> denoiser = GaussDenoiser()
     >>> dss = IterativeDSS(denoiser=denoiser, beta=beta_gauss)
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.2.2 "BETTER ESTIMATE FOR THE SIGNAL VARIANCE"
     """
 
     def __init__(self, a: float = 1.0) -> None:
@@ -146,6 +153,10 @@ class SkewDenoiser(NonlinearDenoiser):
     >>> # Use for robust ICA
     >>> denoiser = SkewDenoiser()
     >>> dss = IterativeDSS(denoiser=denoiser, beta=beta_gauss)
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.2.2 "BETTER ESTIMATE FOR THE SIGNAL VARIANCE"
     """
 
     def denoise(self, source: np.ndarray) -> np.ndarray:
@@ -170,6 +181,10 @@ class KurtosisDenoiser(NonlinearDenoiser):
     --------
     >>> denoiser = KurtosisDenoiser(nonlinearity='cube')
     >>> denoised = denoiser.denoise(source)
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.2.1 "KURTOSIS-BASED ICA"
     """
 
     def __init__(

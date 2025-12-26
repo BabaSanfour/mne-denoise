@@ -29,9 +29,6 @@ class BandpassBias(LinearDenoiser):
     Applies a bandpass filter to emphasize a specific frequency band,
     useful for extracting oscillatory sources (alpha, beta, etc.).
 
-    References
-    ----------
-    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
 
     Parameters
     ----------
@@ -48,6 +45,10 @@ class BandpassBias(LinearDenoiser):
     --------
     >>> bias = BandpassBias(freq_band=(8, 12), sfreq=250)  # Alpha band
     >>> biased_data = bias.apply(raw_data)
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
     """
 
     def __init__(
@@ -132,11 +133,6 @@ class NotchBias(LinearDenoiser):
     specific frequency. This is the core bias operation used in the
     ZapLine algorithm (de Cheveigné, 2020) to find and remove line noise.
 
-    References
-    ----------
-    de Cheveigné (2020). ZapLine
-    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
-
     Parameters
     ----------
     freq : float
@@ -150,6 +146,11 @@ class NotchBias(LinearDenoiser):
     --------
     >>> bias = NotchBias(freq=50, sfreq=250, bandwidth=2)  # Line noise
     >>> biased = bias.apply(data)  # Contains mostly 50 Hz component
+
+    References
+    ----------
+    de Cheveigné (2020). ZapLine
+    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
     """
 
     def __init__(
@@ -194,10 +195,6 @@ class DCTDenoiser(NonlinearDenoiser):
     Applies a mask in the DCT (Discrete Cosine Transform) domain.
     Useful for frequency-selective denoising without explicit bandpass.
 
-    References
-    ----------
-    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
-
     Parameters
     ----------
     mask : ndarray or None
@@ -205,6 +202,10 @@ class DCTDenoiser(NonlinearDenoiser):
         expanded/truncated. If None, creates lowpass mask.
         If mask is None, this fraction of DCT coefficients are kept.
         Default 0.5 (lowpass, keep first 50% of coefficients).
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
     """
 
     def __init__(
@@ -275,10 +276,6 @@ class TemporalSmoothnessDenoiser(NonlinearDenoiser):
     Promotes sources with high autocorrelation by penalizing
     rapid fluctuations. Useful for slow-wave or DC-shift artifacts.
 
-    References
-    ----------
-    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
-
     Parameters
     ----------
     smoothing_factor : float
@@ -290,6 +287,10 @@ class TemporalSmoothnessDenoiser(NonlinearDenoiser):
     --------
     >>> denoiser = TemporalSmoothnessDenoiser(smoothing_factor=0.2)
     >>> smooth_source = denoiser.denoise(source)
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
     """
 
     def __init__(

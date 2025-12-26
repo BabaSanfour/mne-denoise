@@ -7,6 +7,10 @@ implementations.
 
 Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
          Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+
+References
+----------
+.. [1] Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
 """
 
 from __future__ import annotations
@@ -65,11 +69,6 @@ class SpectrogramBias(LinearDenoiser):
     Applies a FIXED time-frequency mask to the data. This is a linear operation
     used to define the signal subspace in the initialization or linear DSS step.
     
-    References
-    ----------
-    Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
-    Section 4.1.3 SPECTROGRAM DENOISING
-
     Parameters
     ----------
     mask : ndarray, shape (n_freqs, n_times)
@@ -87,6 +86,10 @@ class SpectrogramBias(LinearDenoiser):
     >>> bias = SpectrogramBias(mask)
     >>> data = np.random.randn(128, 1000)
     >>> biased = bias.apply(data)
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.3 "SPECTROGRAM DENOISING"
     """
 
     def __init__(
@@ -132,6 +135,10 @@ class SpectrogramDenoiser(NonlinearDenoiser):
     Applies masking in the time-frequency domain. This version is ADAPTIVE,
     calculating the mask from the source estimate itself at each iteration.
     This makes it distinct from the Linear SpectrogramBias.
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.3 "SPECTROGRAM DENOISING"
 
     Parameters
     ----------

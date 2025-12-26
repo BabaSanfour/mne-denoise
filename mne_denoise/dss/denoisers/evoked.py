@@ -4,6 +4,11 @@ Implements trial averaging to enhance stimulus-locked activity.
 
 Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
          Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+
+References
+----------
+.. [1] Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
+.. [2] de Cheveigné & Simon (2008). Denoising based on spatial filtering. J. Neurosci. Methods.
 """
 
 from __future__ import annotations
@@ -20,14 +25,6 @@ class TrialAverageBias(LinearDenoiser):
     while canceling non-phase-locked noise. This maximizes the
     reproducibility of the response across trials.
 
-    References
-    ----------
-    Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
-    Section 4.1.4 "DENOISING OF QUASIPERIODIC SIGNALS":
-
-    de Cheveigné & Simon (2008). Denoising based on spatial filtering. J. Neurosci. Methods.
-    Bias function
-
     Parameters
     ----------
     weights : array-like, optional
@@ -39,6 +36,11 @@ class TrialAverageBias(LinearDenoiser):
     >>> bias = TrialAverageBias()
     >>> biased = bias.apply(epochs_data)
     >>> # biased has same shape, but each trial is replaced by the average
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.4 "DENOISING OF QUASIPERIODIC SIGNALS"
+    de Cheveigné & Simon (2008). Bias function
     """
 
     def __init__(self, weights: np.ndarray | None = None) -> None:

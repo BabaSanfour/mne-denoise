@@ -5,6 +5,10 @@ This emphasizes reproducible artifact morphology while canceling neural activity
 
 Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
          Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+
+References
+----------
+.. [1] Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
 """
 
 from __future__ import annotations
@@ -23,11 +27,6 @@ class CycleAverageBias(LinearDenoiser):
     Applies cycle averaging synchronized to artifact events (e.g., R-peaks
     for ECG, blink onsets for EOG). This emphasizes the stereotyped
     artifact waveform while canceling non-phase-locked neural activity.
-
-    References
-    ----------
-    Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
-    Section 4.1.4 "DENOISING OF QUASIPERIODIC SIGNALS":
 
     Parameters
     ----------
@@ -56,6 +55,10 @@ class CycleAverageBias(LinearDenoiser):
     >>> blink_samples = blinks[:, 0]
     >>> bias_eog = CycleAverageBias(event_samples=blink_samples, window=(-200, 200))
     >>> biased_eog = bias_eog.apply(raw.get_data())
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.4 "DENOISING OF QUASIPERIODIC SIGNALS"
     """
 
     def __init__(

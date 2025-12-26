@@ -34,11 +34,6 @@ class WienerMaskDenoiser(NonlinearDenoiser):
     Ideal for bursty, non-stationary signals (spindles, beta bursts, 
     intermittent artifacts).
 
-    References
-    ----------
-    Särelä & Valpola (2005). Section 4.4 "Spectral Shift and Approximation of the Objective
-    Function with Mask-Based Denoisings"
-
     Parameters
     ----------
     window_samples : int
@@ -55,6 +50,11 @@ class WienerMaskDenoiser(NonlinearDenoiser):
     --------
     >>> denoiser = WienerMaskDenoiser(window_samples=50)
     >>> denoised = denoiser.denoise(source)
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.4 "Spectral Shift and Approximation of the Objective
+    Function with Mask-Based Denoisings"
     """
 
     def __init__(
@@ -131,11 +131,6 @@ class VarianceMaskDenoiser(NonlinearDenoiser):
     weights them higher, effectively emphasizing transient activity.
     Useful for extracting non-stationary sources.
 
-    References
-    ----------
-    Särelä & Valpola (2005). Section 4.4 "Spectral Shift and Approximation of the Objective 
-    Function with Mask-Based Denoisings"
-
     Parameters
     ----------
     window_samples : int
@@ -150,6 +145,11 @@ class VarianceMaskDenoiser(NonlinearDenoiser):
     --------
     >>> denoiser = VarianceMaskDenoiser(window_samples=50, percentile=80)
     >>> denoised_source = denoiser.denoise(source)
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.4 "Spectral Shift and Approximation of the Objective 
+    Function with Mask-Based Denoisings"
     """
 
     def __init__(
