@@ -3,13 +3,13 @@
 
 from .whitening import whiten_data, compute_whitener
 from .convergence import Gamma179, GammaPredictive
-from .covariance import robust_covariance
+from .covariance import compute_covariance
 
 
 __all__ = [
     "whiten_data",
     "compute_whitener",
-    "robust_covariance",
+    "compute_covariance",
     "Gamma179",
     "GammaPredictive",
 ]

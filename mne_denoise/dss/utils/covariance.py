@@ -2,6 +2,9 @@
 
 Provides methods for computing covariance matrices robust to outliers
 or low sample counts (shrinkage).
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 """
 
 from __future__ import annotations
@@ -9,14 +12,14 @@ from typing import Optional
 import numpy as np
 
 
-def robust_covariance(
+def compute_covariance(
     data: np.ndarray,
     *,
     method: str = "empirical",
     shrinkage: Optional[float] = None,
     weights: Optional[np.ndarray] = None,
 ) -> np.ndarray:
-    """Compute robust covariance matrix.
+    """Compute covariance matrix.
 
     This function provides a unified interface for covariance estimation,
     supporting both standard robust methods (shrinkage, OAS, MCD) and
@@ -45,6 +48,20 @@ def robust_covariance(
     cov : ndarray, shape (n_channels, n_channels)
         The estimated covariance matrix.
     """
+    if data.ndim == 3:
+        n_channels, n_times_in, n_epochs = data.shape
+        data = data.reshape(n_channels, -1)
+        
+        if weights is not None:
+             if weights.shape[0] == n_times_in:
+                 # Tile weights across epochs
+                 weights = np.tile(weights, n_epochs)
+             elif weights.shape[0] == data.shape[1]:
+                 pass
+             else:
+                  # Mismatch
+                  pass # Will be caught below
+                  
     n_channels, n_times = data.shape
     
     if weights is not None:
@@ -94,7 +111,7 @@ def robust_covariance(
         from sklearn.covariance import OAS
         oas = OAS().fit(data_centered.T)
         cov = oas.covariance_
-            
+
     elif method == "mcd":
         # Minimum Covariance Determinant (robust)
         from sklearn.covariance import MinCovDet

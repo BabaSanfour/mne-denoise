@@ -1,4 +1,4 @@
-"""Unit tests for robust covariance utilities."""
+"""Unit tests for covariance utilities."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 
-from mne_denoise.dss.utils.covariance import robust_covariance, _ledoit_wolf_shrinkage
+from mne_denoise.dss.utils.covariance import compute_covariance, _ledoit_wolf_shrinkage
 
 
 def test_empirical_covariance_shape():
@@ -15,7 +15,7 @@ def test_empirical_covariance_shape():
     n_channels, n_samples = 5, 100
     data = rng.standard_normal((n_channels, n_samples))
     
-    cov = robust_covariance(data, method="empirical")
+    cov = compute_covariance(data)
     
     assert cov.shape == (n_channels, n_channels)
     assert_allclose(cov, cov.T)  # Symmetry
@@ -30,7 +30,7 @@ def test_empirical_covariance_value():
     data_centered = data - data.mean(axis=1, keepdims=True)
     expected = data_centered @ data_centered.T / 1000
     
-    cov = robust_covariance(data, method="empirical")
+    cov = compute_covariance(data, method="empirical")
     
     assert_allclose(cov, expected)
 
@@ -43,7 +43,7 @@ def test_shrinkage_covariance_identity():
     
     # With enough samples, empirical is close to identity
     # Shrinkage target is also identity-like
-    cov_shrink = robust_covariance(data, method="shrinkage")
+    cov_shrink = compute_covariance(data, method="shrinkage")
     
     # Check diagonal dominance
     diag = np.diag(cov_shrink)
@@ -71,15 +71,15 @@ def test_ledoit_wolf_shrinkage_calculation():
     assert shrinkage_small > shrinkage
 
 
-def test_robust_covariance_methods():
+def test_covariance_methods():
     """Test that all method strings are accepted."""
     data = np.random.randn(3, 50)
     
-    robust_covariance(data, method="empirical")
-    robust_covariance(data, method="shrinkage")
+    compute_covariance(data, method="empirical")
+    compute_covariance(data, method="shrinkage")
     
-    robust_covariance(data, method="oas")
+    compute_covariance(data, method="oas")
     
     # Invalid method
     with pytest.raises(ValueError, match="Unknown covariance method"):
-        robust_covariance(data, method="invalid_method")
+        compute_covariance(data, method="invalid_method")
