@@ -17,7 +17,7 @@ regions where the variance is low (assumed to be noise).
 import numpy as np
 import matplotlib.pyplot as plt
 
-from mne_denoise.dss.denoisers.masking import WienerMaskDenoiser
+from mne_denoise.dss.denoisers import WienerMaskDenoiser
 
 ###############################################################################
 # Simulate Bursty Data

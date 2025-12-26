@@ -23,7 +23,7 @@ from scipy import signal
 import mne
 
 from mne_denoise.dss import DSS
-from mne_denoise.dss.denoisers.artifact import CycleAverageBias
+from mne_denoise.dss.denoisers import CycleAverageBias
 
 ###############################################################################
 # Simulate Data with ECG Artifact

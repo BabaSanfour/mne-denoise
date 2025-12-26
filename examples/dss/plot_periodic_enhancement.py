@@ -24,7 +24,7 @@ from scipy.signal import welch
 import mne
 
 from mne_denoise.dss import DSS
-from mne_denoise.dss.denoisers.periodic import CombFilterBias
+from mne_denoise.dss.denoisers import CombFilterBias
 
 ###############################################################################
 # Simulate SSVEP Data

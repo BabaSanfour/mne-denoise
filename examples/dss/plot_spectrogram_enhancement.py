@@ -24,7 +24,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import signal
 
-from mne_denoise.dss.denoisers.spectrogram import SpectrogramDenoiser, SpectrogramBias
+from mne_denoise.dss.denoisers import SpectrogramDenoiser, SpectrogramBias
 
 ###############################################################################
 # Simulate Data with Transient Bursts

@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import mne
 
 from mne_denoise.dss import DSS
-from mne_denoise.dss.denoisers.evoked import TrialAverageBias
+from mne_denoise.dss.denoisers import TrialAverageBias
 
 ###############################################################################
 # Simulate Data

@@ -26,7 +26,7 @@ from scipy.signal import welch
 import mne
 
 from mne_denoise.dss import DSS
-from mne_denoise.dss.denoisers.spectral import BandpassBias
+from mne_denoise.dss.denoisers import BandpassBias
 
 ###############################################################################
 # Simulate Data with Alpha Bursts

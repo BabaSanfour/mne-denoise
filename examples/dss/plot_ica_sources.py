@@ -20,7 +20,7 @@ from scipy import signal
 
 from mne_denoise.dss import IterativeDSS
 # We import the "ICA" denoisers specifically
-from mne_denoise.dss.denoisers.ica import TanhMaskDenoiser, beta_tanh
+from mne_denoise.dss.denoisers import TanhMaskDenoiser, beta_tanh
 
 ###############################################################################
 # Simulate Independent Sources
