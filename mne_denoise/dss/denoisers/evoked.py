@@ -32,6 +32,7 @@ class TrialAverageBias(LinearDenoiser):
 
     Examples
     --------
+    >>> from mne_denoise.dss.denoisers import TrialAverageBias
     >>> epochs_data = np.random.randn(64, 100, 50)  # channels x times x trials
     >>> bias = TrialAverageBias()
     >>> biased = bias.apply(epochs_data)

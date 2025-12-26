@@ -40,6 +40,7 @@ class TanhMaskDenoiser(NonlinearDenoiser):
     Examples
     --------
     >>> # Use for robust ICA
+    >>> from mne_denoise.dss.denoisers import TanhMaskDenoiser, beta_tanh
     >>> denoiser = TanhMaskDenoiser()
     >>> dss = IterativeDSS(denoiser=denoiser, beta=beta_tanh)
 
@@ -88,6 +89,7 @@ class RobustTanhDenoiser(NonlinearDenoiser):
     Examples
     --------
     >>> # Use for robust ICA
+    >>> from mne_denoise.dss.denoisers import RobustTanhDenoiser, beta_tanh
     >>> denoiser = RobustTanhDenoiser()
     >>> dss = IterativeDSS(denoiser=denoiser, beta=beta_tanh)
 
@@ -122,6 +124,7 @@ class GaussDenoiser(NonlinearDenoiser):
     Examples
     --------
     >>> # Use for robust ICA
+    >>> from mne_denoise.dss.denoisers import GaussDenoiser, beta_gauss
     >>> denoiser = GaussDenoiser()
     >>> dss = IterativeDSS(denoiser=denoiser, beta=beta_gauss)
 
@@ -151,6 +154,7 @@ class SkewDenoiser(NonlinearDenoiser):
     Examples
     --------
     >>> # Use for robust ICA
+    >>> from mne_denoise.dss.denoisers import SkewDenoiser, beta_gauss
     >>> denoiser = SkewDenoiser()
     >>> dss = IterativeDSS(denoiser=denoiser, beta=beta_gauss)
 
@@ -179,6 +183,7 @@ class KurtosisDenoiser(NonlinearDenoiser):
 
     Examples
     --------
+    >>> from mne_denoise.dss.denoisers import KurtosisDenoiser
     >>> denoiser = KurtosisDenoiser(nonlinearity='cube')
     >>> denoised = denoiser.denoise(source)
 

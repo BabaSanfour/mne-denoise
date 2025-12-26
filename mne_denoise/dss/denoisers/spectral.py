@@ -43,6 +43,7 @@ class BandpassBias(LinearDenoiser):
 
     Examples
     --------
+    >>> from mne_denoise.dss.denoisers import BandpassBias
     >>> bias = BandpassBias(freq_band=(8, 12), sfreq=250)  # Alpha band
     >>> biased_data = bias.apply(raw_data)
 
@@ -144,7 +145,8 @@ class NotchBias(LinearDenoiser):
 
     Examples
     --------
-    >>> bias = NotchBias(freq=50, sfreq=250, bandwidth=2)  # Line noise
+    >>> from mne_denoise.dss.denoisers import NotchBias
+    >>> bias = NotchBias(freq_band=50, sfreq=250, bandwidth=2)  # Line noise
     >>> biased = bias.apply(data)  # Contains mostly 50 Hz component
 
     References
@@ -285,6 +287,7 @@ class TemporalSmoothnessDenoiser(NonlinearDenoiser):
 
     Examples
     --------
+    >>> from mne_denoise.dss.denoisers import TemporalSmoothnessDenoiser
     >>> denoiser = TemporalSmoothnessDenoiser(smoothing_factor=0.2)
     >>> smooth_source = denoiser.denoise(source)
 

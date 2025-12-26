@@ -43,6 +43,7 @@ class CycleAverageBias(LinearDenoiser):
     --------
     >>> # ECG artifact removal
     >>> from mne.preprocessing import find_ecg_events
+    >>> from mne_denoise.dss.denoisers import CycleAverageBias
     >>> r_peaks, _ = find_ecg_events(raw) # MNE returns events array
     >>> # Extract sample indices (column 0)
     >>> r_peak_samples = r_peaks[:, 0]

@@ -81,7 +81,7 @@ class SpectrogramBias(LinearDenoiser):
     Examples
     --------
     >>> import numpy as np
-    >>> from mne_denoise.dss.denoisers.spectrogram import SpectrogramBias
+    >>> from mne_denoise.dss.denoisers import SpectrogramBias
     >>> mask = np.ones((128, 1000))
     >>> bias = SpectrogramBias(mask)
     >>> data = np.random.randn(128, 1000)

@@ -48,6 +48,7 @@ class WienerMaskDenoiser(NonlinearDenoiser):
 
     Examples
     --------
+    >>> from mne_denoise.dss.denoisers import WienerMaskDenoiser
     >>> denoiser = WienerMaskDenoiser(window_samples=50)
     >>> denoised = denoiser.denoise(source)
 
@@ -143,6 +144,7 @@ class VarianceMaskDenoiser(NonlinearDenoiser):
 
     Examples
     --------
+    >>> from mne_denoise.dss.denoisers import VarianceMaskDenoiser
     >>> denoiser = VarianceMaskDenoiser(window_samples=50, percentile=80)
     >>> denoised_source = denoiser.denoise(source)
 

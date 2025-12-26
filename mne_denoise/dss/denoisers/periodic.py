@@ -43,6 +43,7 @@ class PeakFilterBias(LinearDenoiser):
     Examples
     --------
     >>> # Extract 10 Hz alpha with tight filter
+    >>> from mne_denoise.dss.denoisers import PeakFilterBias
     >>> bias = PeakFilterBias(freq=10, sfreq=250, q_factor=20)
     >>> biased_data = bias.apply(data)
 
@@ -152,6 +153,7 @@ class CombFilterBias(LinearDenoiser):
     Examples
     --------
     >>> # SSVEP at 15 Hz with 3 harmonics (15, 30, 45 Hz)
+    >>> from mne_denoise.dss.denoisers import CombFilterBias
     >>> bias = CombFilterBias(fundamental_freq=15, sfreq=250, n_harmonics=3)
     >>> biased_data = bias.apply(data)
 
@@ -295,6 +297,7 @@ class QuasiPeriodicDenoiser(NonlinearDenoiser):
     Examples
     --------
     >>> # For ECG-like signal at 250 Hz (peaks ~1 sec apart)
+    >>> from mne_denoise.dss.denoisers import QuasiPeriodicDenoiser
     >>> denoiser = QuasiPeriodicDenoiser(peak_distance=200)
     >>> denoised = denoiser.denoise(ecg_source)
 
