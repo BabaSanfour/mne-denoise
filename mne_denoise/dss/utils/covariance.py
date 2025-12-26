@@ -14,32 +14,70 @@ def robust_covariance(
     *,
     method: str = "empirical",
     shrinkage: Optional[float] = None,
+    weights: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """Compute robust covariance matrix.
+
+    This function provides a unified interface for covariance estimation,
+    supporting both standard robust methods (shrinkage, OAS, MCD) and
+    weighted empirical covariance.
 
     Parameters
     ----------
     data : ndarray, shape (n_channels, n_times)
         Input data.
     method : str
-        Method: 'empirical', 'shrinkage', 'oas', or 'mcd'.
-        Default 'empirical'.
+        Method for covariance estimation:
+        - 'empirical': Standard empirical covariance (weighted if `weights` provided).
+        - 'shrinkage': Ledoit-Wolf shrinkage (unweighted).
+        - 'oas': Oracle Approximating Shrinkage (unweighted).
+        - 'mcd': Minimum Covariance Determinant (unweighted).
+        Default is 'empirical'.
     shrinkage : float, optional
-        Shrinkage parameter for 'shrinkage' method.
+        Shrinkage parameter (0 to 1) for 'shrinkage' method. If None,
+        optimal shrinkage is estimated.
+    weights : ndarray, shape (n_times,), optional
+        Sample weights for covariance computation. High weights emphasize time points,
+        zero weights ignore them. Currently only supported for `method='empirical'`.
 
     Returns
     -------
     cov : ndarray, shape (n_channels, n_channels)
-        Covariance matrix.
+        The estimated covariance matrix.
     """
     n_channels, n_times = data.shape
     
+    if weights is not None:
+        if data.shape[1] != weights.shape[0]:
+            raise ValueError(
+                f"Weights length {weights.shape[0]} does not match "
+                f"data samples {data.shape[1]}"
+            )
+        total_weight = np.sum(weights)
+        if total_weight == 0:
+            raise ValueError("Sum of weights is zero")
+
+        if method != 'empirical':
+            # Currently we only support weighted empirical.
+            raise ValueError(f"Weighted covariance not implemented for method '{method}'")
+    else: 
+        # If no weights are provided, use equal weights; to simplify the implementation
+        weights = np.ones(n_times)
+        total_weight = n_times
+    
+    #mean 
+    #   if weights are None, it will be equal to the mean.
+    #   if weights are not None, it will be equal to the weighted mean.
+    mean = np.sum(data * weights, axis=1, keepdims=True) / total_weight
+
     # Center data
-    data_centered = data - data.mean(axis=1, keepdims=True)
+    data_centered = data - mean
     
     if method == "empirical":
-        cov = data_centered @ data_centered.T / n_times
-        
+        # Weighted covariance: (X * w) @ X.T / sum(w)
+        # Unweighted covariance: X @ X.T / n_times
+        cov = (data_centered * weights) @ data_centered.T / total_weight
+
     elif method == "shrinkage":
         # Ledoit-Wolf-like shrinkage
         emp_cov = data_centered @ data_centered.T / n_times
