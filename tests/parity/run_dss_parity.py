@@ -20,7 +20,8 @@ import numpy as np
 from scipy import signal
 import time
 
-from mne_denoise.dss import compute_dss, BandpassBias
+from mne_denoise.dss import compute_dss
+from mne_denoise.dss.denoisers.spectral import BandpassBias
 
 
 def generate_test_data(

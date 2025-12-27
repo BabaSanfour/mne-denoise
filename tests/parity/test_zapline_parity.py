@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mne_denoise.dss import dss_zapline, compute_psd_reduction
+from mne_denoise.zapline import dss_zapline, compute_psd_reduction
 
 try:
     from . import (

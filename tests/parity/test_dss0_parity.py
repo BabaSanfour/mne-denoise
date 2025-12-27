@@ -9,7 +9,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mne_denoise.dss import compute_dss, BandpassBias
+from mne_denoise.dss import compute_dss
+from mne_denoise.dss.denoisers.spectral import BandpassBias
 
 try:
     from . import (

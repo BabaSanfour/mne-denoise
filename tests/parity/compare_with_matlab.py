@@ -14,7 +14,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import numpy as np
 import scipy.io as sio
 
-from mne_denoise.dss import compute_dss, BandpassBias
+from mne_denoise.dss import compute_dss
+from mne_denoise.dss.denoisers.spectral import BandpassBias
 
 
 def main():

@@ -32,10 +32,9 @@ def run_all_parity_tests():
             to_matlab, from_matlab,
             ParityMetrics, generate_test_data,
         )
-        from mne_denoise.dss import (
-            compute_dss, DSS, BandpassBias, TrialAverageBias,
-            dss_zapline, compute_psd_reduction,
-        )
+        from mne_denoise.dss import compute_dss, DSS
+        from mne_denoise.dss.denoisers import BandpassBias, TrialAverageBias
+        from mne_denoise.zapline import dss_zapline, compute_psd_reduction
     except ImportError as e:
         print(f"Import error: {e}")
         return False
