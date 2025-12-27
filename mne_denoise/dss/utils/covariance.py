@@ -52,15 +52,9 @@ def compute_covariance(
         n_channels, n_times_in, n_epochs = data.shape
         data = data.reshape(n_channels, -1)
         
-        if weights is not None:
-             if weights.shape[0] == n_times_in:
-                 # Tile weights across epochs
-                 weights = np.tile(weights, n_epochs)
-             elif weights.shape[0] == data.shape[1]:
-                 pass
-             else:
-                  # Mismatch
-                  pass # Will be caught below
+        if weights is not None and weights.shape[0] == n_times_in:
+            # Tile weights across epochs
+            weights = np.tile(weights, n_epochs)
                   
     n_channels, n_times = data.shape
     

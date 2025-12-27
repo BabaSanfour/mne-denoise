@@ -43,9 +43,6 @@ def compute_whitener(
     # Ensure symmetry
     cov = (cov + cov.T) / 2
 
-    from sklearn.decomposition import PCA
-
-    
     try:
         eigenvalues, eigenvectors = np.linalg.eigh(cov)
     except LinAlgError as e:
@@ -68,9 +65,6 @@ def compute_whitener(
 
     if rank is not None:
         keep_mask[rank:] = False
-
-    if not np.any(keep_mask):
-         raise ValueError("No components above regularization threshold")
 
     # Truncate
     eigenvalues = eigenvalues[keep_mask]

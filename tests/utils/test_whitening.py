@@ -72,3 +72,49 @@ def test_compute_whitener_matrices():
     np.testing.assert_allclose(
         product, np.eye(W.shape[0]), atol=1e-10
     )
+
+
+def test_compute_whitener_with_rank():
+    """Test compute_whitener with explicit rank truncation."""
+    rng = np.random.default_rng(42)
+    n_channels = 10
+
+    # Create full rank covariance
+    A = rng.standard_normal((n_channels, n_channels))
+    cov = A @ A.T
+
+    W, D, eigenvalues = compute_whitener(cov, rank=5)
+
+    # Should truncate to specified rank
+    assert W.shape[0] == 5
+    assert len(eigenvalues) == 5
+
+
+def test_compute_whitener_no_variance_error():
+    """Test compute_whitener raises error for zero covariance."""
+    # All zeros = no variance
+    cov = np.zeros((5, 5))
+
+    with pytest.raises(ValueError, match="no significant variance"):
+        compute_whitener(cov)
+
+
+def test_compute_whitener_no_components_error():
+    """Test compute_whitener raises error when all eigenvalues below threshold."""
+    rng = np.random.default_rng(42)
+    n_channels = 5
+
+    # Create very small covariance (all eigenvalues tiny)
+    cov = np.eye(n_channels) * 1e-20
+
+    with pytest.raises(ValueError, match="no significant variance|No components"):
+        compute_whitener(cov)
+
+
+def test_whiten_data_invalid_ndim():
+    """Test whiten_data raises error for invalid dimensions."""
+    data = np.array([1, 2, 3, 4, 5])  # 1D
+
+    with pytest.raises(ValueError, match="must be 2D or 3D"):
+        whiten_data(data)
+
