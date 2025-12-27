@@ -14,6 +14,7 @@ from .ica import (
     GaussDenoiser,
     SkewDenoiser,
     KurtosisDenoiser,
+    SmoothTanhDenoiser,
     beta_tanh,
     beta_pow3,
     beta_gauss,
@@ -53,6 +54,7 @@ __all__ = [
     "SpectrogramDenoiser",
     "QuasiPeriodicDenoiser",
     "KurtosisDenoiser",
+    "SmoothTanhDenoiser",
     # Beta helpers (FastICA Newton step)
     "beta_tanh",
     "beta_pow3",

@@ -1,7 +1,15 @@
-"""Nonlinear/iterative DSS algorithm implementation.
+"""Core nonlinear/iterative DSS algorithm and Estimator.
 
-This module implements the iterative DSS algorithm from Särelä & Valpola (2005)
-for extracting sources using nonlinear denoising functions.
+This module contains:
+1. `iterative_dss`: The core mathematical implementation of Nonlinear DSS.
+2. `IterativeDSS`: The Scikit-learn estimator compatible with MNE-Python objects or NumPy arrays.
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+
+References
+----------
+.. [1] Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
 """
 
 from __future__ import annotations
@@ -10,7 +18,7 @@ from typing import Callable, Optional, Tuple, Union
 
 import numpy as np
 
-from .whitening import whiten_data, compute_whitener
+from .utils.whitening import whiten_data
 
 
 def iterative_dss_one(
@@ -20,41 +28,75 @@ def iterative_dss_one(
     w_init: Optional[np.ndarray] = None,
     max_iter: int = 100,
     tol: float = 1e-6,
+    alpha: Union[float, Callable[[np.ndarray], float], None] = None,
     beta: Union[float, Callable[[np.ndarray], float], None] = None,
     gamma: Union[float, Callable[[np.ndarray, np.ndarray, int], float], None] = None,
 ) -> Tuple[np.ndarray, np.ndarray, int, bool]:
-    """Fixed-point iteration for single DSS component.
+    """Fixed-point iteration for extracting a single DSS component.
 
-    Implements Algorithm 1 from Särelä & Valpola (2005) with optional Newton step.
+    This implements Algorithm 1 from Särelä & Valpola (2005) [1]_ with optional
+    Newton step acceleration (FastICA equivalence).
+    
+    The algorithm finds a spatial filter **w** that maximizes the objective:
+    
+    .. math:: J(w) = E[f(w^T X)^2]
+    
+    where f(·) is the nonlinear denoising function.
+    
+    **Algorithm**::
+    
+        Initialize: w = random unit vector
+        
+        Repeat until converged:
+            1. source = w @ X                    # Project data → 1D source
+            2. source_denoised = f(source)       # Apply nonlinearity
+            3. source_denoised *= alpha          # (optional) signal normalization
+            4. w_new = E[X · source_denoised]    # Gradient direction
+            5. w_new += beta · w                 # (optional) Newton step
+            6. w_new = normalize(w_new)          # Unit norm constraint
+            7. w = w_old + gamma·(w_new - w_old) # (optional) relaxation
+            8. Check convergence: |w · w_old| ≈ 1
 
     Parameters
     ----------
     X_whitened : ndarray, shape (n_components, n_times)
-        Whitened data matrix.
+        Whitened data matrix. Must have identity covariance.
     denoiser : callable
-        Nonlinear denoising function f(s) -> s_denoised.
-    w_init : ndarray, optional
-        Initial weight vector.
+        Nonlinear denoising function f(s) → s_denoised.
+        Examples: TanhMaskDenoiser, GaussDenoiser, WienerMaskDenoiser.
+    w_init : ndarray, shape (n_components,), optional
+        Initial weight vector. If None, random initialization.
     max_iter : int
-        Maximum iterations.
+        Maximum iterations. Default 100.
     tol : float
-        Convergence tolerance.
+        Convergence tolerance. Default 1e-6.
+    alpha : float or callable, optional
+        Signal normalization factor applied after denoising:
+        ``source_denoised *= alpha``.
+        Useful for denoisers with different output variance.
     beta : float or callable, optional
-        Spectral shift parameter for Newton-like update (FastICA style).
-        If provided, the update becomes:
-        w_new = E[X * f(s)] + beta * w
-        where beta can be a fixed float or a function beta(source).
-        For Tanh denoiser, beta = -E[1 - tanh(s)^2] yields FastICA's Newton step.
+        Spectral shift parameter for Newton-like acceleration.
+        For tanh denoiser: ``beta = -E[1 - tanh(s)²]`` (use ``beta_tanh``).
+        For cubic denoiser: ``beta = -3`` (use ``beta_pow3``).
     gamma : float or callable, optional
         Learning rate / relaxation parameter. Controls step size:
-        w = w_old + gamma * (w_new - w_old)
-        If callable, signature is gamma(w_new, w_old, iteration) -> float.
-        Use gamma_179 or gamma_predictive for adaptive learning rate.
-        Default None (gamma=1, no relaxation).
+        ``w = w_old + gamma · (w_new - w_old)``.
+        Default None (gamma=1, full step).
 
     Returns
     -------
-    w, source, n_iter, converged
+    w : ndarray, shape (n_components,)
+        Optimal spatial filter (unit norm).
+    source : ndarray, shape (n_times,)
+        Extracted source time series.
+    n_iter : int
+        Number of iterations performed.
+    converged : bool
+        Whether the algorithm converged within max_iter.
+
+    References
+    ----------
+    .. [1] Särelä & Valpola (2005). Denoising Source Separation. JMLR, 6, 233-272.
     """
     n_components, n_times = X_whitened.shape
     
@@ -84,6 +126,14 @@ def iterative_dss_one(
         
         # Step 3: Apply denoiser
         source_denoised = denoiser(source)
+        
+        # Apply alpha (signal normalization)
+        if alpha is not None:
+            if callable(alpha):
+                step_alpha = alpha(source)
+            else:
+                step_alpha = alpha
+            source_denoised = step_alpha * source_denoised
         
         # Calculate beta step if applicable
         step_beta = 0.0
@@ -148,28 +198,58 @@ def iterative_dss(
     tol: float = 1e-6,
     w_init: Optional[np.ndarray] = None,
     verbose: bool = False,
+    alpha: Union[float, Callable, None] = None,
     beta: Union[float, Callable, None] = None,
     gamma: Union[float, Callable, None] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Extract multiple DSS components using iterative algorithm.
+    """Extract multiple DSS components using iterative (nonlinear) algorithm.
+
+    This implements the Iterative DSS algorithm from Särelä & Valpola (2005) [1]_.
+    Unlike linear DSS which uses a closed-form eigendecomposition, iterative DSS
+    uses fixed-point iteration with a nonlinear denoising function.
+    
+    **Algorithm Overview**::
+    
+        1. Center data: X = X - mean(X)
+        2. Whiten data: X_white = Whitener @ X  (identity covariance)
+        3. Extract components using deflation or symmetric method:
+           
+           Deflation (sequential):
+               For each component i = 1..n_components:
+                   w_i = iterative_dss_one(X_deflated)
+                   Orthogonalize w_i against w_1..w_{i-1}
+                   Deflate: X_deflated -= w_i @ w_i.T @ X_deflated
+           
+           Symmetric (parallel):
+               Initialize W = [w_1, ..., w_n] randomly
+               Repeat until converged:
+                   Update all w_i simultaneously
+                   W = symmetric_orthogonalize(W)
+        
+        4. Convert filters to sensor space: filters = W @ Whitener
 
     Parameters
     ----------
     data : ndarray, shape (n_channels, n_times) or (n_channels, n_times, n_epochs)
-        Input data matrix.
+        Input multichannel data.
     denoiser : callable or NonlinearDenoiser
-        Nonlinear denoising function.
+        Nonlinear denoising function f(s) → s_denoised.
+        Examples: TanhMaskDenoiser, GaussDenoiser, WienerMaskDenoiser.
     n_components : int
         Number of components to extract.
-    method : str
+    method : {'deflation', 'symmetric'}
         Component extraction method:
-        - 'deflation': Extract one-by-one with orthogonal projection
-        - 'symmetric': Simultaneous extraction with Gram-Schmidt
-        Default 'deflation'.
+        
+        - ``'deflation'``: Extract one-by-one, orthogonalizing after each.
+          More stable, but order-dependent.
+        - ``'symmetric'``: Update all simultaneously, then orthogonalize.
+          Order-independent, may be less stable.
+          
+        Default ``'deflation'``.
     rank : int, optional
-        Rank for whitening. If None, auto-determined.
+        Rank for whitening. If None, auto-determined from eigenvalue threshold.
     reg : float
-        Regularization for whitening. Default 1e-9.
+        Regularization for whitening eigenvalue cutoff. Default 1e-9.
     max_iter : int
         Maximum iterations per component. Default 100.
     tol : float
@@ -178,29 +258,36 @@ def iterative_dss(
         Initial weight matrix. If None, random initialization.
     verbose : bool
         Print convergence info. Default False.
+    alpha : float or callable, optional
+        Signal normalization factor (see ``iterative_dss_one``).
+    beta : float or callable, optional
+        Newton step parameter (see ``iterative_dss_one``).
+    gamma : float or callable, optional
+        Learning rate / relaxation (see ``iterative_dss_one``).
 
     Returns
     -------
     filters : ndarray, shape (n_components, n_channels)
         DSS spatial filters in sensor space.
+        Apply as: ``sources = filters @ data``.
     sources : ndarray, shape (n_components, n_times)
         Extracted source time series.
     patterns : ndarray, shape (n_channels, n_components)
-        Spatial patterns for visualization.
+        Spatial patterns for visualization / reconstruction.
+        Reconstruct as: ``data_recon = patterns @ sources``.
     convergence_info : ndarray, shape (n_components, 2)
-        [n_iterations, converged] for each component.
+        ``[n_iterations, converged]`` for each component.
 
-    Notes
-    -----
-    Unlike linear DSS, iterative DSS can capture nonlinear dependencies
-    in the data through the choice of denoising function.
+    See Also
+    --------
+    iterative_dss_one : Single component extraction.
+    IterativeDSS : Sklearn-style estimator wrapper.
 
     References
     ----------
-    .. [1] Särelä & Valpola (2005). Denoising Source Separation. JMLR.
+    .. [1] Särelä & Valpola (2005). Denoising Source Separation. JMLR, 6, 233-272.
     """
     # Handle 3D epoched data
-    original_shape = data.shape
     if data.ndim == 3:
         n_channels, n_times, n_epochs = data.shape
         data = data.reshape(n_channels, -1)
@@ -223,13 +310,13 @@ def iterative_dss(
         filters_whitened, sources, convergence_info = _iterative_dss_deflation(
             X_whitened, denoiser, n_components,
             max_iter=max_iter, tol=tol, w_init=w_init, verbose=verbose,
-            beta=beta, gamma=gamma
+            alpha=alpha, beta=beta, gamma=gamma
         )
     elif method == 'symmetric':
         filters_whitened, sources, convergence_info = _iterative_dss_symmetric(
             X_whitened, denoiser, n_components,
             max_iter=max_iter, tol=tol, w_init=w_init, verbose=verbose,
-            beta=beta, gamma=gamma
+            alpha=alpha, beta=beta, gamma=gamma
         )
     else:
         raise ValueError(f"Unknown method: {method}. Use 'deflation' or 'symmetric'")
@@ -260,10 +347,47 @@ def _iterative_dss_deflation(
     tol: float,
     w_init: Optional[np.ndarray],
     verbose: bool,
+    alpha: Union[float, Callable, None] = None,
     beta: Union[float, Callable, None] = None,
     gamma: Union[float, Callable, None] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Extract components one-by-one using deflation."""
+    """Extract components one-by-one using deflation.
+    
+    **Algorithm**::
+    
+        For i = 1..n_components:
+            1. w_i = iterative_dss_one(X_deflated)     # Extract one component
+            2. Orthogonalize: w_i -= W_prev.T @ (W_prev @ w_i)
+            3. Normalize: w_i = w_i / ||w_i||
+            4. s_i = w_i @ X_whitened                  # Extract source
+            5. Deflate: X_deflated -= w_i @ w_i.T @ X_deflated
+    
+    Parameters
+    ----------
+    X_whitened : ndarray, shape (n_whitened, n_times)
+        Whitened data with identity covariance.
+    denoiser : callable
+        Nonlinear denoising function.
+    n_components : int
+        Number of components to extract.
+    max_iter, tol : int, float
+        Convergence parameters passed to ``iterative_dss_one``.
+    w_init : ndarray, optional
+        Initial weight matrix.
+    verbose : bool
+        Print progress.
+    alpha, beta, gamma : optional
+        Passed to ``iterative_dss_one``.
+    
+    Returns
+    -------
+    W : ndarray, shape (n_components, n_whitened)
+        Weight matrix (spatial filters in whitened space).
+    sources : ndarray, shape (n_components, n_times)
+        Extracted source time series.
+    convergence_info : ndarray, shape (n_components, 2)
+        [n_iter, converged] per component.
+    """
     n_whitened, n_times = X_whitened.shape
     
     # Storage
@@ -283,25 +407,25 @@ def _iterative_dss_deflation(
         # Run single-component iteration
         w, source, n_iter, converged = iterative_dss_one(
             X_deflated, denoiser,
-            w_init=w_i, max_iter=max_iter, tol=tol, beta=beta, gamma=gamma
+            w_init=w_i, max_iter=max_iter, tol=tol,
+            alpha=alpha, beta=beta, gamma=gamma
         )
         
         if verbose:
             status = "converged" if converged else "max_iter"
             print(f"  Component {i+1}: {n_iter} iterations ({status})")
         
-        # Orthogonalize against previous components
+        # Orthogonalize against previous components (vectorized)
         if i > 0:
-            for j in range(i):
-                w = w - np.dot(w, W[j]) * W[j]
+            W_prev = W[:i]  # (i, n_whitened)
+            w = w - W_prev.T @ (W_prev @ w)
             norm = np.linalg.norm(w)
             if norm < 1e-12:
                 if verbose:
                     print(f"  Component {i+1}: degenerate, using random")
                 rng = np.random.default_rng(i)
                 w = rng.standard_normal(n_whitened)
-                for j in range(i):
-                    w = w - np.dot(w, W[j]) * W[j]
+                w = w - W_prev.T @ (W_prev @ w)
                 norm = np.linalg.norm(w)
             w = w / norm
         
@@ -325,10 +449,51 @@ def _iterative_dss_symmetric(
     tol: float,
     w_init: Optional[np.ndarray],
     verbose: bool,
+    alpha: Union[float, Callable, None] = None,
     beta: Union[float, Callable, None] = None,
     gamma: Union[float, Callable, None] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Extract components simultaneously with symmetric orthogonalization."""
+    """Extract components simultaneously with symmetric orthogonalization.
+    
+    **Algorithm**::
+    
+        Initialize: W = random (n_components, n_whitened)
+        W = symmetric_orthogonalize(W)
+        
+        Repeat until converged:
+            For each i:
+                s_i = W[i] @ X
+                s_denoised = f(s_i)
+                W[i] = E[X · s_denoised] + beta · W[i]
+            W = symmetric_orthogonalize(W)    # (W @ W.T)^{-1/2} @ W
+            Check max |1 - |W[i] · W_old[i]|| < tol
+    
+    Parameters
+    ----------
+    X_whitened : ndarray, shape (n_whitened, n_times)
+        Whitened data with identity covariance.
+    denoiser : callable
+        Nonlinear denoising function.
+    n_components : int
+        Number of components to extract.
+    max_iter, tol : int, float
+        Convergence parameters.
+    w_init : ndarray, optional
+        Initial weight matrix.
+    verbose : bool
+        Print progress.
+    alpha, beta, gamma : optional
+        Iteration parameters.
+    
+    Returns
+    -------
+    W : ndarray, shape (n_components, n_whitened)
+        Weight matrix (spatial filters in whitened space).
+    sources : ndarray, shape (n_components, n_times)
+        Extracted source time series.
+    convergence_info : ndarray, shape (n_components, 2)
+        [n_iter, converged] (same for all components in symmetric).
+    """
     n_whitened, n_times = X_whitened.shape
     
     # Initialize weight matrix
@@ -350,6 +515,15 @@ def _iterative_dss_symmetric(
         for i in range(n_components):
             source = W[i] @ X_whitened
             source_denoised = denoiser(source)
+            
+            # Apply alpha (signal normalization)
+            if alpha is not None:
+                if callable(alpha):
+                    step_alpha = alpha(source)
+                else:
+                    step_alpha = alpha
+                source_denoised = step_alpha * source_denoised
+            
             gradient_part = X_whitened @ source_denoised / n_times
             
             # Calculate beta step if applicable
@@ -402,39 +576,77 @@ def _symmetric_orthogonalize(W: np.ndarray) -> np.ndarray:
 
 
 class IterativeDSS:
-    """Scikit-learn style estimator for iterative/nonlinear DSS.
+    """Iterative (Nonlinear) Denoising Source Separation Transformer.
+
+    Implements Iterative DSS as a scikit-learn compatible transformer that 
+    fits natively on MNE-Python objects (Raw, Epochs) or numpy arrays.
+    
+    Unlike linear DSS which uses closed-form eigendecomposition, Iterative DSS
+    uses fixed-point iteration with a nonlinear denoising function, making it
+    equivalent to FastICA when using ICA contrast functions (tanh, gauss, cube).
 
     Parameters
     ----------
     denoiser : callable or NonlinearDenoiser
-        Nonlinear denoising function.
+        Nonlinear denoising function f(s) → s_denoised. Must be an instance of
+        `mne_denoise.dss.NonlinearDenoiser` (e.g. `TanhMaskDenoiser`, 
+        `WienerMaskDenoiser`) or a callable.
     n_components : int
         Number of components to extract.
-    method : str
-        'deflation' or 'symmetric'. Default 'deflation'.
+    method : {'deflation', 'symmetric'}
+        Component extraction method:
+        
+        - ``'deflation'``: Extract one-by-one, orthogonalizing after each.
+        - ``'symmetric'``: Update all simultaneously, then orthogonalize.
+        
+        Default ``'deflation'``.
     rank : int, optional
-        Rank for whitening.
+        Rank for whitening. If None, auto-determined from eigenvalue threshold.
     reg : float
         Regularization for whitening. Default 1e-9.
     max_iter : int
-        Maximum iterations. Default 100.
+        Maximum iterations per component. Default 100.
     tol : float
         Convergence tolerance. Default 1e-6.
     verbose : bool
         Print convergence info. Default False.
+    alpha : float or callable, optional
+        Signal normalization factor applied after denoising.
+    beta : float or callable, optional
+        Spectral shift (Newton step) for faster convergence.
+        Use ``beta_tanh`` for TanhMaskDenoiser, ``beta_pow3`` for cubic.
+    gamma : float or callable, optional
+        Learning rate / relaxation parameter.
 
     Attributes
     ----------
     filters_ : ndarray, shape (n_components, n_channels)
-        Fitted spatial filters.
+        The spatial filters (un-mixing matrix). Apply as: ``sources = filters_ @ data``.
     patterns_ : ndarray, shape (n_channels, n_components)
-        Fitted spatial patterns.
+        The spatial patterns (mixing matrix). Reconstruct as: ``data = patterns_ @ sources``.
     sources_ : ndarray, shape (n_components, n_times)
         Extracted sources from fit data.
-    convergence_info_ : ndarray
-        Convergence info for each component.
-    beta : float or callable, optional
-        Spectral shift parameter (Newton step term).
+    convergence_info_ : ndarray, shape (n_components, 2)
+        [n_iterations, converged] for each component.
+
+    Examples
+    --------
+    >>> from mne_denoise.dss import IterativeDSS
+    >>> from mne_denoise.dss.denoisers import TanhMaskDenoiser, beta_tanh
+    >>> 
+    >>> # With numpy array
+    >>> dss = IterativeDSS(TanhMaskDenoiser(), n_components=5, beta=beta_tanh)
+    >>> dss.fit(data)
+    >>> sources = dss.transform(data)
+    >>> 
+    >>> # With MNE Raw object
+    >>> dss.fit(raw)
+    >>> sources = dss.transform(raw.get_data())
+
+    See Also
+    --------
+    DSS : Linear DSS transformer.
+    iterative_dss : Functional API.
     """
 
     def __init__(
@@ -448,6 +660,7 @@ class IterativeDSS:
         max_iter: int = 100,
         tol: float = 1e-6,
         verbose: bool = False,
+        alpha: Union[float, Callable, None] = None,
         beta: Union[float, Callable, None] = None,
         gamma: Union[float, Callable, None] = None,
     ) -> None:
@@ -459,6 +672,7 @@ class IterativeDSS:
         self.max_iter = max_iter
         self.tol = tol
         self.verbose = verbose
+        self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
         
@@ -467,25 +681,43 @@ class IterativeDSS:
         self.patterns_: Optional[np.ndarray] = None
         self.sources_: Optional[np.ndarray] = None
         self.convergence_info_: Optional[np.ndarray] = None
+        self._mne_info = None
 
-    def fit(self, data: np.ndarray) -> 'IterativeDSS':
-        """Fit iterative DSS from data.
+    def fit(self, X) -> 'IterativeDSS':
+        """Compute Iterative DSS spatial filters.
 
         Parameters
         ----------
-        data : ndarray, shape (n_channels, n_times) or (n_channels, n_times, n_epochs)
-            Training data.
+        X : Raw | Epochs | ndarray
+            The data to fit. Accepts:
+            
+            - ``mne.io.Raw``: Continuous data
+            - ``mne.Epochs``: Epoched data
+            - ``ndarray``: Shape (n_channels, n_times) or (n_channels, n_times, n_epochs)
 
         Returns
         -------
         self : IterativeDSS
-            Fitted estimator.
+            The fitted transformer.
         """
+        # Handle MNE objects
+        try:
+            import mne
+            is_mne = isinstance(X, (mne.io.BaseRaw, mne.BaseEpochs))
+        except ImportError:
+            is_mne = False
+        
+        if is_mne:
+            self._mne_info = X.info
+            data = X.get_data()
+        else:
+            data = X
+        
         filters, sources, patterns, conv_info = iterative_dss(
             data, self.denoiser, self.n_components,
             method=self.method, rank=self.rank, reg=self.reg,
             max_iter=self.max_iter, tol=self.tol, verbose=self.verbose,
-            beta=self.beta, gamma=self.gamma
+            alpha=self.alpha, beta=self.beta, gamma=self.gamma
         )
         
         self.filters_ = filters
@@ -495,21 +727,31 @@ class IterativeDSS:
         
         return self
 
-    def transform(self, data: np.ndarray) -> np.ndarray:
-        """Apply fitted filters to new data.
+    def transform(self, X) -> np.ndarray:
+        """Apply fitted filters to extract sources.
 
         Parameters
         ----------
-        data : ndarray
-            Data to transform.
+        X : Raw | Epochs | ndarray
+            Data to transform. Same formats as ``fit()``.
 
         Returns
         -------
-        sources : ndarray
-            Extracted sources.
+        sources : ndarray, shape (n_components, n_times) or (n_components, n_times, n_epochs)
+            Extracted source time series.
         """
         if self.filters_ is None:
             raise RuntimeError("IterativeDSS not fitted. Call fit() first.")
+        
+        # Handle MNE objects
+        try:
+            import mne
+            if isinstance(X, (mne.io.BaseRaw, mne.BaseEpochs)):
+                data = X.get_data()
+            else:
+                data = X
+        except ImportError:
+            data = X
         
         # Handle 3D
         original_shape = data.shape
@@ -536,24 +778,34 @@ class IterativeDSS:
 
         Parameters
         ----------
-        sources : ndarray, shape (n_components, n_times)
-            Source time series.
+        sources : ndarray, shape (n_sources, n_times)
+            Source time series. Can use fewer sources than fitted.
 
         Returns
         -------
         reconstructed : ndarray, shape (n_channels, n_times)
-            Reconstructed data.
+            Reconstructed data: ``patterns_[:, :n_sources] @ sources``.
         """
         if self.patterns_ is None:
             raise RuntimeError("IterativeDSS not fitted. Call fit() first.")
         
-        # patterns: (n_channels, n_components)
-        # sources: (n_components, n_times)
         n_sources = sources.shape[0]
         patterns = self.patterns_[:, :n_sources]
         
         return patterns @ sources
 
-    def fit_transform(self, data: np.ndarray) -> np.ndarray:
-        """Fit and transform data."""
-        return self.fit(data).transform(data)
+    def fit_transform(self, X) -> np.ndarray:
+        """Fit and transform in one step.
+
+        Parameters
+        ----------
+        X : Raw | Epochs | ndarray
+            Data to fit and transform.
+
+        Returns
+        -------
+        sources : ndarray
+            Extracted sources.
+        """
+        return self.fit(X).transform(X)
+

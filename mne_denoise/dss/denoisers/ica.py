@@ -213,6 +213,45 @@ class KurtosisDenoiser(NonlinearDenoiser):
         return source
 
 
+class SmoothTanhDenoiser(NonlinearDenoiser):
+    """Smoothed tanh denoiser.
+
+    Applies temporal smoothing before the tanh nonlinearity. This can help
+    extract sources with both temporal structure and non-Gaussian statistics.
+
+    Formula:
+        $s_{smoothed} = \\text{lowpass}(s)$
+        $s_{new} = \\tanh(\\alpha \\cdot s_{smoothed})$
+
+    Parameters
+    ----------
+    alpha : float
+        Scaling factor for tanh. Default 1.0.
+    window : int
+        Smoothing window size in samples. Default 10.
+
+    Examples
+    --------
+    >>> from mne_denoise.dss.denoisers import SmoothTanhDenoiser
+    >>> denoiser = SmoothTanhDenoiser(window=20)
+    >>> dss = IterativeDSS(denoiser=denoiser)
+    """
+
+    def __init__(self, alpha: float = 1.0, window: int = 10) -> None:
+        self.alpha = alpha
+        self.window = max(3, window)
+
+    def denoise(self, source: np.ndarray) -> np.ndarray:
+        """Apply smoothed tanh nonlinearity."""
+        from scipy.ndimage import uniform_filter1d
+        
+        # Smooth the source
+        smoothed = uniform_filter1d(source, size=self.window, mode='reflect')
+        
+        # Apply tanh to smoothed signal
+        return np.tanh(self.alpha * smoothed)
+
+
 # =============================================================================
 # Helper functions for beta (Newton step)
 # =============================================================================
