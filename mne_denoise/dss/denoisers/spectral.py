@@ -107,9 +107,6 @@ class BandpassBias(LinearDenoiser):
         biased : ndarray, same shape as input
             Bandpass filtered data.
         """
-        if self._sos is None:
-            raise RuntimeError("Filter not designed")
-
         # Handle 3D epoched data
         if data.ndim == 3:
             n_channels, n_times, n_epochs = data.shape
@@ -253,17 +250,13 @@ class DCTDenoiser(NonlinearDenoiser):
             dct_filtered = dct_coeffs * mask
             return idct(dct_filtered, type=2, norm='ortho')
         elif source.ndim == 2:            
-            n_times, n_epochs = source.shape
+            _, n_epochs = source.shape
             denoised = np.zeros_like(source)
-            # Recompute mask if needed for n_times
-            if self._cached_mask is None or self._cached_len != n_times:
-                 pass 
-                 
             for ep in range(n_epochs):
                  denoised[:, ep] = self._denoise_1d(source[:, ep], mask)
             return denoised
-
-        return source
+        else:
+            raise ValueError(f"Source must be 1D or 2D, got {source.ndim}D")
 
     def _denoise_1d(self, source, mask):
         from scipy.fftpack import dct, idct

@@ -168,7 +168,7 @@ class SpectrogramDenoiser(NonlinearDenoiser):
     def denoise(self, source: np.ndarray) -> np.ndarray:
         """Apply adaptive 2D spectrogram masking."""
         if source.ndim == 2:
-            n_times, n_epochs = source.shape
+            _, n_epochs = source.shape
             denoised = np.zeros_like(source)
             for ep in range(n_epochs):
                 denoised[:, ep] = self._denoise_1d(source[:, ep])

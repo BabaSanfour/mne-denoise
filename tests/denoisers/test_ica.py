@@ -10,6 +10,7 @@ from mne_denoise.dss.denoisers.ica import (
     GaussDenoiser,
     SkewDenoiser,
     KurtosisDenoiser,
+    SmoothTanhDenoiser,
     beta_tanh,
     beta_pow3,
     beta_gauss,
@@ -90,3 +91,55 @@ def test_beta_helpers():
     # beta_gauss = -mean((1-a*s^2)*exp(-a*s^2/2))
     # If s=0: -mean(1 * 1) = -1
     assert_allclose(beta_gauss(s_zeros), -1.0)
+
+
+def test_tanh_mask_denoiser_zero_std():
+    """Test TanhMaskDenoiser returns input unchanged when std is near zero."""
+    denoiser = TanhMaskDenoiser(alpha=1.0, normalize=True)
+    
+    # Create data with essentially zero variance
+    data = np.zeros(100) + 1e-20
+    result = denoiser.denoise(data)
+    
+    # Should return input unchanged (line 70 branch)
+    assert_allclose(result, data)
+
+
+def test_smooth_tanh_denoiser():
+    """Test SmoothTanhDenoiser applies smoothing then tanh."""
+    rng = np.random.default_rng(42)
+    
+    # Create noisy data
+    source = rng.normal(0, 1, 100)
+    
+    denoiser = SmoothTanhDenoiser(alpha=1.0, window=10)
+    result = denoiser.denoise(source)
+    
+    # Result should be bounded by tanh range (-1, 1) times some scale
+    assert result.shape == source.shape
+    # Smoothed signal should be less variable than raw tanh
+    raw_tanh = np.tanh(source)
+    assert np.std(result) <= np.std(raw_tanh) * 1.2  # Allow some tolerance
+
+
+def test_smooth_tanh_denoiser_minimum_window():
+    """Test SmoothTanhDenoiser enforces minimum window size."""
+    # Window less than 3 should be set to 3
+    denoiser = SmoothTanhDenoiser(window=1)
+    assert denoiser.window == 3
+
+
+def test_kurtosis_denoiser_alpha():
+    """Test KurtosisDenoiser with custom alpha."""
+    # Tanh with alpha=2
+    k_tanh = KurtosisDenoiser('tanh', alpha=2.0)
+    data = np.array([0.5])
+    expected = np.tanh(2.0 * 0.5)
+    assert_allclose(k_tanh.denoise(data), [expected])
+    
+    # Gauss with alpha=2
+    k_gauss = KurtosisDenoiser('gauss', alpha=2.0)
+    data = np.array([1.0])
+    expected = 1.0 * np.exp(-0.5 * (2.0 * 1.0) ** 2)
+    assert_allclose(k_gauss.denoise(data), [expected])
+

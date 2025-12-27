@@ -87,7 +87,7 @@ class WienerMaskDenoiser(NonlinearDenoiser):
         if source.ndim == 1:
             return self._denoise_1d(source)
         elif source.ndim == 2:
-            n_times, n_epochs = source.shape
+            _, n_epochs = source.shape
             denoised = np.zeros_like(source)
             for ep in range(n_epochs):
                 denoised[:, ep] = self._denoise_1d(source[:, ep])
@@ -170,7 +170,7 @@ class VarianceMaskDenoiser(NonlinearDenoiser):
         if source.ndim == 1:
             return self._denoise_1d(source)
         elif source.ndim == 2:
-            n_times, n_epochs = source.shape
+            _, n_epochs = source.shape
             denoised = np.zeros_like(source)
             for ep in range(n_epochs):
                 denoised[:, ep] = self._denoise_1d(source[:, ep])

@@ -107,9 +107,6 @@ class TimeShiftBias(LinearDenoiser):
         valid_end = n_samples - max_shift
         valid_length = valid_end - valid_start
 
-        if valid_length <= 0:
-            raise ValueError("Data too short for specified shifts")
-
         accumulated = np.zeros((n_channels, valid_length))
         for shift in shifts:
             shifted = data[:, valid_start + shift : valid_end + shift]
@@ -131,9 +128,6 @@ class TimeShiftBias(LinearDenoiser):
         valid_start = max_shift
         valid_end = n_samples - max_shift
         valid_length = valid_end - valid_start
-
-        if valid_length <= 0:
-            raise ValueError("Data too short for specified shifts")
 
         accumulated = np.zeros((n_channels, valid_length))
         total_weight = 0

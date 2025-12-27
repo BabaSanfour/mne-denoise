@@ -208,9 +208,8 @@ class KurtosisDenoiser(NonlinearDenoiser):
             return np.tanh(self.alpha * source)
         elif self.nonlinearity == 'cube':
             return source ** 3
-        elif self.nonlinearity == 'gauss':
+        else:  # self.nonlinearity == 'gauss' (validated in __init__)
             return source * np.exp(-0.5 * (self.alpha * source) ** 2)
-        return source
 
 
 class SmoothTanhDenoiser(NonlinearDenoiser):

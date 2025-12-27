@@ -88,15 +88,9 @@ class PeakFilterBias(LinearDenoiser):
         # Bandwidth from Q factor
         bw = w0 / self.q_factor
 
-        # Use iirpeak for resonant filter
-        try:
-            b, a = signal.iirpeak(w0, self.q_factor)
-            sos = signal.tf2sos(b, a)
-        except Exception:
-            # Fallback to narrow bandpass
-            low = max(w0 - bw / 2, 0.01)
-            high = min(w0 + bw / 2, 0.99)
-            sos = signal.butter(self.order, [low, high], btype='band', output='sos')
+        # Design peak filter using iirpeak
+        b, a = signal.iirpeak(w0, self.q_factor)
+        sos = signal.tf2sos(b, a)
 
         return sos
 
@@ -215,20 +209,9 @@ class CombFilterBias(LinearDenoiser):
             w0 = freq / nyq
             weight = self.weights[h - 1]
 
-            try:
-                b, a = signal.iirpeak(w0, self.q_factor)
-                sos = signal.tf2sos(b, a)
-                self._peak_filters.append((sos, weight))
-            except Exception:
-                # Fallback to bandpass
-                bw = w0 / self.q_factor
-                low = max(w0 - bw / 2, 0.01)
-                high = min(w0 + bw / 2, 0.99)
-                try:
-                    sos = signal.butter(2, [low, high], btype='band', output='sos')
-                    self._peak_filters.append((sos, weight))
-                except Exception:
-                    continue
+            b, a = signal.iirpeak(w0, self.q_factor)
+            sos = signal.tf2sos(b, a)
+            self._peak_filters.append((sos, weight))
 
     def apply(self, data: np.ndarray) -> np.ndarray:
         """Apply comb filter bias.

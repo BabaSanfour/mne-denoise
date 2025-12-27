@@ -44,3 +44,14 @@ def test_trial_average_bias_errors():
     data = np.zeros((2, 10))
     with pytest.raises(ValueError, match="requires 3D epoched data"):
         bias.apply(data)
+
+
+def test_trial_average_bias_weight_mismatch():
+    """Test error when weights length doesn't match epochs."""
+    data = np.zeros((1, 5, 10))  # 10 epochs
+    weights = [1, 2, 3]  # Only 3 weights
+    
+    bias = TrialAverageBias(weights=weights)
+    with pytest.raises(ValueError, match="weights length.*must match"):
+        bias.apply(data)
+

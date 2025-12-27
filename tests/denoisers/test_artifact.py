@@ -69,3 +69,70 @@ def test_cycle_average_bias_sfreq():
     )
     
     assert bias.window == (-10, 20)
+
+
+def test_cycle_average_bias_3d_data():
+    """Test CycleAverageBias with 3D epoched data."""
+    rng = np.random.default_rng(42)
+    n_channels, n_times, n_epochs = 3, 100, 5
+    
+    # Create 3D data
+    data = rng.normal(0, 1, (n_channels, n_times, n_epochs))
+    
+    # Add a periodic artifact at known locations
+    events = np.array([20, 50, 80])  # Within first epoch
+    
+    bias = CycleAverageBias(event_samples=events, window=(-5, 5))
+    biased = bias.apply(data)
+    
+    # Output should be 3D with same shape
+    assert biased.shape == data.shape
+    assert biased.ndim == 3
+
+
+def test_cycle_average_bias_empty_events():
+    """Test CycleAverageBias with no valid events returns zeros."""
+    rng = np.random.default_rng(42)
+    n_channels, n_times = 3, 100
+    data = rng.normal(0, 1, (n_channels, n_times))
+    
+    # Events outside data bounds
+    events = np.array([1000, 2000])  # Way outside
+    
+    bias = CycleAverageBias(event_samples=events, window=(-10, 10))
+    biased = bias.apply(data)
+    
+    # Should return zeros when no valid events
+    assert_allclose(biased, 0)
+    assert biased.shape == data.shape
+
+
+def test_cycle_average_bias_invalid_ndim():
+    """Test CycleAverageBias raises error for invalid dimensions."""
+    import pytest
+    
+    events = [50]
+    bias = CycleAverageBias(event_samples=events, window=(-5, 5))
+    
+    # 1D data should raise ValueError
+    data_1d = np.array([1, 2, 3, 4, 5])
+    with pytest.raises(ValueError, match="Data must be 2D or 3D"):
+        bias.apply(data_1d)
+
+
+def test_cycle_average_bias_partial_valid_events():
+    """Test CycleAverageBias handles mix of valid and invalid events."""
+    rng = np.random.default_rng(42)
+    n_channels, n_times = 2, 200
+    data = rng.normal(0, 1, (n_channels, n_times))
+    
+    # Mix of valid and invalid events (some at edges)
+    events = np.array([5, 50, 100, 195])  # 5 and 195 may be clipped by window
+    
+    bias = CycleAverageBias(event_samples=events, window=(-10, 10))
+    biased = bias.apply(data)
+    
+    # Should still work with the valid events in the middle
+    assert biased.shape == data.shape
+    # Middle event (50) window should be non-zero
+    assert np.any(biased[:, 40:60] != 0)

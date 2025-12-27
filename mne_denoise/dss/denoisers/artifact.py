@@ -117,9 +117,7 @@ class CycleAverageBias(LinearDenoiser):
 
         if len(valid_events) == 0:
             # No valid events, return zeros (no artifact signal)
-            if data.ndim == 3:
-                return np.zeros_like(data)
-            return np.zeros_like(data_2d)
+            return np.zeros(original_shape)
 
         # Compute cycle average
         window_len = post - pre
