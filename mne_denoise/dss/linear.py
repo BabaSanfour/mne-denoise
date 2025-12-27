@@ -263,7 +263,6 @@ class DSS(BaseEstimator, TransformerMixin):
         self.mixing_ = None
         self.eigenvalues_ = None
         self.explained_variance_ = None
-        self.whitener_ = None
         self.info_ = None
         self.channel_norms_ = None
 
@@ -299,10 +298,7 @@ class DSS(BaseEstimator, TransformerMixin):
             raise TypeError(f"Unsupported input type: {type(X_norm)}")
         
         # Compute mixing matrix (pseudoinverse of filters)
-        # filters_: (n_components, n_channels)
-        # mixing_: (n_channels, n_components)
-        if self.filters_ is not None:
-             self.mixing_ = np.linalg.pinv(self.filters_)
+        self.mixing_ = np.linalg.pinv(self.filters_)
         
         return self
     
@@ -313,14 +309,19 @@ class DSS(BaseEstimator, TransformerMixin):
         units (e.g. MAG vs GRAD) contribute equally.
         """
         # Helper to get numpy data
+        is_mne = False
+        is_mne_epochs = False
         if mne is not None and isinstance(X, (BaseRaw, BaseEpochs, Evoked)):
             data = X.get_data()
             is_mne = True
+            if isinstance(X, BaseEpochs):
+                is_mne_epochs = True
+                # MNE Epochs: (n_epochs, n_channels, n_times) -> (n_channels, n_times, n_epochs)
+                data = np.transpose(data, (1, 2, 0))
         else:
             data = X
-            is_mne = False
             
-        # Reshape to (n_channels, n_samples)
+        # Now data is always (n_channels, ...) for both 2D and 3D
         orig_shape = data.shape
         if data.ndim == 3:
             n_ch, n_times, n_epochs = data.shape
@@ -346,11 +347,20 @@ class DSS(BaseEstimator, TransformerMixin):
             if isinstance(X, BaseRaw):
                 return mne.io.RawArray(data_norm, X.info, verbose=False)
             elif isinstance(X, BaseEpochs):
-                 return mne.EpochsArray(data_norm, X.info, verbose=False)
-            elif isinstance(X, Evoked):
-                 return mne.EvokedArray(data_norm, X.info, verbose=False)
+                # Transpose back to MNE format: (n_ch, n_times, n_epochs) -> (n_epochs, n_ch, n_times)
+                data_norm = np.transpose(data_norm, (2, 0, 1))
+                return mne.EpochsArray(data_norm, X.info, verbose=False)
+            else:  # Evoked
+                return mne.EvokedArray(data_norm, X.info, verbose=False)
         else:
             return data_norm
+
+    def _apply_bias(self, data: np.ndarray) -> np.ndarray:
+        """Apply bias function to data."""
+        if hasattr(self.bias, 'apply'):
+            return self.bias.apply(data)
+        else:
+            return self.bias(data)
 
     def _fit_mne(self, inst: Union[BaseRaw, BaseEpochs, Evoked], weights: Optional[np.ndarray] = None) -> None:
         """Fit using MNE objects."""
@@ -361,14 +371,11 @@ class DSS(BaseEstimator, TransformerMixin):
             data = inst.get_data()
             self._fit_numpy(data, weights=weights)
             return
-
         method = self.cov_method
         kws = self.cov_kws.copy() if self.cov_kws else {}
         # Set defaults if not in kws
         kws.setdefault('rank', self.rank)
         kws.setdefault('verbose', False)
-
-        bias_func = self.bias
 
         if isinstance(inst, BaseEpochs):
             data = inst.get_data()
@@ -378,10 +385,7 @@ class DSS(BaseEstimator, TransformerMixin):
         else: # Raw
             data = inst.get_data()
 
-        if hasattr(bias_func, 'apply'):
-            biased_data = bias_func.apply(data)
-        else:
-            biased_data = bias_func(data)
+        biased_data = self._apply_bias(data)
         
         if isinstance(inst, BaseEpochs):
             biased_data = np.transpose(biased_data, (2, 0, 1))
@@ -392,15 +396,14 @@ class DSS(BaseEstimator, TransformerMixin):
             biased_inst = mne.io.RawArray(biased_data, inst.info, verbose=False)
             biased_cov = mne.compute_raw_covariance(biased_inst, method=method, **kws)
             
-        else: # Epochs or Evoked
+        elif isinstance(inst, BaseEpochs):
             baseline_cov = mne.compute_covariance(inst, method=method, **kws)
-            
-            if isinstance(inst, BaseEpochs):
-                biased_inst = mne.EpochsArray(biased_data, inst.info, verbose=False)
-            else: # Evoked
-                biased_inst = mne.EvokedArray(biased_data, inst.info, verbose=False)
-                
+            biased_inst = mne.EpochsArray(biased_data, inst.info, verbose=False)
             biased_cov = mne.compute_covariance(biased_inst, method=method, **kws)
+            
+        else:  # Evoked - use numpy path since MNE doesn't support Evoked covariance
+            self._fit_numpy(data, weights=weights)
+            return
 
         # Extract data from MNE covariances
         self.filters_, self.patterns_, self.eigenvalues_ = compute_dss(
@@ -422,12 +425,7 @@ class DSS(BaseEstimator, TransformerMixin):
              warnings.warn("Rank parameter is currently ignored for NumPy inputs. "
                            "It is only used when fitting with MNE objects (Raw/Epochs/Evoked).")
             
-        bias_func = self.bias
-        # Callable or Denoiser object
-        if hasattr(bias_func, 'apply'):
-            biased_X = bias_func.apply(X)
-        else:
-            biased_X = bias_func(X)
+        biased_X = self._apply_bias(X)
 
         method = self.cov_method
         kws = self.cov_kws.copy() if self.cov_kws else {}
@@ -549,10 +547,12 @@ class DSS(BaseEstimator, TransformerMixin):
         is_epochs_mne = False
         
         if sources.ndim == 3:
-            # Check if (n_epochs, n_comps, n_times) or (n_comps, n_times, n_epochs)
-            n_comp_fit = self.mixing_.shape[1] 
-            if sources.shape[1] == n_comp_fit:
-                # (n_epochs, n_comps, n_times) -> (n_comps, n_times, n_epochs)
+            # Determine orientation: sources from transform() are
+            # (n_comps, n_times, n_epochs) for numpy or (n_epochs, n_comps, n_times) for MNE epochs
+            # Use shape[0] vs mixing_.shape[1] to detect MNE epoch format
+            n_comp_fit = self.mixing_.shape[1]
+            if sources.shape[0] != n_comp_fit and sources.shape[1] == n_comp_fit:
+                # MNE epochs format: (n_epochs, n_comps, n_times) -> (n_comps, n_times, n_epochs)
                 sources_internal = np.transpose(sources, (1, 2, 0))
                 is_epochs_mne = True
             else:

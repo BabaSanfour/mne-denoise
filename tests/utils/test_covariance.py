@@ -174,3 +174,31 @@ def test_covariance_explicit_shrinkage():
     
     assert cov.shape == (3, 3)
 
+
+def test_weighted_covariance_correctness():
+    """Test weighted covariance computation produces correct results."""
+    n_samples = 100
+    n_channels = 3
+    rng = np.random.RandomState(42)
+    data = rng.randn(n_channels, n_samples)
+    
+    # Case 1: Weights = ones -> should equal empirical covariance
+    weights_ones = np.ones(n_samples)
+    cov_w = compute_covariance(data, weights=weights_ones, method='empirical')
+    
+    # Manual empirical
+    data_centered = data - data.mean(axis=1, keepdims=True)
+    cov_emp = data_centered @ data_centered.T / n_samples
+    assert_allclose(cov_w, cov_emp, atol=1e-7, err_msg="Weighted cov (ones) mismatch")
+    
+    # Case 2: Zero weights on half the data -> should equal covariance of first half
+    weights_half = np.zeros(n_samples)
+    weights_half[:50] = 1.0
+    
+    # Compute on subset manually
+    data_sub = data[:, :50]
+    data_sub_c = data_sub - data_sub.mean(axis=1, keepdims=True)
+    cov_sub = data_sub_c @ data_sub_c.T / 50.0  # Sum of weights is 50
+    
+    cov_w_half = compute_covariance(data, weights=weights_half, method='empirical')
+    assert_allclose(cov_w_half, cov_sub, atol=1e-7, err_msg="Weighted cov (masking) mismatch")
