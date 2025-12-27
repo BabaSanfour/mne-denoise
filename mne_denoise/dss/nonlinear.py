@@ -21,6 +21,55 @@ import numpy as np
 from .utils.whitening import whiten_data
 
 
+def _validate_dss_input(X) -> Tuple[np.ndarray, Tuple, Optional[object]]:
+    """Validate and normalize DSS input data.
+    
+    Returns
+    -------
+    data_2d : ndarray (n_channels, n_samples)
+    orig_shape : tuple
+    mne_info : mne.Info or None
+    """
+    mne_info = None
+    
+    # Handle MNE objects
+    try:
+        import mne
+        if isinstance(X, (mne.io.BaseRaw, mne.BaseEpochs)):
+            mne_info = X.info
+            data = X.get_data()
+        else:
+            data = X
+    except ImportError:
+        data = X
+    
+    orig_shape = data.shape
+    
+    # Handle 3D epoched data
+    if data.ndim == 3:
+        # Assume standard MNE structure: (n_epochs, n_channels, n_times)
+        n_epochs, n_channels, n_times = data.shape
+        # Flatten to (n_channels, n_samples) for processing
+        # Move channels to front -> (n_channels, n_epochs, n_times)
+        data_2d = data.transpose(1, 0, 2).reshape(n_channels, -1)
+    elif data.ndim == 2:
+        data_2d = data
+    else:
+        raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
+        
+    return data_2d, orig_shape, mne_info
+
+
+def _resolve_callable(param, x, default=None):
+    """Helper to resolve parameters that can be float, callable, or None."""
+    if param is None:
+        return default
+    if callable(param):
+        return param
+    # Wrap constant in callable
+    return lambda *args: param
+
+
 def iterative_dss_one(
     X_whitened: np.ndarray,
     denoiser: Callable[[np.ndarray], np.ndarray],
@@ -31,6 +80,7 @@ def iterative_dss_one(
     alpha: Union[float, Callable[[np.ndarray], float], None] = None,
     beta: Union[float, Callable[[np.ndarray], float], None] = None,
     gamma: Union[float, Callable[[np.ndarray, np.ndarray, int], float], None] = None,
+    random_state: Optional[Union[int, np.random.Generator]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, int, bool]:
     """Fixed-point iteration for extracting a single DSS component.
 
@@ -100,11 +150,13 @@ def iterative_dss_one(
     """
     n_components, n_times = X_whitened.shape
     
+    # Initialize RNG
+    rng = np.random.default_rng(random_state)
+    
     # Initialize weight vector
     if w_init is not None:
         w = w_init.copy()
     else:
-        rng = np.random.default_rng()
         w = rng.standard_normal(n_components)
     
     # Normalize
@@ -114,6 +166,11 @@ def iterative_dss_one(
     else:
         w = w / norm
     
+    # Resolve parameters to callables
+    alpha_func = _resolve_callable(alpha, None)
+    beta_func = _resolve_callable(beta, None)
+    gamma_func = _resolve_callable(gamma, None)
+
     converged = False
     n_iter = 0
     
@@ -128,20 +185,13 @@ def iterative_dss_one(
         source_denoised = denoiser(source)
         
         # Apply alpha (signal normalization)
-        if alpha is not None:
-            if callable(alpha):
-                step_alpha = alpha(source)
-            else:
-                step_alpha = alpha
-            source_denoised = step_alpha * source_denoised
+        if alpha_func is not None:
+            source_denoised = alpha_func(source) * source_denoised
         
         # Calculate beta step if applicable
         step_beta = 0.0
-        if beta is not None:
-            if callable(beta):
-                step_beta = beta(source)
-            else:
-                step_beta = beta
+        if beta_func is not None:
+            step_beta = beta_func(source)
         
         # Step 4: Update weights
         # w_new = E[X * f(s)] + beta * w
@@ -154,7 +204,6 @@ def iterative_dss_one(
         norm = np.linalg.norm(w_new)
         if norm < 1e-12:
             # Denoiser killed the signal, reinitialize
-            rng = np.random.default_rng(iteration)
             w = rng.standard_normal(n_components)
             w = w / np.linalg.norm(w)
             continue
@@ -162,11 +211,8 @@ def iterative_dss_one(
         w_normalized = w_new / norm
         
         # Apply gamma (learning rate / relaxation)
-        if gamma is not None:
-            if callable(gamma):
-                step_gamma = gamma(w_normalized, w_old, iteration)
-            else:
-                step_gamma = gamma
+        if gamma_func is not None:
+            step_gamma = gamma_func(w_normalized, w_old, iteration)
             # w = w_old + gamma * (w_new - w_old)
             w = w_old + step_gamma * (w_normalized - w_old)
             # Re-normalize after relaxation
@@ -201,6 +247,7 @@ def iterative_dss(
     alpha: Union[float, Callable, None] = None,
     beta: Union[float, Callable, None] = None,
     gamma: Union[float, Callable, None] = None,
+    random_state: Optional[Union[int, np.random.Generator]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Extract multiple DSS components using iterative (nonlinear) algorithm.
 
@@ -230,7 +277,7 @@ def iterative_dss(
 
     Parameters
     ----------
-    data : ndarray, shape (n_channels, n_times) or (n_channels, n_times, n_epochs)
+    data : ndarray, shape (n_channels, n_times) or (n_epochs, n_channels, n_times)
         Input multichannel data.
     denoiser : callable or NonlinearDenoiser
         Nonlinear denoising function f(s) → s_denoised.
@@ -287,20 +334,16 @@ def iterative_dss(
     ----------
     .. [1] Särelä & Valpola (2005). Denoising Source Separation. JMLR, 6, 233-272.
     """
-    # Handle 3D epoched data
-    if data.ndim == 3:
-        n_channels, n_times, n_epochs = data.shape
-        data = data.reshape(n_channels, -1)
-    elif data.ndim != 2:
-        raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
-    
-    n_channels, n_samples = data.shape
+    # Use helper for validation (though here we assume numpy input if called directly,
+    # but good to support robust input handling)
+    data_2d, _, _ = _validate_dss_input(data)
+    n_channels, n_samples = data_2d.shape
     
     # Center data
-    data = data - data.mean(axis=1, keepdims=True)
+    data_centered = data_2d - data_2d.mean(axis=1, keepdims=True)
     
     # Whiten data
-    X_whitened, whitener, dewhitener = whiten_data(data, rank=rank, reg=reg)
+    X_whitened, whitener, dewhitener = whiten_data(data_centered, rank=rank, reg=reg)
     n_whitened = X_whitened.shape[0]
     
     # Limit components to whitened dimension
@@ -310,13 +353,13 @@ def iterative_dss(
         filters_whitened, sources, convergence_info = _iterative_dss_deflation(
             X_whitened, denoiser, n_components,
             max_iter=max_iter, tol=tol, w_init=w_init, verbose=verbose,
-            alpha=alpha, beta=beta, gamma=gamma
+            alpha=alpha, beta=beta, gamma=gamma, random_state=random_state
         )
     elif method == 'symmetric':
         filters_whitened, sources, convergence_info = _iterative_dss_symmetric(
             X_whitened, denoiser, n_components,
             max_iter=max_iter, tol=tol, w_init=w_init, verbose=verbose,
-            alpha=alpha, beta=beta, gamma=gamma
+            alpha=alpha, beta=beta, gamma=gamma, random_state=random_state
         )
     else:
         raise ValueError(f"Unknown method: {method}. Use 'deflation' or 'symmetric'")
@@ -327,9 +370,9 @@ def iterative_dss(
     # sensor_filter = whitened_filter @ whitener
     filters = filters_whitened @ whitener  # (n_components, n_channels)
     
-    # Compute patterns using covariance
+    # Compute patterns using covariance of CENTERED data
     # patterns = C @ filters.T, normalized
-    C = data @ data.T / n_samples
+    C = data_centered @ data_centered.T / n_samples
     patterns = C @ filters.T
     pattern_norms = np.linalg.norm(patterns, axis=0)
     pattern_norms = np.where(pattern_norms > 1e-12, pattern_norms, 1.0)
@@ -350,6 +393,7 @@ def _iterative_dss_deflation(
     alpha: Union[float, Callable, None] = None,
     beta: Union[float, Callable, None] = None,
     gamma: Union[float, Callable, None] = None,
+    random_state: Optional[Union[int, np.random.Generator]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Extract components one-by-one using deflation.
     
@@ -390,6 +434,9 @@ def _iterative_dss_deflation(
     """
     n_whitened, n_times = X_whitened.shape
     
+    # Initialize RNG
+    rng = np.random.default_rng(random_state)
+    
     # Storage
     W = np.zeros((n_components, n_whitened))
     sources = np.zeros((n_components, n_times))
@@ -408,7 +455,7 @@ def _iterative_dss_deflation(
         w, source, n_iter, converged = iterative_dss_one(
             X_deflated, denoiser,
             w_init=w_i, max_iter=max_iter, tol=tol,
-            alpha=alpha, beta=beta, gamma=gamma
+            alpha=alpha, beta=beta, gamma=gamma, random_state=rng
         )
         
         if verbose:
@@ -418,12 +465,13 @@ def _iterative_dss_deflation(
         # Orthogonalize against previous components (vectorized)
         if i > 0:
             W_prev = W[:i]  # (i, n_whitened)
+            # w = w - sum( (w @ w_prev.T) * w_prev )
+            # Vectorized: w - W_prev.T @ (W_prev @ w)
             w = w - W_prev.T @ (W_prev @ w)
             norm = np.linalg.norm(w)
             if norm < 1e-12:
                 if verbose:
                     print(f"  Component {i+1}: degenerate, using random")
-                rng = np.random.default_rng(i)
                 w = rng.standard_normal(n_whitened)
                 w = w - W_prev.T @ (W_prev @ w)
                 norm = np.linalg.norm(w)
@@ -452,6 +500,7 @@ def _iterative_dss_symmetric(
     alpha: Union[float, Callable, None] = None,
     beta: Union[float, Callable, None] = None,
     gamma: Union[float, Callable, None] = None,
+    random_state: Optional[Union[int, np.random.Generator]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Extract components simultaneously with symmetric orthogonalization.
     
@@ -461,12 +510,11 @@ def _iterative_dss_symmetric(
         W = symmetric_orthogonalize(W)
         
         Repeat until converged:
-            For each i:
-                s_i = W[i] @ X
-                s_denoised = f(s_i)
-                W[i] = E[X · s_denoised] + beta · W[i]
-            W = symmetric_orthogonalize(W)    # (W @ W.T)^{-1/2} @ W
-            Check max |1 - |W[i] · W_old[i]|| < tol
+            S = W @ X
+            S_denoised = f(S)
+            W_new = E[S_denoised @ X.T] + beta * W
+            W = symmetric_orthogonalize(W_new)
+            Check convergence
     
     Parameters
     ----------
@@ -500,50 +548,58 @@ def _iterative_dss_symmetric(
     if w_init is not None:
         W = w_init[:n_components, :n_whitened].copy()
     else:
-        rng = np.random.default_rng()
+        rng = np.random.default_rng(random_state)
         W = rng.standard_normal((n_components, n_whitened))
     
     # Symmetric orthogonalization (decorrelation)
     W = _symmetric_orthogonalize(W)
+    
+    # Resolve parameters to callables
+    alpha_func = _resolve_callable(alpha, None)
+    beta_func = _resolve_callable(beta, None)
+    # Gamma not typically used in vectorized symmetric step, but could be added
     
     convergence_info = np.zeros((n_components, 2))
     
     for iteration in range(max_iter):
         W_old = W.copy()
         
-        # Update all components
-        for i in range(n_components):
-            source = W[i] @ X_whitened
-            source_denoised = denoiser(source)
-            
-            # Apply alpha (signal normalization)
-            if alpha is not None:
-                if callable(alpha):
-                    step_alpha = alpha(source)
-                else:
-                    step_alpha = alpha
-                source_denoised = step_alpha * source_denoised
-            
-            gradient_part = X_whitened @ source_denoised / n_times
-            
-            # Calculate beta step if applicable
-            step_beta = 0.0
-            if beta is not None:
-                if callable(beta):
-                    step_beta = beta(source)
-                else:
-                    step_beta = beta
-            
-            W[i] = gradient_part + step_beta * W[i]
+        # 1. Project to sources
+        # W: (n_comp, n_white), X: (n_white, n_times) -> S: (n_comp, n_times)
+        S = W @ X_whitened
         
-        # Symmetric orthogonalization
+        # 2. Apply denoiser (vectorized)
+        S_denoised = denoiser(S)
+        
+        # Apply alpha
+        if alpha_func is not None:
+            # Broadcast alpha across columns if it returns (n_comp,) or scalar
+            a = alpha_func(S)
+            if np.ndim(a) == 1:
+                a = a[:, np.newaxis]
+            S_denoised = a * S_denoised
+            
+        # 3. Update weights
+        # Gradient part: E[S_denoised @ X.T] -> (n_comp, n_white)
+        gradient = S_denoised @ X_whitened.T / n_times
+        
+        # Beta part
+        step_beta = 0.0
+        if beta_func is not None:
+            b = beta_func(S)
+            if np.ndim(b) == 1:
+                b = b[:, np.newaxis]
+            step_beta = b
+            
+        W = gradient + step_beta * W
+        
+        # 4. Symmetric orthogonalization
         W = _symmetric_orthogonalize(W)
         
-        # Check convergence
-        max_change = 0.0
-        for i in range(n_components):
-            correlation = np.abs(np.dot(W[i], W_old[i]))
-            max_change = max(max_change, 1 - correlation)
+        # 5. Check convergence (max change across components)
+        # Dot product of rows: diag(W @ W_old.T)
+        correlations = np.abs(np.sum(W * W_old, axis=1))
+        max_change = np.max(1 - correlations)
         
         if max_change < tol:
             if verbose:
@@ -566,12 +622,16 @@ def _iterative_dss_symmetric(
 def _symmetric_orthogonalize(W: np.ndarray) -> np.ndarray:
     """Symmetric orthogonalization using (W * W.T)^{-1/2} * W."""
     # EVD of W @ W.T
-    D, E = np.linalg.eigh(W @ W.T)
+    gram = W @ W.T
+    D, E = np.linalg.eigh(gram)
+    
     # Handle numerical issues
     D = np.maximum(D, 1e-12)
+    
     # W_orth = E @ diag(1/sqrt(D)) @ E.T @ W
     D_inv_sqrt = np.diag(1.0 / np.sqrt(D))
     W_orth = E @ D_inv_sqrt @ E.T @ W
+    
     return W_orth
 
 
@@ -617,6 +677,8 @@ class IterativeDSS:
         Use ``beta_tanh`` for TanhMaskDenoiser, ``beta_pow3`` for cubic.
     gamma : float or callable, optional
         Learning rate / relaxation parameter.
+    random_state : int, RandomState, Generator, optional
+        Seed for random initialization.
 
     Attributes
     ----------
@@ -663,6 +725,7 @@ class IterativeDSS:
         alpha: Union[float, Callable, None] = None,
         beta: Union[float, Callable, None] = None,
         gamma: Union[float, Callable, None] = None,
+        random_state: Optional[Union[int, np.random.Generator]] = None,
     ) -> None:
         self.denoiser = denoiser
         self.n_components = n_components
@@ -675,6 +738,7 @@ class IterativeDSS:
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
+        self.random_state = random_state
         
         # Fitted attributes
         self.filters_: Optional[np.ndarray] = None
@@ -700,24 +764,19 @@ class IterativeDSS:
         self : IterativeDSS
             The fitted transformer.
         """
-        # Handle MNE objects
-        try:
-            import mne
-            is_mne = isinstance(X, (mne.io.BaseRaw, mne.BaseEpochs))
-        except ImportError:
-            is_mne = False
+        # Validate and extract data using shared helper
+        data_2d, _, mne_info = _validate_dss_input(X)
         
-        if is_mne:
-            self._mne_info = X.info
-            data = X.get_data()
-        else:
-            data = X
+        # Store MNE info for later use if available
+        if mne_info is not None:
+            self._mne_info = mne_info
         
         filters, sources, patterns, conv_info = iterative_dss(
-            data, self.denoiser, self.n_components,
+            data_2d, self.denoiser, self.n_components,
             method=self.method, rank=self.rank, reg=self.reg,
             max_iter=self.max_iter, tol=self.tol, verbose=self.verbose,
-            alpha=self.alpha, beta=self.beta, gamma=self.gamma
+            alpha=self.alpha, beta=self.beta, gamma=self.gamma,
+            random_state=self.random_state
         )
         
         self.filters_ = filters
@@ -743,33 +802,26 @@ class IterativeDSS:
         if self.filters_ is None:
             raise RuntimeError("IterativeDSS not fitted. Call fit() first.")
         
-        # Handle MNE objects
-        try:
-            import mne
-            if isinstance(X, (mne.io.BaseRaw, mne.BaseEpochs)):
-                data = X.get_data()
-            else:
-                data = X
-        except ImportError:
-            data = X
+        # Validate and extract data
+        data_2d, original_shape, _ = _validate_dss_input(X)
         
-        # Handle 3D
-        original_shape = data.shape
-        if data.ndim == 3:
-            n_ch, n_times, n_epochs = data.shape
-            data_2d = data.reshape(n_ch, -1)
-        else:
-            data_2d = data
-            n_times = data.shape[1]
+        n_times = data_2d.shape[1]
         
         # Center
-        data_2d = data_2d - data_2d.mean(axis=1, keepdims=True)
+        data_centered = data_2d - data_2d.mean(axis=1, keepdims=True)
         
         # Apply filters
-        sources = self.filters_ @ data_2d
+        sources = self.filters_ @ data_centered
         
+        # Reshape to original 3D if needed
         if len(original_shape) == 3:
-            sources = sources.reshape(self.n_components, n_times, n_epochs)
+            # original: (n_epochs, n_channels, n_times)
+            # sources now: (n_components, n_epochs * n_times)
+            # reshape to: (n_components, n_epochs, n_times)
+            n_epochs, n_channels, n_times = original_shape
+            sources = sources.reshape(self.n_components, n_epochs, n_times)
+            # transpose to standard MNE: (n_epochs, n_components, n_times)
+            sources = sources.transpose(1, 0, 2)
         
         return sources
 
@@ -808,4 +860,3 @@ class IterativeDSS:
             Extracted sources.
         """
         return self.fit(X).transform(X)
-
