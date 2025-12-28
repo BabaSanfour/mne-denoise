@@ -167,8 +167,30 @@ def plot_component_summary(estimator, data=None, info=None, n_components=None,
         # 1. Topomap
         ax_topo = fig.add_subplot(gs[idx, 0])
         if info:
-            mne.viz.plot_topomap(patterns[:, comp_idx], info, axes=ax_topo, show=False)
-            ax_topo.set_title(f"Comp {comp_idx} Pattern")
+            # Handle mixed channel types (plot_topomap requires single type)
+            # We prioritize: Grad > Mag > EEG > SEEG > ECoG
+            picks = None
+            ch_types_dict = mne.channel_indices_by_type(info)
+            for ch_type in ['grad', 'mag', 'eeg', 'seeg', 'ecog']:
+                if ch_type in ch_types_dict and len(ch_types_dict[ch_type]) > 0:
+                     picks = ch_types_dict[ch_type]
+                     break
+            
+            # If no prioritized type found, take whatever is available (e.g. 'hbo')
+            if picks is None:
+                 # Take the first non-empty list from the dict
+                 for idxs in ch_types_dict.values():
+                     if len(idxs) > 0:
+                         picks = idxs
+                         break
+            
+            if picks is not None:
+                topo_info = mne.pick_info(info, picks)
+                topo_data = patterns[picks, comp_idx]
+                mne.viz.plot_topomap(topo_data, topo_info, axes=ax_topo, show=False)
+                ax_topo.set_title(f"Comp {comp_idx} Pattern")
+            else:
+                 ax_topo.text(0.5, 0.5, "No Channels", ha='center')
         else:
             ax_topo.text(0.5, 0.5, "No Info for Topo", ha='center')
             
