@@ -57,6 +57,106 @@ def plot_psd_comparison(inst_orig, inst_denoised, fmin=0, fmax=np.inf,
         plt.show()
     return fig
 
+def plot_evoked_comparison(inst_orig, inst_denoised, ci=0.95, n_boot=1000, 
+                         colors=('r', 'b'), linestyles=('-', '-'), 
+                         labels=('Original', 'Denoised'),
+                         show=True, ax=None):
+    """Plot Global Field Power (GFP) comparison with optional Bootstrap CI.
+
+    Parameters
+    ----------
+    inst_orig : Epochs | Evoked
+        Original data. If Epochs, CI can be computed.
+    inst_denoised : Epochs | Evoked
+        Denoised data.
+    ci : float | None
+        Confidence interval (e.g. 0.95). If None, no CI is plotted.
+        Requires `inst_orig` and `inst_denoised` to be Epochs.
+    n_boot : int
+        Number of bootstrap resamples. Default 1000.
+    colors : tuple
+        Colors for original and denoised lines. Default ('r', 'b').
+    linestyles : tuple
+        Linestyles for original and denoised lines. Default ('-', '-').
+    labels : tuple
+        Labels for original and denoised lines.
+    show : bool
+        If True, show the figure.
+    ax : matplotlib.axes.Axes | None
+        Target axes.
+        
+    Returns
+    -------
+    fig : Figure
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+    else:
+        fig = ax.figure
+
+    from scipy import stats
+
+    def _compute_gfp(inst):
+        """Compute GFP (RMS across channels)."""
+        # (n_channels, n_times) or (n_epochs, n_channels, n_times)
+        data = inst.get_data()
+        if data.ndim == 3:
+            # For Epochs, we want the GFP of the *Evoked* (mean over epochs)
+            # But for CI, we need dispersion.
+            # Standard GFP of Evoked:
+             evoked_data = data.mean(axis=0)
+             return np.sqrt(np.mean(evoked_data**2, axis=0))
+        else:
+            return np.sqrt(np.mean(data**2, axis=0))
+
+    def _bootstrap_gfp(inst):
+        """Bootstrap GFP of the Mean (Evoked)."""
+        data = inst.get_data() # (n_epochs, n_channels, n_times)
+        n_epochs = data.shape[0]
+        rng = np.random.default_rng(42)
+        
+        boots = []
+        for _ in range(n_boot):
+             idx = rng.choice(n_epochs, n_epochs, replace=True)
+             # Bootstrapped evoked
+             evoked_boot = data[idx].mean(axis=0) 
+             # GFP of bootstrapped evoked
+             gfp_boot = np.sqrt(np.mean(evoked_boot**2, axis=0))
+             boots.append(gfp_boot)
+        
+        boots = np.array(boots)
+        alpha = (1 - ci) / 2
+        return np.percentile(boots, [100*alpha, 100*(1-alpha)], axis=0)
+
+    # Plot Original
+    times = inst_orig.times
+    gfp_orig = _compute_gfp(inst_orig)
+    ax.plot(times, gfp_orig, color=colors[0], linestyle=linestyles[0], 
+            label=labels[0], linewidth=1.5)
+    
+    if ci is not None and isinstance(inst_orig, mne.BaseEpochs):
+        ci_low, ci_high = _bootstrap_gfp(inst_orig)
+        ax.fill_between(times, ci_low, ci_high, color=colors[0], alpha=0.2, linewidth=0)
+
+    # Plot Denoised
+    gfp_denoised = _compute_gfp(inst_denoised)
+    ax.plot(times, gfp_denoised, color=colors[1], linestyle=linestyles[1], 
+            label=labels[1], linewidth=1.5)
+
+    if ci is not None and isinstance(inst_denoised, mne.BaseEpochs):
+         ci_low, ci_high = _bootstrap_gfp(inst_denoised)
+         ax.fill_between(times, ci_low, ci_high, color=colors[1], alpha=0.2, linewidth=0)
+
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Global Field Power (Amplitude)")
+    ax.set_title("Evoked Response Comparison (GFP)")
+    ax.legend(loc='best')
+    ax.grid(True, linestyle=':')
+    
+    if show:
+        plt.show()
+    return fig
+
 def plot_time_course_comparison(inst_orig, inst_denoised, picks=None, start=0, stop=None, show=True):
     """Butterfly plot of time courses."""
 

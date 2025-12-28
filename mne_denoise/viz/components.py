@@ -92,8 +92,15 @@ def plot_spatial_patterns(estimator, info=None, n_components=None, show=True):
     if n_components is None:
         n_components = patterns.shape[1]
     
-    evoked = mne.EvokedArray(patterns[:, :n_components], info, tmin=0)
+    # Create temp info with sfreq=1.0 so 'times' correspond to indices (0, 1, 2...)
+    # This ensures "Comp %d" formats correctly as "Comp 0", "Comp 1", etc.
+    temp_info = info.copy()
+    with temp_info._unlock():
+        temp_info['sfreq'] = 1.0
+        
+    evoked = mne.EvokedArray(patterns[:, :n_components], temp_info, tmin=0)
     
+    # Times are now [0.0, 1.0, 2.0, ...]
     times = evoked.times
     
     fig = evoked.plot_topomap(times=times, ch_type=None, show=show, 
@@ -261,6 +268,94 @@ def plot_component_image(estimator, data=None, n_components=None, show=True):
         axes[i].set_ylabel("Epochs")
         
     axes[-1].set_xlabel("Time (samples)")
+    
+    if show:
+        plt.show()
+    return fig
+
+def plot_component_time_series(estimator, data=None, n_components=None, 
+                             show=True, ax=None):
+    """
+    Plot stacked component time series (vertical offsets).
+    
+    Replicates the "Figure 3a" style from de Cheveigné & Simon (2008),
+    showing multiple components simultaneously to identify stimulus-driven ones.
+    
+    Parameters
+    ----------
+    estimator : instance of DSS | IterativeDSS
+        The fitted estimator.
+    data : instance of Raw | Epochs | array | None
+        The data to transform.
+    n_components : int | None
+        Number of components to plot. If None, plots first 20.
+    show : bool
+        If True, show the figure.
+    ax : matplotlib.axes.Axes | None
+        Target axes.
+    
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    sources = _get_components(estimator, data)
+    scores = _get_scores(estimator)
+    
+    if sources is None:
+        raise ValueError("Sources not available. Provide data.")
+        
+    # Handle sources shape
+    if sources.ndim == 3:
+        # If epochs, plot the Trial Average (Evoked)
+        # (n_comps, n_times, n_epochs) -> (n_comps, n_times)
+        sources = sources.mean(axis=2)
+    
+    if n_components is None:
+        n_components = min(20, sources.shape[0])
+        
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, max(6, n_components * 0.4)))
+    else:
+        fig = ax.figure
+        
+    times = np.arange(sources.shape[1])
+    # Try to get real times from info if possible, but estimator doesn't always handle it easily
+    # If data was passed, we could check attributes, but `_get_components` consumes it.
+    # For now, samples is safe.
+    
+    offset_step = 3.0
+    
+    for i in range(n_components):
+        comp = sources[i]
+        # Z-score normalize for standardized display
+        std = np.std(comp)
+        if std < 1e-15:
+            std = 1.0
+        comp_norm = comp / std
+        
+        # Plot with offset
+        offset = -i * offset_step
+        
+        # Color logic: Highlight first few? Or just blue?
+        # Legacy script highlights reproducible ones. We don't have reproducibility metric here easily unless calculated.
+        # Just use blue/gray.
+        color = 'steelblue' if i < 5 else 'gray'
+        alpha = 0.8 if i < 5 else 0.5
+        
+        ax.plot(times, comp_norm + offset, color=color, alpha=alpha, linewidth=1.5)
+        
+        # Label
+        label = f"Comp {i}"
+        if scores is not None and i < len(scores):
+            label += f" (λ={scores[i]:.2f})"
+        ax.text(times[-1], offset, label, va='center', fontsize=8, color=color)
+        
+    ax.set_yticks([])
+    ax.set_xlabel("Time (samples)")
+    ax.set_title(f"First {n_components} Component Time Series")
+    ax.spines['left'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
     
     if show:
         plt.show()

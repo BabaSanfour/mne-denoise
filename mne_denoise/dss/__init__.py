@@ -19,6 +19,9 @@ from .variants.tsr import time_shift_dss, smooth_dss
 from .variants.ssvep import ssvep_dss
 from .variants.narrowband import narrowband_scan, narrowband_dss
 
+# Denoisers & Biases (Flat API)
+from .denoisers import *
+
 # Utils (exposed for convenience if needed)
 from .utils import whitening, convergence
 
@@ -42,4 +45,29 @@ __all__ = [
     # Utils
     "whitening",
     "convergence",
+    # Denoisers (from .denoisers)
+    "LinearDenoiser",
+    "NonlinearDenoiser",
+    "TrialAverageBias",
+    "BandpassBias",
+    "NotchBias",
+    "PeakFilterBias",
+    "CombFilterBias",
+    "CycleAverageBias",
+    "WienerMaskDenoiser",
+    "TanhMaskDenoiser",
+    "RobustTanhDenoiser",
+    "GaussDenoiser",
+    "SkewDenoiser",
+    "DCTDenoiser",
+    "SpectrogramBias",
+    "SpectrogramDenoiser",
+    "QuasiPeriodicDenoiser",
+    "KurtosisDenoiser",
+    "SmoothTanhDenoiser",
+    "beta_tanh",
+    "beta_pow3",
+    "beta_gauss",
+    "TimeShiftBias",
+    "SmoothingBias",
 ]

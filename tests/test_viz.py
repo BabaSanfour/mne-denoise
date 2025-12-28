@@ -16,7 +16,9 @@ from mne_denoise.viz import (
     plot_spectrogram_comparison,
     plot_power_map,
     plot_denoising_summary,
-    plot_zapline_analytics
+    plot_zapline_analytics,
+    plot_component_time_series,
+    plot_evoked_comparison
 )
 from mne_denoise.viz._utils import _get_info, _get_patterns, _get_scores, _get_components
 
@@ -268,3 +270,37 @@ def test_zapline_placeholder():
     """Test ZapLine placeholder."""
     # Should currently do nothing or print, but not crash
     assert plot_zapline_analytics(None, show=False) is None
+
+def test_plot_component_time_series(fitted_dss, synthetic_data):
+    """Test stacked time series."""
+    fig = plot_component_time_series(fitted_dss, data=synthetic_data, show=False)
+    assert isinstance(fig, plt.Figure)
+    
+    with pytest.raises(ValueError):
+        plot_component_time_series(fitted_dss, data=None, show=False)
+        
+    class MockEst:
+        sources_ = np.random.randn(3, 100)
+        eigenvalues_ = np.array([1.0, 0.5, 0.1])
+        def get_params(self): return {}
+    
+    fig = plot_component_time_series(MockEst(), show=False)
+    assert isinstance(fig, plt.Figure)
+
+def test_plot_evoked_comparison(synthetic_data):
+    """Test evoked comparison with Bootstrap."""
+    epochs_orig = synthetic_data
+    epochs_denoised = synthetic_data.copy() # Just for testing
+    
+    fig = plot_evoked_comparison(epochs_orig, epochs_denoised, n_boot=10, show=False)
+    assert isinstance(fig, plt.Figure)
+    
+    # Test with Evoked (CI should be ignored)
+    ev_orig = epochs_orig.average()
+    ev_denoised = epochs_denoised.average()
+    fig = plot_evoked_comparison(ev_orig, ev_denoised, ci=0.95, show=False)
+    assert isinstance(fig, plt.Figure)
+    
+    # Test with axes
+    fig, ax = plt.subplots()
+    plot_evoked_comparison(ev_orig, ev_denoised, ax=ax, show=False)
