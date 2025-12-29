@@ -401,16 +401,10 @@ def plot_spectrogram_comparison(inst_orig, inst_denoised, fmin=1, fmax=40, n_fre
             except ValueError:
                 pass
             
-            # If no data channels, fallback to all channels (e.g. for component Raws which are 'misc')
-            # But compute_tfr default is "data". If "data" yields nothing, we must be explicit.
-            # Simple heuristic: If no data channels found by standard means, pick all.
             if len(mne.pick_types(inst.info, meg=True, eeg=True, ref_meg=False, exclude='bads')) == 0:
                 local_picks = 'all'
 
         tfr = inst.compute_tfr(method='multitaper', freqs=freqs, n_cycles=freqs/2., picks=local_picks)
-        # Handle dimensions: 
-        # EpochsTFR.data is (n_epochs, n_ch, n_freqs, n_times) -> Need (n_freqs, n_times)
-        # AverageTFR.data is (n_ch, n_freqs, n_times) -> Need (n_freqs, n_times)
         
         d = tfr.data
         while d.ndim > 2:
