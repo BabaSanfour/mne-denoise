@@ -16,10 +16,11 @@ coverage.xml
 .venv*/
 
 # External reference directories (not part of package)
-data/
 matlab_repos/
 zapline-plus/
 
 # Generated files
 *.png
 *.jpg
+
+.DS_Store
