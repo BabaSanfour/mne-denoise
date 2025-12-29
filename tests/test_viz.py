@@ -20,7 +20,11 @@ from mne_denoise.viz import (
     plot_component_time_series,
     plot_evoked_comparison,
     plot_narrowband_scan,
-    plot_spectral_psd_comparison
+    plot_narrowband_scan,
+    plot_spectral_psd_comparison,
+    plot_tf_mask,
+    plot_overlay_comparison,
+    plot_component_spectrogram
 )
 from mne_denoise.viz._utils import _get_info, _get_patterns, _get_scores, _get_components
 
@@ -367,8 +371,65 @@ def test_plot_spectral_psd_comparison(fitted_dss, synthetic_data):
     )
     assert isinstance(fig, plt.Figure)
     
+    
     # Test with custom frequency range
     fig = plot_spectral_psd_comparison(
         raw, sources_raw, sfreq=100, fmin=5, fmax=20, show=False
     )
     assert isinstance(fig, plt.Figure)
+
+
+def test_plot_tf_mask():
+    """Test TF mask visualization."""
+    n_freqs, n_times = 10, 20
+    mask = np.random.rand(n_freqs, n_times)
+    times = np.arange(n_times)
+    freqs = np.arange(n_freqs)
+    
+    fig = plot_tf_mask(mask, times, freqs, show=False)
+    assert isinstance(fig, plt.Figure)
+
+
+def test_plot_overlay_comparison(synthetic_data):
+    """Test signal overlay comparison."""
+    # Create dummy denoised data (scaled version)
+    inst_orig = synthetic_data
+    inst_denoised = synthetic_data.copy()
+    
+    # Test with Epochs
+    fig = plot_overlay_comparison(inst_orig, inst_denoised, show=False)
+    assert isinstance(fig, plt.Figure)
+    
+    # Test with scaling
+    fig = plot_overlay_comparison(inst_orig, inst_denoised, scale_denoised=True, show=False)
+    assert isinstance(fig, plt.Figure)
+    
+    # Test with start/stop slicing
+    fig = plot_overlay_comparison(inst_orig, inst_denoised, start=0.1, stop=0.5, show=False)
+    assert isinstance(fig, plt.Figure)
+    
+    # Test with Raw data (flattened inside)
+    raw = mne.io.RawArray(synthetic_data.get_data()[0], synthetic_data.info)
+    fig = plot_overlay_comparison(raw, raw, show=False)
+    assert isinstance(fig, plt.Figure)
+
+
+def test_plot_component_spectrogram():
+    """Test component TFR plotting."""
+    sfreq = 100.0
+    n_times = 200
+    
+    # 1D component (single trial/time series)
+    comp_1d = np.random.randn(n_times)
+    fig = plot_component_spectrogram(comp_1d, sfreq=sfreq, show=False)
+    assert isinstance(fig, plt.Figure)
+    
+    # 2D component (1, n_times)
+    comp_2d = np.random.randn(1, n_times)
+    fig = plot_component_spectrogram(comp_2d, sfreq=sfreq, freqs=np.arange(1, 10), show=False)
+    assert isinstance(fig, plt.Figure)
+    
+    # Test with custom ax
+    fig, ax = plt.subplots()
+    ret_fig = plot_component_spectrogram(comp_1d, sfreq=sfreq, ax=ax, show=False)
+    assert ret_fig is fig

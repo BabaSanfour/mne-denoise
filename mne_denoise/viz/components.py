@@ -456,3 +456,107 @@ def plot_component_time_series(estimator, data=None, n_components=None,
     if show:
         plt.show()
     return fig
+
+
+def plot_tf_mask(mask, times, freqs, title="Time-Frequency Mask", show=True):
+    """
+    Visualize a Time-Frequency mask filter.
+    
+    Parameters
+    ----------
+    mask : ndarray, shape (n_freqs, n_times)
+        The TF mask (0 to 1).
+    times : ndarray
+        Time points.
+    freqs : ndarray
+        Frequency points.
+    title : str
+        Figure title.
+    show : bool
+        If True, show the figure.
+        
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure handle.
+    """
+    fig, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
+    
+    im = ax.pcolormesh(times, freqs, mask, shading='auto', cmap='Reds', vmin=0, vmax=1)
+    # Enhance visualization
+    ax.set_ylabel('Frequency (Hz)')
+    ax.set_xlabel('Time (s)')
+    ax.set_title(title)
+    plt.colorbar(im, ax=ax, label='Mask Weight')
+    
+    # Grid often helps in masks
+    ax.grid(False) 
+    
+    if show:
+        plt.show()
+    return fig
+
+
+def plot_component_spectrogram(component_data, sfreq, freqs=None, n_cycles=None, 
+                               title="Component Spectrogram", ax=None, show=True):
+    """
+    Plot TFR spectrogram for a single component.
+
+    Parameters
+    ----------
+    component_data : ndarray, shape (n_times,) or (1, n_times)
+        Component time series.
+    sfreq : float
+        Sampling frequency.
+    freqs : ndarray | None
+        Frequencies to compute. Default: 1-50 Hz.
+    n_cycles : float | ndarray | None
+        Number of cycles for Morlet wavelets. Default: freqs / 4.
+    title : str
+        Figure title.
+    ax : matplotlib.axes.Axes | None
+        Axes to plot on.
+    show : bool
+        If True, show the figure.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure handle.
+    """
+    from mne.time_frequency import tfr_array_multitaper
+    
+    # Ensure 2D (1, n_times) for tfr_array
+    if component_data.ndim == 1:
+        data = component_data[np.newaxis, np.newaxis, :] # (n_epochs, n_ch, n_times)
+    else:
+        data = component_data[np.newaxis, :] if component_data.ndim == 2 else component_data
+        if data.ndim == 2:
+             data = data[np.newaxis, :, :] # (1, 1, n_times)
+             
+    if freqs is None:
+        freqs = np.arange(1, 50, 1)
+    if n_cycles is None:
+        n_cycles = freqs / 4.
+
+    # Compute TFR
+    tfr = tfr_array_multitaper(data, sfreq=sfreq, freqs=freqs, n_cycles=n_cycles, 
+                               output='power', verbose=False) # (n_epochs, n_ch, n_freqs, n_times)
+    
+    power = tfr[0, 0] # (n_freqs, n_times)
+    times = np.arange(power.shape[1]) / sfreq
+    
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
+    else:
+        fig = ax.figure
+        
+    im = ax.pcolormesh(times, freqs, power, shading='gouraud', cmap='viridis')
+    ax.set_ylabel('Frequency (Hz)')
+    ax.set_xlabel('Time (s)')
+    ax.set_title(title)
+    plt.colorbar(im, ax=ax, label='Power')
+    
+    if show:
+        plt.show()
+    return fig

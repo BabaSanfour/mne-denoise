@@ -391,8 +391,32 @@ def plot_spectrogram_comparison(inst_orig, inst_denoised, fmin=1, fmax=40, n_fre
     
     # Helper to compute TFR
     def _compute_tfr_safe(inst, label):
-        tfr = inst.compute_tfr(method='multitaper', freqs=freqs, n_cycles=freqs/2., picks=picks)
-        return tfr.data.mean(axis=0)  # (n_freqs, n_times)
+        # Handle cases where 'data' picks fail (e.g. 'misc' channels in components)
+        local_picks = picks
+        if local_picks is None:
+            # Try 'data' first, if fails or empty, pick 'all'
+            try:
+                # Check if 'data' yields anything
+                _ = mne.pick_types(inst.info, meg=True, eeg=True, eog=False, ref_meg=False, exclude='bads') if 'data' in inst else []
+            except ValueError:
+                pass
+            
+            # If no data channels, fallback to all channels (e.g. for component Raws which are 'misc')
+            # But compute_tfr default is "data". If "data" yields nothing, we must be explicit.
+            # Simple heuristic: If no data channels found by standard means, pick all.
+            if len(mne.pick_types(inst.info, meg=True, eeg=True, ref_meg=False, exclude='bads')) == 0:
+                local_picks = 'all'
+
+        tfr = inst.compute_tfr(method='multitaper', freqs=freqs, n_cycles=freqs/2., picks=local_picks)
+        # Handle dimensions: 
+        # EpochsTFR.data is (n_epochs, n_ch, n_freqs, n_times) -> Need (n_freqs, n_times)
+        # AverageTFR.data is (n_ch, n_freqs, n_times) -> Need (n_freqs, n_times)
+        
+        d = tfr.data
+        while d.ndim > 2:
+            d = d.mean(axis=0)
+            
+        return d
              
     data1 = _compute_tfr_safe(inst_orig, "Original")
     data2 = _compute_tfr_safe(inst_denoised, "Denoised")
@@ -497,6 +521,97 @@ def plot_denoising_summary(inst_orig, inst_denoised, info=None, show=True):
         
     fig.suptitle("Denoising Summary", fontsize=14, fontweight='bold')
     
+    if show:
+        plt.show()
+    return fig
+
+
+def plot_overlay_comparison(inst_orig, inst_denoised, start=None, stop=None, 
+                            scale_denoised=True, title=None, show=True):
+    """
+    Overlay original and denoised time series to verify reconstruction.
+    
+    Can normalize the denoised signal to match the original's standard deviation
+    to account for amplitude scaling differences.
+    
+    Parameters
+    ----------
+    inst_orig : instance of Raw | Epochs | Evoked | ndarray
+        The ground truth or original signal.
+    inst_denoised : instance of Raw | Epochs | Evoked | ndarray
+        The estimated or denoised signal.
+    start : float | None
+        Start time in seconds (if MNE objects) or samples.
+    stop : float | None
+        Stop time in seconds (if MNE objects) or samples.
+    scale_denoised : bool
+        If True, scale inst_denoised to match the std of inst_orig.
+    title : str | None
+        Custom title.
+    show : bool
+        If True, show the figure.
+        
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure handle.
+    """
+    # Helper to extract data
+    def _get_data(inst):
+        if hasattr(inst, 'get_data'):
+            d = inst.get_data().flatten()
+            if hasattr(inst, 'times') and len(inst.times) == len(d):
+                t = inst.times
+            else:
+                t = np.arange(len(d))
+        else:
+            d = np.array(inst).flatten()
+            t = np.arange(len(d))
+        return t, d
+
+    t1, d1 = _get_data(inst_orig)
+    t2, d2 = _get_data(inst_denoised)
+    
+    # Slice
+    if start is not None:
+        mask = t1 >= start
+        t1 = t1[mask]
+        d1 = d1[mask]
+        t2 = t2[mask[:len(t2)]]
+        d2 = d2[mask[:len(d2)]] # Safe slicing
+        
+    if stop is not None:
+        mask = t1 <= stop
+        t1 = t1[mask]
+        d1 = d1[mask]
+        t2 = t2[mask[:len(t2)]]
+        d2 = d2[mask[:len(d2)]]
+
+    # Handle length mismatch
+    n = min(len(d1), len(d2))
+    t = t1[:n]
+    d1 = d1[:n]
+    d2 = d2[:n]
+    
+    # Scale
+    if scale_denoised:
+        scaler = np.std(d1) / (np.std(d2) + 1e-9)
+        d2 = d2 * scaler
+        
+    fig, ax = plt.subplots(figsize=(12, 4), constrained_layout=True)
+    ax.plot(t, d1, 'k', label='Original/Ground Truth', alpha=0.5, linewidth=1)
+    ax.plot(t, d2, 'r--', label='Denoised/Estimated', linewidth=1.5)
+    
+    ax.set_ylabel("Amplitude")
+    ax.set_xlabel("Time (s)" if hasattr(inst_orig, 'times') else "Time (samples)")
+    ax.legend(loc='upper right')
+    ax.grid(True, linestyle=':', alpha=0.5)
+    
+    if title:
+        ax.set_title(title)
+    else:
+        ax.set_title("Signal Overlay Comparison")
+        
     if show:
         plt.show()
     return fig
