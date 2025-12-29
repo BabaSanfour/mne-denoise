@@ -23,14 +23,15 @@ import mne
 from mne.datasets import sample
 from mne.preprocessing import create_ecg_epochs, create_eog_epochs
 
-from mne_denoise.dss import DSS, TrialAverageBias
+from mne_denoise.dss import DSS, TrialAverageBias, CycleAverageBias
 from mne_denoise.viz import (
     plot_component_summary,
     plot_score_curve,
     plot_component_time_series,
     plot_spatial_patterns,
     plot_evoked_comparison,
-    plot_psd_comparison
+    plot_psd_comparison,
+    plot_time_course_comparison
 )
 
 # %%
@@ -73,7 +74,9 @@ eog_epochs.pick_types(meg='grad', eog=False, ecg=False)
 print(f"Found {len(eog_epochs)} blink events. Using {len(eog_epochs.ch_names)} MEG channels.")
 
 # 2. Fit DSS with Trial Average Bias
-# We look for components that replicate the "average blink".
+# We use TrialAverageBias (from evoked.py) which works on pre-epoched data.
+# Note: We'll compare with CycleAverageBias later (artifact-specific approach).
+
 dss_eog = DSS(n_components=10, bias=TrialAverageBias(), return_type='sources')
 dss_eog.fit(eog_epochs)
 
@@ -126,7 +129,84 @@ else:
     blink_source = sources[0, :]
 
 # Visual Comparison: EOG vs Component 0
-# We plot a snippet to visually confirm they match.
+# Show a time window with clear blinks, scaled and aligned
+
+# Find a window with blinks (sample 5000-10000)
+start_idx, end_idx = 5000, 10000
+t_window = np.arange(start_idx, end_idx) / raw.info['sfreq']
+
+# Get data snippets
+eog_snippet = eog_data[start_idx:end_idx]
+comp_snippet = blink_source[start_idx:end_idx]
+
+# Flip component if negatively correlated
+corr_window = np.corrcoef(eog_snippet, comp_snippet)[0, 1]
+flip = -1 if corr_window < 0 else 1
+
+# Scale component to match EOG amplitude
+scale = np.max(np.abs(eog_snippet)) / np.max(np.abs(comp_snippet))
+
+plt.figure(figsize=(12, 4))
+plt.plot(t_window, eog_snippet, 'b', linewidth=1.5, label='EOG Channel')
+plt.plot(t_window, flip * comp_snippet * scale, 'r', linewidth=1.5, 
+         label='DSS Comp 0 (aligned & scaled)', alpha=0.8)
+plt.xlabel('Time (s)')
+plt.ylabel('Amplitude (a.u.)')
+plt.title(f'TrialAverageBias: Blink Peaks Aligned (r={abs(corr):.3f})')
+plt.legend()
+plt.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.show(block=False)
+
+# %%
+# Alternative: CycleAverageBias (Continuous Data Approach)
+# =========================================================
+# CycleAverageBias is artifact-specific and works directly on continuous data.
+# Instead of pre-epoching, we provide event samples and a window.
+
+print("\n---  Comparing with CycleAverageBias ---")
+
+# Find blink events from continuous data
+from mne.preprocessing import find_eog_events
+blink_events = find_eog_events(raw, ch_name='EOG 061', verbose=False)
+blink_samples = blink_events[:, 0]
+
+print(f"Found {len(blink_samples)} blink events")
+
+# Create CycleAverageBias
+# Window: 100ms before to 100ms after each blink (in samples)
+window_samples = (-int(0.1 * raw.info['sfreq']), int(0.1 * raw.info['sfreq']))
+bias_cycle = CycleAverageBias(event_samples=blink_samples, window=window_samples)
+
+# Fit DSS on continuous MEG data
+dss_cycle = DSS(n_components=10, bias=bias_cycle, return_type='sources')
+dss_cycle.fit(raw_meg)
+
+print("Fitted DSS with CycleAverageBias")
+
+# %%
+# Visualize Cycle Average Components
+# -----------------------------------
+
+plot_component_summary(dss_cycle, data=raw_meg, n_components=[0,1], show=False)
+plt.gcf().suptitle('CycleAverageBias Results')
+plt.show(block=False)
+
+# Compare spatial patterns (both bias types)
+print("\n--- Comparing Spatial Patterns ---")
+plot_spatial_patterns(dss_eog, n_components=1, show=False)
+plt.gcf().suptitle('TrialAverageBias: Blink Component Topography')
+plt.show(block=False)
+
+plot_spatial_patterns(dss_cycle, n_components=1, show=False)
+plt.gcf().suptitle('CycleAverageBias: Blink Component Topography')
+plt.show(block=False)
+
+print("\nBoth approaches extract the same blink artifact!")
+print("- TrialAverageBias: Works on MNE Epochs (easier integration)")
+print("- CycleAverageBias: Works on continuous data + event samples (more direct)")
+
+# %%
 n_samples_plot = int(20 * raw.info['sfreq']) # Plot 20 seconds
 scaler_eog = 1.0 / np.std(eog_data[:n_samples_plot])
 scaler_dss = 1.0 / np.std(blink_source[:n_samples_plot])

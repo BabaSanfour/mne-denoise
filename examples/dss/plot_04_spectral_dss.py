@@ -21,7 +21,7 @@ from scipy import signal
 import mne
 from mne.datasets import sample
 
-from mne_denoise.dss import DSS, BandpassBias
+from mne_denoise.dss import DSS, BandpassBias, NotchBias
 from mne_denoise.dss.variants import narrowband_dss, narrowband_scan
 from mne_denoise.viz import (
     plot_component_summary,
@@ -68,8 +68,12 @@ data[4:7] += beta * np.array([[1.0], [0.8], [0.5]])
 
 print(f"Simulated {n_channels} ch x {n_seconds} s. Peaks at 10Hz and 22Hz.")
 
-# Create MNE Raw for convenience
-info_sim = mne.create_info(n_channels, sfreq, "eeg")
+# Create MNE Raw with channel names and montage for topomap plotting
+ch_names = ['Oz', 'O1', 'O2', 'Pz', 'P3', 'P4', 'P7', 'P8',
+            'Cz', 'C3', 'C4', 'Fz', 'F3', 'F4', 'F7', 'F8']
+info_sim = mne.create_info(ch_names, sfreq, "eeg")
+montage = mne.channels.make_standard_montage('standard_1020')
+info_sim.set_montage(montage)
 raw_sim = mne.io.RawArray(data, info_sim)
 
 
@@ -99,14 +103,41 @@ print("Peaks clearly visible at 10 Hz and 22 Hz.")
 
 
 # %%
-# Part 2: Extracting Alpha (10 Hz)
-# --------------------------------
-# Now we target 10 Hz specifically to clean the signal.
+# Part 1: Manual BandpassBias (10 Hz Alpha)
+# ------------------------------------------
+# BandpassBias applies a bandpass filter as the bias function.
+# Here we manually create it to understand the API.
 
-print("\nExtracting 10 Hz Alpha...")
-# We use narrowband_dss helper (or manually create BandpassBias)
+print("\n--- Part 1a: Manual BandpassBias ---")
+
+# Create BandpassBias for 10 Hz ± 1 Hz
+bias_alpha = BandpassBias(freq_band=(9.0, 11.0), sfreq=sfreq, order=4)
+
+# Fit DSS manually
+dss_manual = DSS(n_components=4, bias=bias_alpha)
+dss_manual.fit(raw_sim)
+
+print(f"DSS Eigenvalues: {dss_manual.eigenvalues_[:4]}")
+
+# Visualize
+sources_manual = dss_manual.transform(raw_sim)
+plot_component_summary(dss_manual, data=raw_sim, n_components=3, show=False)
+plt.gcf().suptitle('Manual BandpassBias (9-11 Hz)')
+plt.show(block=False)
+
+# %%
+# Part 1b: Narrowband DSS Wrapper (Convenience)
+# ----------------------------------------------
+# The narrowband_dss() wrapper simplifies the above by calculating
+# the frequency band automatically from center freq + bandwidth.
+
+print("\n--- Part 1b: narrowband_dss Wrapper ---")
+
 dss_alpha = narrowband_dss(sfreq=sfreq, freq=10.0, bandwidth=2.0, n_components=4)
 dss_alpha.fit(raw_sim)
+
+print(f"Wrapper DSS Eigenvalues: {dss_alpha.eigenvalues_[:4]}")
+print("(Should be similar to manual approach)")
 
 # Visualize extracted component PSD
 sources = dss_alpha.transform(raw_sim)
@@ -135,7 +166,92 @@ plt.show(block=False)
 
 
 # %%
-# Part 3: Real Data (MEG Alpha)
+# Part 3: Line Noise Removal (NotchBias)
+# =======================================
+# NotchBias isolates narrow frequency bands for removal (e.g., 60 Hz line noise).
+# It's the inverse of BandpassBias - we find and remove specific frequencies.
+
+print("\n--- Part 2: Line Noise (NotchBias) ---")
+
+# Simulate data with 60 Hz line noise + harmonics
+line_freq = 60.0  # Hz
+line_noise = (
+    0.5 * np.sin(2 * np.pi * line_freq * times) +      # 60 Hz
+    0.3 * np.sin(2 * np.pi * 2 * line_freq * times) +  # 120 Hz
+    0.1 * np.sin(2 * np.pi * 3 * line_freq * times)    # 180 Hz
+)
+
+# Add to alpha signal
+data_noisy = data + np.outer(np.ones(n_channels), line_noise)
+raw_noisy = mne.io.RawArray(data_noisy, info_sim)
+
+print(f"Added {line_freq} Hz line noise + harmonics")
+
+# %%
+# Apply DSS with NotchBias to Remove 60 Hz
+# -----------------------------------------
+
+notch_bias_60 = NotchBias(freq=60, sfreq=sfreq, bandwidth=2)
+dss_notch = DSS(n_components=3, bias=notch_bias_60)
+dss_notch.fit(raw_noisy)
+
+print(f"\nDSS Eigenvalues: {dss_notch.eigenvalues_[:3]}")
+print("Component 0 should capture 60 Hz line noise")
+
+sources_notch = dss_notch.transform(raw_noisy)
+
+# Visualize
+plot_component_summary(dss_notch, data=raw_noisy, n_components=3, show=False)
+plt.show(block=False)
+
+# PSD comparison
+plot_spectral_psd_comparison(raw_noisy, sources_notch, sfreq, peak_freq=60, fmax=200, show=False)
+plt.gcf().axes[0].set_title('Line Noise: Original PSD (60 Hz + harmonics)')
+plt.gcf().axes[1].set_title('Line Noise: DSS Components PSD')
+# Mark harmonics
+for ax in plt.gcf().axes:
+    for h in [2, 3]:
+        ax.axvline(line_freq * h, color='orange', linestyle='--', alpha=0.5)
+plt.show(block=False)
+
+# %%
+# Remove Line Noise and Recover Clean Signal
+# -------------------------------------------
+# Project out the first component (60 Hz noise)
+
+# Get denoised data by removing component 0
+patterns = dss_notch.patterns_
+filters = dss_notch.filters_
+
+# Remove first component only
+filters_clean = filters[:, 1:]  # Keep components 1, 2
+patterns_clean = patterns[:, 1:]
+
+# Reconstruct without line noise
+sources_clean = filters_clean.T @ raw_noisy.get_data()
+data_cleaned = patterns_clean @ sources_clean
+
+# Compare PSDs
+from scipy.signal import welch
+freqs_orig, psd_orig = welch(data_noisy[0], fs=sfreq, nperseg=1024)
+freqs_clean, psd_clean = welch(data_cleaned[0], fs=sfreq, nperseg=1024)
+
+plt.figure(figsize=(10, 5))
+plt.semilogy(freqs_orig, psd_orig, 'r', alpha=0.7, label='With 60 Hz noise')
+plt.semilogy(freqs_clean, psd_clean, 'g', alpha=0.7, label='After removal')
+plt.axvline(60, color='k', linestyle='--', alpha=0.5, label='60 Hz')
+plt.axvline(120, color='gray', linestyle='--', alpha=0.5)
+plt.xlabel('Frequency (Hz)')
+plt.ylabel('Power')
+plt.title('Line Noise Removal with NotchBias')
+plt.legend()
+plt.xlim(0, 200)
+plt.grid(True, alpha=0.3)
+plt.show(block=False)
+
+
+# %%
+# Part 4: Real Data (MEG Alpha)
 # -----------------------------
 # We apply this to real MEG data to find spontaneous Alpha rhythms.
 

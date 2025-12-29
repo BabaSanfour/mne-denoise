@@ -16,11 +16,11 @@ References
 
 from __future__ import annotations
 
-from typing import Union
+from typing import Union, Optional
 
 import numpy as np
 
-from .base import LinearDenoiser
+from .base import LinearDenoiser, NonlinearDenoiser
 
 
 class TimeShiftBias(LinearDenoiser):
@@ -192,3 +192,132 @@ class SmoothingBias(LinearDenoiser):
         if data.ndim == 3:
             return smoothed.reshape(orig_shape)
         return smoothed
+
+
+class DCTDenoiser(NonlinearDenoiser):
+    """DCT domain denoiser (MATLAB denoise_dct.m).
+
+    Applies a mask in the DCT (Discrete Cosine Transform) domain.
+    Useful for temporal smoothness without explicit bandpass.
+
+    Parameters
+    ----------
+    mask : ndarray or None
+        DCT domain mask. Must have same length as signal, or will be
+        expanded/truncated. If None, creates lowpass mask.
+        If mask is None, this fraction of DCT coefficients are kept.
+        Default 0.5 (lowpass, keep first 50% of coefficients).
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
+    """
+
+    def __init__(
+        self, 
+        mask: Optional[np.ndarray] = None, 
+        cutoff_fraction: float = 0.5
+    ) -> None:
+        self.mask = mask
+        self.cutoff_fraction = cutoff_fraction
+        self._cached_mask = None
+        self._cached_len = None
+
+    def denoise(self, source: np.ndarray) -> np.ndarray:
+        """Apply DCT filtering."""
+        from scipy.fftpack import dct, idct
+        
+        n = len(source)
+        
+        # Create or retrieve mask
+        if self.mask is not None:
+            if len(self.mask) == n:
+                mask = self.mask
+            else:
+                # Resample mask to match signal length
+                mask = np.interp(
+                    np.linspace(0, 1, n),
+                    np.linspace(0, 1, len(self.mask)),
+                    self.mask
+                )
+        else:
+            # Create lowpass mask if not cached or length changed
+            if self._cached_mask is None or self._cached_len != n:
+                cutoff = int(n * self.cutoff_fraction)
+                mask = np.zeros(n)
+                mask[:cutoff] = 1.0
+                self._cached_mask = mask
+                self._cached_len = n
+            else:
+                mask = self._cached_mask
+        
+        if source.ndim == 1:
+            dct_coeffs = dct(source, type=2, norm='ortho')
+            dct_filtered = dct_coeffs * mask
+            return idct(dct_filtered, type=2, norm='ortho')
+        elif source.ndim == 2:            
+            _, n_epochs = source.shape
+            denoised = np.zeros_like(source)
+            for ep in range(n_epochs):
+                 denoised[:, ep] = self._denoise_1d(source[:, ep], mask)
+            return denoised
+        else:
+            raise ValueError(f"Source must be 1D or 2D, got {source.ndim}D")
+
+    def _denoise_1d(self, source, mask):
+        from scipy.fftpack import dct, idct
+        dct_coeffs = dct(source, type=2, norm='ortho')
+        dct_filtered = dct_coeffs * mask
+        return idct(dct_filtered, type=2, norm='ortho')
+
+
+class TemporalSmoothnessDenoiser(NonlinearDenoiser):
+    """Nonlinear denoiser emphasizing temporally smooth sources.
+
+    Promotes sources with high autocorrelation by penalizing
+    rapid fluctuations. Useful for slow-wave or DC-shift artifacts.
+
+    Parameters
+    ----------
+    smoothing_factor : float
+        Weight for temporal smoothness penalty. Default 0.1.
+    order : int
+        Derivative order for smoothness measure. Default 1.
+
+    Examples
+    --------
+    >>> from mne_denoise.dss.denoisers import TemporalSmoothnessDenoiser
+    >>> denoiser = TemporalSmoothnessDenoiser(smoothing_factor=0.2)
+    >>> smooth_source = denoiser.denoise(source)
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
+    """
+
+    def __init__(
+        self,
+        smoothing_factor: float = 0.1,
+        order: int = 1,
+    ) -> None:
+        self.smoothing_factor = smoothing_factor
+        self.order = max(1, order)
+
+    def denoise(self, source: np.ndarray) -> np.ndarray:
+        """Apply temporal smoothing denoiser."""
+        if source.ndim == 1:
+            window = max(3, int(len(source) * self.smoothing_factor))
+            weights = np.ones(window) / window
+            smoothed = np.convolve(source, weights, mode='same')
+            return (1 - self.smoothing_factor) * source + self.smoothing_factor * smoothed
+        elif source.ndim == 2:
+            n_times, n_trials = source.shape
+            window = max(3, int(n_times * self.smoothing_factor))
+            weights = np.ones(window) / window
+            denoised = np.zeros_like(source)
+            for t in range(n_trials):
+                smoothed = np.convolve(source[:, t], weights, mode='same')
+                denoised[:, t] = (1 - self.smoothing_factor) * source[:, t] + self.smoothing_factor * smoothed
+            return denoised
+        else:
+            raise ValueError(f"Source must be 1D or 2D, got {source.ndim}D")

@@ -391,19 +391,8 @@ def plot_spectrogram_comparison(inst_orig, inst_denoised, fmin=1, fmax=40, n_fre
     
     # Helper to compute TFR
     def _compute_tfr_safe(inst, label):
-        # Try modern API
-        if hasattr(inst, 'compute_tfr'):
-             tfr = inst.compute_tfr(method='multitaper', freqs=freqs, n_cycles=freqs/2., 
-                                    return_itc=False, average=True, picks=picks)
-             return tfr.data.mean(axis=0) # (n_freqs, n_times)
-        else:
-             # Fallback for very old MNE or pure arrays?
-             # But inst must be MNE obj for compute_tfr
-             # If user passes compatible object without compute_tfr (e.g. old MNE), fallback to legacy
-             from mne.time_frequency import tfr_multitaper
-             tfr = tfr_multitaper(inst, freqs=freqs, n_cycles=freqs/2., use_fft=True, 
-                                  return_itc=False, average=True, picks=picks)
-             return tfr.data.mean(axis=0)
+        tfr = inst.compute_tfr(method='multitaper', freqs=freqs, n_cycles=freqs/2., picks=picks)
+        return tfr.data.mean(axis=0)  # (n_freqs, n_times)
              
     data1 = _compute_tfr_safe(inst_orig, "Original")
     data2 = _compute_tfr_safe(inst_denoised, "Denoised")

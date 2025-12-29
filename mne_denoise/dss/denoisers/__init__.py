@@ -27,10 +27,13 @@ from .periodic import PeakFilterBias, CombFilterBias, QuasiPeriodicDenoiser
 from .spectral import (
     BandpassBias,
     NotchBias,
+)
+from .temporal import (
+    TimeShiftBias,
+    SmoothingBias,
     DCTDenoiser,
     TemporalSmoothnessDenoiser,
 )
-from .temporal import TimeShiftBias, SmoothingBias
 
 __all__ = [
     # Base classes
