@@ -6,6 +6,80 @@ from matplotlib.gridspec import GridSpec
 import mne
 from ._utils import _get_info, _get_patterns, _get_scores, _get_components
 
+
+def plot_narrowband_scan(frequencies, eigenvalues, peak_freq=None, 
+                         true_freqs=None, ax=None, show=True):
+    """Plot narrowband DSS frequency scan results.
+    
+    Visualizes the eigenvalue spectrum across frequencies from a narrowband scan,
+    helping identify dominant oscillatory components.
+    
+    Parameters
+    ----------
+    frequencies : array-like
+        Frequencies that were scanned (Hz).
+    eigenvalues : array-like
+        Eigenvalues at each frequency (higher = stronger oscillatory component).
+    peak_freq : float, optional
+        Detected peak frequency to highlight.
+    true_freqs : list of float, optional
+        Known true frequencies to mark (e.g., for synthetic data validation).
+    ax : matplotlib.axes.Axes, optional
+        Axes to plot on. If None, creates new figure.
+    show : bool
+        If True, show the figure.
+        
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure object.
+        
+    Examples
+    --------
+    >>> from mne_denoise.dss.variants import narrowband_scan
+    >>> from mne_denoise.viz import plot_narrowband_scan
+    >>> _, freqs, eigs = narrowband_scan(data, sfreq=250, freq_range=(5, 30))
+    >>> plot_narrowband_scan(freqs, eigs, peak_freq=freqs[np.argmax(eigs)])
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 4))
+    else:
+        fig = ax.figure
+        
+    # Plot eigenvalue spectrum
+    ax.plot(frequencies, eigenvalues, 'b-o', markersize=4, linewidth=2)
+    
+    # Highlight peak if provided
+    if peak_freq is not None:
+        peak_idx = np.argmin(np.abs(frequencies - peak_freq))
+        ax.plot(peak_freq, eigenvalues[peak_idx], 'r*', markersize=15, 
+                label=f'Peak: {peak_freq:.1f} Hz')
+        ax.axvline(peak_freq, color='red', linestyle='--', alpha=0.5)
+    
+    # Mark true frequencies if provided (for synthetic data)
+    if true_freqs is not None:
+        for i, freq in enumerate(true_freqs):
+            color = ['red', 'green', 'orange', 'purple'][i % 4]
+            ax.axvline(freq, color=color, linestyle='--', alpha=0.5, 
+                      label=f'True: {freq} Hz')
+    
+    ax.set_xlabel('Frequency (Hz)')
+    ax.set_ylabel('DSS Score (Eigenvalue)')
+    ax.set_title('Narrowband Scan: Oscillatory Component Detection')
+    ax.grid(True, alpha=0.3)
+    
+    # Only show legend if there are labeled elements
+    if peak_freq is not None or true_freqs is not None:
+        ax.legend()
+    
+    if show:
+        plt.show()
+    return fig
+
+
 def plot_score_curve(estimator, mode='raw', ax=None, show=True):
     """
     Plot component scores (eigenvalues or power ratios).

@@ -57,6 +57,99 @@ def plot_psd_comparison(inst_orig, inst_denoised, fmin=0, fmax=np.inf,
         plt.show()
     return fig
 
+
+def plot_spectral_psd_comparison(inst_orig, components, sfreq, peak_freq=None,
+                                 fmin=1, fmax=40, show=True):
+    """Plot side-by-side PSD comparison for spectral/narrowband DSS.
+    
+    Creates a two-panel figure showing original data PSD and DSS component PSDs,
+    with optional peak frequency marking. Designed for spectral analysis workflows.
+    
+    Parameters
+    ----------
+    inst_orig : Raw | Epochs
+        Original MNE data object.
+    components : ndarray
+        DSS components array from transform(), shape (n_components, n_times) or
+        (n_components, n_times, n_epochs).
+    sfreq : float
+        Sampling frequency in Hz.
+    peak_freq : float, optional
+        Peak frequency to mark with vertical line (e.g., detected alpha peak).
+    fmin, fmax : float
+        Frequency range for PSD computation. Default 1-40 Hz.
+    show : bool
+        If True, show the figure.
+        
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure object.
+        
+    Examples
+    --------
+    >>> from mne_denoise.dss.variants import narrowband_dss
+    >>> from mne_denoise.viz import plot_spectral_psd_comparison
+    >>> dss = narrowband_dss(sfreq=250, freq=10, bandwidth=3)
+    >>> dss.fit(raw)
+    >>> components = dss.transform(raw)
+    >>> plot_spectral_psd_comparison(raw, components, sfreq=250, peak_freq=10)
+    """
+    import mne
+    
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    
+    # Left: Original data PSD
+    psd_orig = inst_orig.compute_psd(fmin=fmin, fmax=fmax)
+    psd_orig.plot(axes=axes[0], show=False, spatial_colors=False, average=True)
+    axes[0].set_title('Original Data PSD (Average)')
+    
+    if peak_freq is not None:
+        axes[0].axvline(peak_freq, color='red', linestyle='--', alpha=0.7,
+                       label=f'Peak: {peak_freq:.1f} Hz')
+        axes[0].legend()
+    
+    # Right: DSS Component PSD
+    # Handle different component types
+    import mne
+    
+    # Convert components to numpy array if needed
+    if isinstance(components, (mne.io.BaseRaw, mne.BaseEpochs)):
+        comp_data_raw = components.get_data()
+    else:
+        comp_data_raw = np.asarray(components)
+    
+    # Handle 2D (Raw) or 3D (Epochs) components
+    if comp_data_raw.ndim == 2:
+        n_comp = min(3, comp_data_raw.shape[0])
+        comp_data = comp_data_raw[:n_comp]
+    else:  # 3D: (n_comp, n_times, n_epochs) or (n_epochs, n_ch, n_times)
+        # Check if it's (n_epochs, n_ch, n_times) from Epochs.get_data()
+        if comp_data_raw.shape[0] < comp_data_raw.shape[2]:  # n_epochs < n_times
+            # Transpose to (n_ch, n_times, n_epochs)
+            comp_data_raw = comp_data_raw.transpose(1, 2, 0)
+        n_comp = min(3, comp_data_raw.shape[0])
+        # Average over epochs for cleaner visualization
+        comp_data = comp_data_raw[:n_comp].mean(axis=2)
+    
+    # Create RawArray for PSD computation
+    comp_info = mne.create_info(n_comp, sfreq, 'misc')
+    comp_raw = mne.io.RawArray(comp_data, comp_info)
+    
+    psd_comp = comp_raw.compute_psd(fmin=fmin, fmax=fmax, picks='all')
+    psd_comp.plot(axes=axes[1], show=False, picks='all')
+    axes[1].set_title('DSS Components PSD')
+    
+    if peak_freq is not None:
+        axes[1].axvline(peak_freq, color='red', linestyle='--', alpha=0.7)
+    
+    plt.tight_layout()
+    
+    if show:
+        plt.show()
+    return fig
+
+
 def plot_evoked_comparison(inst_orig, inst_denoised, ci=0.95, n_boot=1000, 
                          colors=('r', 'b'), linestyles=('-', '-'), 
                          labels=('Original', 'Denoised'),

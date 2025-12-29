@@ -3,7 +3,8 @@ from .components import (
     plot_spatial_patterns, 
     plot_score_curve, 
     plot_component_image,
-    plot_component_time_series
+    plot_component_time_series,
+    plot_narrowband_scan
 )
 from .comparison import (
     plot_psd_comparison, 
@@ -11,7 +12,8 @@ from .comparison import (
     plot_evoked_comparison,
     plot_spectrogram_comparison,
     plot_power_map,
-    plot_denoising_summary
+    plot_denoising_summary,
+    plot_spectral_psd_comparison
 )
 from .zapline import plot_zapline_analytics
 
@@ -21,11 +23,13 @@ __all__ = [
     'plot_score_curve',
     'plot_component_image',
     'plot_component_time_series',
+    'plot_narrowband_scan',
     'plot_psd_comparison',
     'plot_time_course_comparison',
     'plot_evoked_comparison',
     'plot_spectrogram_comparison',
     'plot_power_map',
     'plot_denoising_summary',
+    'plot_spectral_psd_comparison',
     'plot_zapline_analytics'
 ]

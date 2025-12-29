@@ -18,7 +18,9 @@ from mne_denoise.viz import (
     plot_denoising_summary,
     plot_zapline_analytics,
     plot_component_time_series,
-    plot_evoked_comparison
+    plot_evoked_comparison,
+    plot_narrowband_scan,
+    plot_spectral_psd_comparison
 )
 from mne_denoise.viz._utils import _get_info, _get_patterns, _get_scores, _get_components
 
@@ -304,3 +306,69 @@ def test_plot_evoked_comparison(synthetic_data):
     # Test with axes
     fig, ax = plt.subplots()
     plot_evoked_comparison(ev_orig, ev_denoised, ax=ax, show=False)
+
+def test_plot_narrowband_scan():
+    """Test narrowband scan visualization."""
+    # Create synthetic scan results
+    frequencies = np.arange(5, 30, 0.5)
+    eigenvalues = np.random.randn(len(frequencies)) * 0.1 + 0.5
+    
+    # Add a peak at 10 Hz
+    peak_idx = np.argmin(np.abs(frequencies - 10))
+    eigenvalues[peak_idx] = 2.0
+    eigenvalues[peak_idx-1:peak_idx+2] += np.array([0.5, 0, 0.5])
+    
+    # Test basic plot
+    fig = plot_narrowband_scan(frequencies, eigenvalues, show=False)
+    assert isinstance(fig, plt.Figure)
+    
+    # Test with peak frequency highlighted
+    fig = plot_narrowband_scan(frequencies, eigenvalues, 
+                               peak_freq=frequencies[peak_idx], show=False)
+    assert isinstance(fig, plt.Figure)
+    
+    # Test with true frequencies marked (for synthetic data validation)
+    fig = plot_narrowband_scan(frequencies, eigenvalues, 
+                               true_freqs=[10, 22], show=False)
+    assert isinstance(fig, plt.Figure)
+    
+    # Test with both peak and true frequencies
+    fig = plot_narrowband_scan(frequencies, eigenvalues, 
+                               peak_freq=10.0, true_freqs=[10, 22], show=False)
+    assert isinstance(fig, plt.Figure)
+    
+    # Test with existing axes
+    fig, ax = plt.subplots()
+    fig_ret = plot_narrowband_scan(frequencies, eigenvalues, ax=ax, show=False)
+    assert fig_ret is fig
+
+def test_plot_spectral_psd_comparison(fitted_dss, synthetic_data):
+    """Test spectral PSD comparison visualization."""
+    # Get components
+    sources = fitted_dss.transform(synthetic_data)
+    
+    # Test with Epochs (3D components)
+    fig = plot_spectral_psd_comparison(
+        synthetic_data, sources, sfreq=100, peak_freq=10, show=False
+    )
+    assert isinstance(fig, plt.Figure)
+    
+    # Test without peak frequency
+    fig = plot_spectral_psd_comparison(
+        synthetic_data, sources, sfreq=100, show=False
+    )
+    assert isinstance(fig, plt.Figure)
+    
+    # Test with Raw data (2D components)
+    raw = mne.io.RawArray(synthetic_data.get_data()[0], synthetic_data.info)
+    sources_raw = fitted_dss.transform(raw)
+    fig = plot_spectral_psd_comparison(
+        raw, sources_raw, sfreq=100, peak_freq=10, show=False
+    )
+    assert isinstance(fig, plt.Figure)
+    
+    # Test with custom frequency range
+    fig = plot_spectral_psd_comparison(
+        raw, sources_raw, sfreq=100, fmin=5, fmax=20, show=False
+    )
+    assert isinstance(fig, plt.Figure)
