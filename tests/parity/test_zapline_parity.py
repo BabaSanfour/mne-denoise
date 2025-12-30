@@ -12,6 +12,7 @@ import pytest
 from mne_denoise.zapline import compute_psd_reduction, dss_zapline
 
 try:
+    import matlab.engine
     from . import (
         ParityMetrics,
         close_matlab_engine,
