@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
-from sklearn.base import BaseEstimator, TransformerMixin
+from ..dss.linear import DSS
 
 
-class ZapLine(BaseEstimator, TransformerMixin):
-    """ZapLine line noise removal."""
+class ZapLine(DSS):
+    """ZapLine Transformer (Placeholder).
+
+    This class is currently a placeholder for the future ZapLine implementation
+    that will inherit directly from DSS and provide a clean TransformerMixin API.
+
+    For now, use `mne_denoise.dss.dss_zapline` for functional usage.
+    """
 
     def __init__(
-        self,
-        line_freq: float = 60.0,
-        sfreq: Optional[float] = None,
-        n_remove: Optional[int] = None,
-        n_harmonics: int = 1,
-        **kwargs,
+        self, line_freq: float = 60.0, sfreq: float = None, n_remove: int = 1, **kwargs
     ):
         super().__init__(**kwargs)
         self.line_freq = line_freq

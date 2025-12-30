@@ -101,7 +101,7 @@ class WienerMaskDenoiser(NonlinearDenoiser):
         window = min(self.window_samples, n_samples // 2)
 
         # Estimate local signal variance: σ²(t) = E[s²] - E[s]²
-        source_sq: np.ndarray = source**2
+        source_sq = source**2
         local_mean_sq = ndimage.uniform_filter1d(source_sq, size=window, mode="reflect")
         local_mean = ndimage.uniform_filter1d(source, size=window, mode="reflect")
         local_var = np.maximum(local_mean_sq - local_mean**2, 0)
@@ -111,7 +111,7 @@ class WienerMaskDenoiser(NonlinearDenoiser):
             noise_var = self.noise_variance
         else:
             # Use percentile of local variance as noise floor estimate
-            noise_var = float(np.percentile(local_var, self.noise_percentile))
+            noise_var = np.percentile(local_var, self.noise_percentile)
             noise_var = max(noise_var, 1e-15)  # Prevent division by zero
 
         # Wiener mask: m(t) = σ²_signal / (σ²_signal + σ²_noise)
@@ -181,7 +181,7 @@ class VarianceMaskDenoiser(NonlinearDenoiser):
     def _denoise_1d(self, source: np.ndarray) -> np.ndarray:
         """Process single 1D source."""
         n_samples = len(source)
-        source_sq: np.ndarray = source**2
+        source_sq = source**2
         window = min(self.window_samples, n_samples)
 
         local_mean_sq = ndimage.uniform_filter1d(source_sq, size=window, mode="reflect")
@@ -189,7 +189,7 @@ class VarianceMaskDenoiser(NonlinearDenoiser):
         local_var = np.maximum(local_mean_sq - local_mean**2, 0)
 
         if self.soft:
-            threshold: float = float(np.percentile(local_var, self.percentile))
+            threshold = np.percentile(local_var, self.percentile)
             if threshold < 1e-15:
                 threshold = np.max(local_var) * 0.5
             if threshold < 1e-15:
@@ -197,7 +197,7 @@ class VarianceMaskDenoiser(NonlinearDenoiser):
             weights = 1 / (1 + np.exp(-(local_var - threshold) / (threshold * 0.5)))
             denoised = source * weights
         else:
-            threshold = float(np.percentile(local_var, self.percentile))
+            threshold = np.percentile(local_var, self.percentile)
             mask = local_var >= threshold
             denoised = source * mask.astype(float)
 

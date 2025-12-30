@@ -139,7 +139,7 @@ class GaussDenoiser(NonlinearDenoiser):
 
     def denoise(self, source: np.ndarray) -> np.ndarray:
         """Apply Gaussian nonlinearity."""
-        s2: np.ndarray = source**2
+        s2 = source**2
         return source * np.exp(-self.a * s2 / 2)
 
 
@@ -268,7 +268,7 @@ def beta_tanh(source: np.ndarray) -> float:
     beta : float
         Scalar value.
     """
-    return float(-np.mean(1 - np.tanh(source) ** 2))
+    return -np.mean(1 - np.tanh(source) ** 2)
 
 
 def beta_pow3(source: np.ndarray) -> float:
@@ -288,5 +288,5 @@ def beta_gauss(source: np.ndarray, a: float = 1.0) -> float:
     Formula: $\\beta = -E[(1 - a s^2) \\exp(-a s^2 / 2)]$
     Legacy: `beta_gauss.m`
     """
-    s2: np.ndarray = source**2
-    return float(-np.mean((1 - a * s2) * np.exp(-a * s2 / 2)))
+    s2 = source**2
+    return -np.mean((1 - a * s2) * np.exp(-a * s2 / 2))

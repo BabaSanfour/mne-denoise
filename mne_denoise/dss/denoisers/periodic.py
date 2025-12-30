@@ -337,9 +337,7 @@ class QuasiPeriodicDenoiser(NonlinearDenoiser):
         n_samples = len(source)
 
         # Step 1: Detect peaks
-        height_threshold: float = float(
-            np.percentile(np.abs(source), self.peak_height_percentile)
-        )
+        height_threshold = np.percentile(np.abs(source), self.peak_height_percentile)
         peaks, _ = signal.find_peaks(
             np.abs(source),
             height=height_threshold,
@@ -351,7 +349,7 @@ class QuasiPeriodicDenoiser(NonlinearDenoiser):
             return source
 
         # Step 2: Determine cycle boundaries (midpoints between peaks)
-        boundaries: np.ndarray = np.zeros(len(peaks) + 1, dtype=int)
+        boundaries = np.zeros(len(peaks) + 1, dtype=int)
         boundaries[0] = 0
         boundaries[-1] = n_samples
         for i in range(1, len(peaks)):

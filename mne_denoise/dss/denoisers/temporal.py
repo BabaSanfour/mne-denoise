@@ -101,7 +101,7 @@ class TimeShiftBias(LinearDenoiser):
         """Average of time-shifted versions."""
         n_channels, n_samples = data.shape
         shifts = self._shift_array
-        max_shift: int = np.max(np.abs(shifts))
+        max_shift = np.max(np.abs(shifts))
 
         if max_shift >= n_samples // 2:
             raise ValueError(
@@ -128,7 +128,7 @@ class TimeShiftBias(LinearDenoiser):
         """Weighted average (closer lags weighted more)."""
         n_channels, n_samples = data.shape
         shifts = self._shift_array
-        max_shift: int = np.max(np.abs(shifts))
+        max_shift = np.max(np.abs(shifts))
 
         valid_start = max_shift
         valid_end = n_samples - max_shift
@@ -234,8 +234,8 @@ class DCTDenoiser(NonlinearDenoiser):
     ) -> None:
         self.mask = mask
         self.cutoff_fraction = cutoff_fraction
-        self._cached_mask: Optional[np.ndarray] = None
-        self._cached_len: Optional[int] = None
+        self._cached_mask = None
+        self._cached_len = None
 
     def denoise(self, source: np.ndarray) -> np.ndarray:
         """Apply DCT filtering."""

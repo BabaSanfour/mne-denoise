@@ -141,8 +141,7 @@ def narrowband_scan(
                 **dss_kws,
             )
             dss.fit(data)
-            if dss.eigenvalues_ is not None:
-                eigenvalues[i] = dss.eigenvalues_[0]
+            eigenvalues[i] = dss.eigenvalues_[0]
 
             if eigenvalues[i] > best_eigenvalue:
                 best_eigenvalue = eigenvalues[i]
