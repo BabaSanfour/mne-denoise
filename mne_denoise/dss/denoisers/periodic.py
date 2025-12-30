@@ -337,8 +337,8 @@ class QuasiPeriodicDenoiser(NonlinearDenoiser):
         n_samples = len(source)
 
         # Step 1: Detect peaks
-        height_threshold: float = np.percentile(
-            np.abs(source), self.peak_height_percentile
+        height_threshold: float = float(
+            np.percentile(np.abs(source), self.peak_height_percentile)
         )
         peaks, _ = signal.find_peaks(
             np.abs(source),

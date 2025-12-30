@@ -111,7 +111,7 @@ class WienerMaskDenoiser(NonlinearDenoiser):
             noise_var = self.noise_variance
         else:
             # Use percentile of local variance as noise floor estimate
-            noise_var = np.percentile(local_var, self.noise_percentile)
+            noise_var = float(np.percentile(local_var, self.noise_percentile))
             noise_var = max(noise_var, 1e-15)  # Prevent division by zero
 
         # Wiener mask: m(t) = σ²_signal / (σ²_signal + σ²_noise)
@@ -189,7 +189,7 @@ class VarianceMaskDenoiser(NonlinearDenoiser):
         local_var = np.maximum(local_mean_sq - local_mean**2, 0)
 
         if self.soft:
-            threshold: float = np.percentile(local_var, self.percentile)
+            threshold: float = float(np.percentile(local_var, self.percentile))
             if threshold < 1e-15:
                 threshold = np.max(local_var) * 0.5
             if threshold < 1e-15:
@@ -197,7 +197,7 @@ class VarianceMaskDenoiser(NonlinearDenoiser):
             weights = 1 / (1 + np.exp(-(local_var - threshold) / (threshold * 0.5)))
             denoised = source * weights
         else:
-            threshold = np.percentile(local_var, self.percentile)
+            threshold = float(np.percentile(local_var, self.percentile))
             mask = local_var >= threshold
             denoised = source * mask.astype(float)
 

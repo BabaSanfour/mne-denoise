@@ -596,9 +596,9 @@ class DSS(BaseEstimator, TransformerMixin):
         if is_mne:
             out = X.copy()
             if isinstance(X, BaseEpochs):
-                out._data = np.transpose(rec, (2, 0, 1))
+                out._data = np.transpose(rec, (2, 0, 1))  # type: ignore[union-attr]
             else:
-                out._data = rec
+                out._data = rec  # type: ignore[union-attr]
             return out
 
         return rec

@@ -1198,7 +1198,7 @@ def compute_psd_reduction(
         reduction_ratio = np.inf
     else:
         reduction_db = 10 * np.log10(power_orig / power_clean)
-        reduction_ratio = power_orig / power_clean
+        reduction_ratio = float(power_orig / power_clean)
 
     return {
         "power_original": float(power_orig),

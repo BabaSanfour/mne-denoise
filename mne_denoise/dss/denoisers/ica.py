@@ -268,7 +268,7 @@ def beta_tanh(source: np.ndarray) -> float:
     beta : float
         Scalar value.
     """
-    return -np.mean(1 - np.tanh(source) ** 2)
+    return float(-np.mean(1 - np.tanh(source) ** 2))
 
 
 def beta_pow3(source: np.ndarray) -> float:
@@ -289,4 +289,4 @@ def beta_gauss(source: np.ndarray, a: float = 1.0) -> float:
     Legacy: `beta_gauss.m`
     """
     s2: np.ndarray = source**2
-    return -np.mean((1 - a * s2) * np.exp(-a * s2 / 2))
+    return float(-np.mean((1 - a * s2) * np.exp(-a * s2 / 2)))
