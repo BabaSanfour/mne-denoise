@@ -1,0 +1,23 @@
+﻿mne\_denoise.dss.denoisers.TemporalSmoothnessDenoiser
+=====================================================
+
+.. currentmodule:: mne_denoise.dss.denoisers
+
+.. autoclass:: TemporalSmoothnessDenoiser
+
+   
+   .. automethod:: __init__
+
+   
+   .. rubric:: Methods
+
+   .. autosummary::
+   
+      ~TemporalSmoothnessDenoiser.__init__
+      ~TemporalSmoothnessDenoiser.denoise
+   
+   
+
+   
+   
+   

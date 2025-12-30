@@ -1,0 +1,23 @@
+﻿mne\_denoise.dss.denoisers.NotchBias
+====================================
+
+.. currentmodule:: mne_denoise.dss.denoisers
+
+.. autoclass:: NotchBias
+
+   
+   .. automethod:: __init__
+
+   
+   .. rubric:: Methods
+
+   .. autosummary::
+   
+      ~NotchBias.__init__
+      ~NotchBias.apply
+   
+   
+
+   
+   
+   
