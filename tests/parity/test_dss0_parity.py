@@ -13,6 +13,7 @@ from mne_denoise.dss import compute_dss
 from mne_denoise.dss.denoisers.spectral import BandpassBias
 
 try:
+    import matlab.engine
     from . import (
         ParityMetrics,
         close_matlab_engine,
