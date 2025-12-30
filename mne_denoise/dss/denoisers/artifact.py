@@ -2,6 +2,13 @@
 
 Implements cycle averaging for quasi-periodic artifacts like ECG and blinks.
 This emphasizes reproducible artifact morphology while canceling neural activity.
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+
+References
+----------
+.. [1] Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
 """
 
 from __future__ import annotations
@@ -9,13 +16,12 @@ from __future__ import annotations
 from typing import Optional, Sequence
 
 import numpy as np
-from scipy import signal
 
 from .base import LinearDenoiser
 
 
 class CycleAverageBias(LinearDenoiser):
-    """Bias function for quasi-periodic artifact extraction.
+    """Bias for removing quasi-periodic artifacts (e.g., ECG, EOG).
 
     Applies cycle averaging synchronized to artifact events (e.g., R-peaks
     for ECG, blink onsets for EOG). This emphasizes the stereotyped
@@ -35,9 +41,24 @@ class CycleAverageBias(LinearDenoiser):
     Examples
     --------
     >>> # ECG artifact removal
-    >>> r_peaks = find_r_peaks(ecg_channel)  # Get R-peak locations
-    >>> bias = CycleAverageBias(event_samples=r_peaks, window=(-0.1, 0.3), sfreq=1000)
-    >>> biased = bias.apply(eeg_data)  # Shape (n_channels, n_times)
+    >>> from mne.preprocessing import find_ecg_events
+    >>> from mne_denoise.dss.denoisers import CycleAverageBias
+    >>> r_peaks, _ = find_ecg_events(raw) # MNE returns events array
+    >>> # Extract sample indices (column 0)
+    >>> r_peak_samples = r_peaks[:, 0]
+    >>> bias = CycleAverageBias(event_samples=r_peak_samples, window=(-100, 200))
+    >>> biased_data = bias.apply(raw.get_data())
+
+    >>> # EOG (blink) artifact removal
+    >>> from mne.preprocessing import find_eog_events
+    >>> blinks = find_eog_events(raw)
+    >>> blink_samples = blinks[:, 0]
+    >>> bias_eog = CycleAverageBias(event_samples=blink_samples, window=(-200, 200))
+    >>> biased_eog = bias_eog.apply(raw.get_data())
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.4 "DENOISING OF QUASIPERIODIC SIGNALS"
     """
 
     def __init__(
@@ -48,13 +69,13 @@ class CycleAverageBias(LinearDenoiser):
         sfreq: Optional[float] = None,
     ) -> None:
         self.event_samples = np.asarray(event_samples, dtype=int)
-        
+
         # Convert window to samples if sfreq provided
         if sfreq is not None:
             self.window = (int(window[0] * sfreq), int(window[1] * sfreq))
         else:
             self.window = (int(window[0]), int(window[1]))
-        
+
         self.sfreq = sfreq
         self._window_length = self.window[1] - self.window[0]
 
@@ -72,7 +93,7 @@ class CycleAverageBias(LinearDenoiser):
             Data where artifact-locked segments are replaced by cycle average.
         """
         original_shape = data.shape
-        
+
         # Handle 3D epoched data by concatenating
         if data.ndim == 3:
             n_channels, n_times, n_epochs = data.shape
@@ -82,29 +103,24 @@ class CycleAverageBias(LinearDenoiser):
         elif data.ndim == 2:
             data_2d = data
             n_channels, total_samples = data.shape
-            n_times = total_samples
-            n_epochs = 1
         else:
             raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
 
         # Filter valid events (within data bounds)
         pre, post = self.window
-        valid_mask = (
-            (self.event_samples + pre >= 0) &
-            (self.event_samples + post <= total_samples)
+        valid_mask = (self.event_samples + pre >= 0) & (
+            self.event_samples + post <= total_samples
         )
         valid_events = self.event_samples[valid_mask]
 
         if len(valid_events) == 0:
             # No valid events, return zeros (no artifact signal)
-            if data.ndim == 3:
-                return np.zeros_like(data)
-            return np.zeros_like(data_2d)
+            return np.zeros(original_shape)
 
         # Compute cycle average
         window_len = post - pre
         epochs_matrix = np.zeros((len(valid_events), n_channels, window_len))
-        
+
         for i, event in enumerate(valid_events):
             start = event + pre
             end = event + post
@@ -115,7 +131,7 @@ class CycleAverageBias(LinearDenoiser):
 
         # Create biased output: each artifact window gets the average
         biased_2d = np.zeros_like(data_2d)
-        
+
         for event in valid_events:
             start = event + pre
             end = event + post
@@ -128,105 +144,3 @@ class CycleAverageBias(LinearDenoiser):
             biased = biased_2d
 
         return biased
-
-
-def find_ecg_events(
-    ecg_signal: np.ndarray,
-    sfreq: float,
-    *,
-    threshold_factor: float = 0.6,
-    min_distance_seconds: float = 0.4,
-) -> np.ndarray:
-    """Detect R-peaks in an ECG signal.
-
-    Simple peak detection for ECG artifact extraction. For more robust
-    detection, consider using MNE's find_ecg_events or dedicated
-    ECG processing libraries.
-
-    Parameters
-    ----------
-    ecg_signal : ndarray, shape (n_times,)
-        Single-channel ECG signal.
-    sfreq : float
-        Sampling frequency in Hz.
-    threshold_factor : float
-        Fraction of max amplitude for peak threshold. Default 0.6.
-    min_distance_seconds : float
-        Minimum distance between peaks in seconds. Default 0.4.
-
-    Returns
-    -------
-    r_peaks : ndarray
-        Sample indices of detected R-peaks.
-    """
-    # Bandpass filter to isolate QRS complex (5-15 Hz)
-    nyq = sfreq / 2
-    low = 5 / nyq
-    high = min(15 / nyq, 0.99)
-    
-    if low >= high:
-        # Can't filter, use raw signal
-        filtered = np.abs(ecg_signal)
-    else:
-        sos = signal.butter(4, [low, high], btype='band', output='sos')
-        filtered = np.abs(signal.sosfiltfilt(sos, ecg_signal))
-
-    # Find peaks
-    min_distance = int(min_distance_seconds * sfreq)
-    threshold = threshold_factor * np.max(filtered)
-    
-    peaks, _ = signal.find_peaks(
-        filtered,
-        height=threshold,
-        distance=max(1, min_distance),
-    )
-    
-    return peaks
-
-
-def find_eog_events(
-    eog_signal: np.ndarray,
-    sfreq: float,
-    *,
-    threshold_factor: float = 0.5,
-    min_distance_seconds: float = 0.5,
-) -> np.ndarray:
-    """Detect blink events in an EOG signal.
-
-    Simple peak detection for EOG artifact extraction. For more robust
-    detection, consider using MNE's find_eog_events.
-
-    Parameters
-    ----------
-    eog_signal : ndarray, shape (n_times,)
-        Single-channel vertical EOG signal.
-    sfreq : float
-        Sampling frequency in Hz.
-    threshold_factor : float
-        Fraction of max amplitude for peak threshold. Default 0.5.
-    min_distance_seconds : float
-        Minimum distance between peaks in seconds. Default 0.5.
-
-    Returns
-    -------
-    blink_events : ndarray
-        Sample indices of detected blink peaks.
-    """
-    # Low-pass filter to isolate blink component (< 5 Hz)
-    nyq = sfreq / 2
-    cutoff = min(5 / nyq, 0.99)
-    
-    sos = signal.butter(4, cutoff, btype='low', output='sos')
-    filtered = signal.sosfiltfilt(sos, eog_signal)
-
-    # Find positive peaks (upward deflection for blinks)
-    min_distance = int(min_distance_seconds * sfreq)
-    threshold = threshold_factor * np.max(filtered)
-    
-    peaks, _ = signal.find_peaks(
-        filtered,
-        height=threshold,
-        distance=max(1, min_distance),
-    )
-    
-    return peaks

@@ -1,44 +1,37 @@
-"""Pluggable denoiser functions for DSS.
-
-This module provides bias functions that emphasize different signal types:
-- TrialAverageBias: Evoked responses via epoch averaging
-- BandpassBias: Narrow-band rhythms
-- PeakFilterBias, CombFilterBias: Periodic/SSVEP signals
-- CycleAverageBias: Periodic artifacts (ECG, blinks)
-- WienerMaskDenoiser, TanhMaskDenoiser: Paper-faithful nonlinear DSS (Särelä & Valpola 2005)
-- GaussDenoiser, SkewDenoiser: FastICA nonlinearities
-- QuasiPeriodicDenoiser: Cycle-averaging for quasi-periodic signals
-"""
+"""Pluggable denoiser functions for DSS."""
 
 from __future__ import annotations
 
+from .artifact import CycleAverageBias
 from .base import LinearDenoiser, NonlinearDenoiser
 from .evoked import TrialAverageBias
-from .spectral import BandpassBias, NotchBias
-from .artifact import CycleAverageBias, find_ecg_events, find_eog_events
-from .variance import (
-    # Paper-faithful nonlinear denoisers
-    WienerMaskDenoiser,
-    TanhMaskDenoiser,
-    RobustTanhDenoiser,
+from .ica import (
     GaussDenoiser,
-    SkewDenoiser,
-    DCTDenoiser,
-    Spectrogram2DDenoiser,
-    QuasiPeriodicDenoiser,
     KurtosisDenoiser,
-    # Beta helpers for Newton updates
-    beta_tanh,
-    beta_pow3,
+    RobustTanhDenoiser,
+    SkewDenoiser,
+    SmoothTanhDenoiser,
+    TanhMaskDenoiser,
     beta_gauss,
-    # Gamma helpers for adaptive learning rate
-    Gamma179,
-    GammaPredictive,
-    # Deprecated (kept for backwards compatibility)
-    VarianceMaskDenoiser,
-    TemporalSmoothnessDenoiser,
+    beta_pow3,
+    beta_tanh,
 )
-from .periodic import PeakFilterBias, CombFilterBias, ssvep_dss
+from .masking import (
+    VarianceMaskDenoiser,
+    WienerMaskDenoiser,
+)
+from .periodic import CombFilterBias, PeakFilterBias, QuasiPeriodicDenoiser
+from .spectral import (
+    BandpassBias,
+    NotchBias,
+)
+from .spectrogram import SpectrogramBias, SpectrogramDenoiser
+from .temporal import (
+    DCTDenoiser,
+    SmoothingBias,
+    TemporalSmoothnessDenoiser,
+    TimeShiftBias,
+)
 
 __all__ = [
     # Base classes
@@ -50,10 +43,7 @@ __all__ = [
     "NotchBias",
     "PeakFilterBias",
     "CombFilterBias",
-    "ssvep_dss",
     "CycleAverageBias",
-    "find_ecg_events",
-    "find_eog_events",
     # Nonlinear denoisers (paper-faithful)
     "WienerMaskDenoiser",
     "TanhMaskDenoiser",
@@ -61,17 +51,19 @@ __all__ = [
     "GaussDenoiser",
     "SkewDenoiser",
     "DCTDenoiser",
-    "Spectrogram2DDenoiser",
+    "SpectrogramBias",
+    "SpectrogramDenoiser",
     "QuasiPeriodicDenoiser",
     "KurtosisDenoiser",
+    "SmoothTanhDenoiser",
     # Beta helpers (FastICA Newton step)
     "beta_tanh",
     "beta_pow3",
     "beta_gauss",
-    # Gamma helpers (adaptive learning rate)
-    "Gamma179",
-    "GammaPredictive",
     # Deprecated
     "VarianceMaskDenoiser",
     "TemporalSmoothnessDenoiser",
+    # Temporal biases
+    "TimeShiftBias",
+    "SmoothingBias",
 ]

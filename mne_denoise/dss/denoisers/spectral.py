@@ -2,6 +2,15 @@
 
 Implements bandpass and notch filters for narrow-band rhythm extraction
 and line noise isolation.
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+
+References
+----------
+.. [1] Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
+.. [2] de Cheveigné, A. (2020). ZapLine: A simple and effective method to remove
+       power line artifacts. NeuroImage, 207, 116356.
 """
 
 from __future__ import annotations
@@ -20,6 +29,7 @@ class BandpassBias(LinearDenoiser):
     Applies a bandpass filter to emphasize a specific frequency band,
     useful for extracting oscillatory sources (alpha, beta, etc.).
 
+
     Parameters
     ----------
     freq_band : tuple of float
@@ -33,8 +43,17 @@ class BandpassBias(LinearDenoiser):
 
     Examples
     --------
+    >>> from mne_denoise.dss.denoisers import BandpassBias
     >>> bias = BandpassBias(freq_band=(8, 12), sfreq=250)  # Alpha band
-    >>> biased_data = bias.apply(raw_data)
+    >>> dss.fit(data)
+
+    See Also
+    --------
+    mne_denoise.dss.denoisers.PeakFilterBias : For strictly periodic signals.
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
     """
 
     def __init__(
@@ -64,9 +83,7 @@ class BandpassBias(LinearDenoiser):
         if low <= 0:
             raise ValueError(f"Low frequency must be > 0, got {low}")
         if high >= nyq:
-            raise ValueError(
-                f"High frequency ({high}) must be < Nyquist ({nyq})"
-            )
+            raise ValueError(f"High frequency ({high}) must be < Nyquist ({nyq})")
 
         if self.method == "butter":
             # Use second-order sections for stability
@@ -92,19 +109,13 @@ class BandpassBias(LinearDenoiser):
         biased : ndarray, same shape as input
             Bandpass filtered data.
         """
-        if self._sos is None:
-            raise RuntimeError("Filter not designed")
-
         # Handle 3D epoched data
-        original_shape = data.shape
         if data.ndim == 3:
             n_channels, n_times, n_epochs = data.shape
             # Process each epoch separately to avoid edge effects between epochs
             biased = np.zeros_like(data)
             for ep in range(n_epochs):
-                biased[:, :, ep] = signal.sosfiltfilt(
-                    self._sos, data[:, :, ep], axis=1
-                )
+                biased[:, :, ep] = signal.sosfiltfilt(self._sos, data[:, :, ep], axis=1)
         elif data.ndim == 2:
             biased = signal.sosfiltfilt(self._sos, data, axis=1)
         else:
@@ -117,7 +128,8 @@ class NotchBias(LinearDenoiser):
     """Notch filter bias for isolating a specific frequency.
 
     Applies a narrow notch (bandpass) filter to isolate power at a
-    specific frequency, useful for line noise extraction in ZapLine.
+    specific frequency. This is the core bias operation used in the
+    ZapLine algorithm (de Cheveigné, 2020) to find and remove line noise.
 
     Parameters
     ----------
@@ -130,8 +142,18 @@ class NotchBias(LinearDenoiser):
 
     Examples
     --------
-    >>> bias = NotchBias(freq=50, sfreq=250, bandwidth=2)  # Line noise
-    >>> biased = bias.apply(data)  # Contains mostly 50 Hz component
+    >>> from mne_denoise.dss.denoisers import NotchBias
+    >>> bias = NotchBias(freq=60, sfreq=250, bandwidth=2)
+    >>> biased_data = bias.apply(data)
+
+    See Also
+    --------
+    BandpassBias : Band-pass filter bias.
+
+    References
+    ----------
+    de Cheveigné (2020). ZapLine
+    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
     """
 
     def __init__(

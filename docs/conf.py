@@ -26,6 +26,8 @@ extensions = [
     "numpydoc",
     "sphinx_copybutton",
     "sphinx_design",
+    "sphinx_gallery.gen_gallery",
+    "myst_parser",
 ]
 
 templates_path = ["_templates"]
@@ -35,6 +37,20 @@ autosummary_generate = True
 napoleon_google_docstring = False
 napoleon_numpy_docstring = True
 numpydoc_show_class_members = False
+
+sphinx_gallery_conf = {
+    "examples_dirs": "../examples",
+    "gallery_dirs": "auto_examples",
+    "filename_pattern": r"plot_",
+    "ignore_pattern": r"zapline|tutorials|_legacy",
+    "reference_url": {
+        "mne_denoise": None,
+    },
+    "download_all_examples": False,
+    "show_signature": False,
+    "min_reported_time": 0,
+    "plot_gallery": True,
+}
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
@@ -49,7 +65,7 @@ intersphinx_mapping = {
 html_theme = "pydata_sphinx_theme"
 html_static_path = ["_static"]
 html_theme_options = {
-    "github_url": "https://github.com/snesmaeili/mne-denoise",
+    "github_url": "https://github.com/mne-tools/mne-denoise",
     "use_edit_page_button": True,
     "navbar_end": ["theme-switcher", "navbar-icon-links"],
 }

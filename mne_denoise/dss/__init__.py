@@ -1,151 +1,97 @@
-"""Denoising Source Separation (DSS) module for mne-denoise.
+"""Denoising Source Separation (DSS).
 
-This module provides implementations of linear and nonlinear DSS algorithms
-for evoked response enhancement, artifact removal, and rhythm extraction.
+This module contains:
+- Core DSS algorithms (linear and nonlinear)
+- Variants and applications (TSR, SSVEP, Narrowband)
 
-References
-----------
-.. [1] Särelä & Valpola (2005). Denoising Source Separation. JMLR.
-.. [2] de Cheveigné & Simon (2008). DSS for evoked responses. NeuroImage.
-.. [3] de Cheveigné (2020). ZapLine for line noise removal. NeuroImage.
+For ZapLine, see `mne_denoise.zapline`.
 """
 
-from __future__ import annotations
-
-from .whitening import whiten_data, compute_whitener
-from .core import compute_dss, DSS, DSSConfig
-from .iterative import iterative_dss, iterative_dss_one, IterativeDSS
-from .zapline import (
-    dss_zapline, dss_zapline_adaptive, ZapLineResult, ZapLinePlusResult,
-    zapline_plus, compute_psd_reduction,
-)
-from .narrowband_scan import narrowband_scan, narrowband_dss, NarrowbandScanResult
-from .tsr import time_shift_dss, smooth_dss, TimeShiftResult
-from .preprocessing import (
-    detect_bad_channels,
-    detect_bad_segments,
-    interpolate_bad_channels,
-    robust_covariance,
-    reject_epochs_by_amplitude,
-    RobustDSS,
-)
+# Core
+# Denoisers & Biases (Flat API)
 from .denoisers import (
+    BandpassBias,
+    CombFilterBias,
+    CycleAverageBias,
+    DCTDenoiser,
+    GaussDenoiser,
+    KurtosisDenoiser,
     LinearDenoiser,
     NonlinearDenoiser,
-    TrialAverageBias,
-    BandpassBias,
     NotchBias,
     PeakFilterBias,
-    CombFilterBias,
-    ssvep_dss,
-    CycleAverageBias,
-    find_ecg_events,
-    find_eog_events,
-    # Nonlinear denoisers (paper-faithful)
-    WienerMaskDenoiser,
-    TanhMaskDenoiser,
-    RobustTanhDenoiser,
-    GaussDenoiser,
-    SkewDenoiser,
-    DCTDenoiser,
-    Spectrogram2DDenoiser,
     QuasiPeriodicDenoiser,
-    KurtosisDenoiser,
-    # Beta helpers
-    beta_tanh,
-    beta_pow3,
+    RobustTanhDenoiser,
+    SkewDenoiser,
+    SmoothingBias,
+    SmoothTanhDenoiser,
+    SpectrogramBias,
+    SpectrogramDenoiser,
+    TanhMaskDenoiser,
+    TimeShiftBias,
+    TrialAverageBias,
+    WienerMaskDenoiser,
     beta_gauss,
-    # Gamma helpers
-    Gamma179,
-    GammaPredictive,
-    # Deprecated
-    VarianceMaskDenoiser,
-    TemporalSmoothnessDenoiser,
+    beta_pow3,
+    beta_tanh,
 )
+from .linear import DSS, compute_dss
+from .nonlinear import IterativeDSS, iterative_dss, iterative_dss_one
 
-# MNE integration (optional, only if MNE is installed)
-try:
-    from .mne_integration import (
-        apply_dss_to_raw,
-        apply_dss_to_epochs,
-        apply_zapline_to_raw,
-        apply_zapline_to_epochs,
-        get_dss_components,
-    )
-    _HAS_MNE_INTEGRATION = True
-except ImportError:
-    _HAS_MNE_INTEGRATION = False
+# Utils (exposed for convenience if needed)
+from .utils import convergence, whitening
+
+# Variants (Modules)
+from .variants import narrowband, ssvep, tsr
+from .variants.narrowband import narrowband_dss, narrowband_scan
+from .variants.ssvep import ssvep_dss
+
+# Variants (Direct Access)
+from .variants.tsr import smooth_dss, time_shift_dss
 
 __all__ = [
-    # Whitening
-    "whiten_data",
-    "compute_whitener",
-    # Linear DSS
+    # Core
     "compute_dss",
     "DSS",
-    "DSSConfig",
-    # Iterative/Nonlinear DSS
     "iterative_dss",
     "iterative_dss_one",
     "IterativeDSS",
-    # ZapLine
-    "dss_zapline",
-    "dss_zapline_adaptive",
-    "zapline_plus",
-    "ZapLineResult",
-    "ZapLinePlusResult",
-    "compute_psd_reduction",
-    # Narrowband Scan
-    "narrowband_scan",
-    "narrowband_dss",
-    "NarrowbandScanResult",
-    # Time-Shift DSS
+    # Variants modules
+    "tsr",
+    "ssvep",
+    "narrowband",
+    # Variants functions
     "time_shift_dss",
     "smooth_dss",
-    "TimeShiftResult",
-    # Preprocessing
-    "detect_bad_channels",
-    "detect_bad_segments",
-    "interpolate_bad_channels",
-    "robust_covariance",
-    "reject_epochs_by_amplitude",
-    "RobustDSS",
-    # Denoisers base
+    "ssvep_dss",
+    "narrowband_scan",
+    "narrowband_dss",
+    # Utils
+    "whitening",
+    "convergence",
+    # Denoisers (from .denoisers)
     "LinearDenoiser",
     "NonlinearDenoiser",
-    # Linear denoisers
     "TrialAverageBias",
     "BandpassBias",
     "NotchBias",
     "PeakFilterBias",
     "CombFilterBias",
-    "ssvep_dss",
     "CycleAverageBias",
-    "find_ecg_events",
-    "find_eog_events",
-    # Nonlinear denoisers (paper-faithful)
     "WienerMaskDenoiser",
     "TanhMaskDenoiser",
     "RobustTanhDenoiser",
     "GaussDenoiser",
     "SkewDenoiser",
+    "DCTDenoiser",
+    "SpectrogramBias",
+    "SpectrogramDenoiser",
     "QuasiPeriodicDenoiser",
     "KurtosisDenoiser",
-    # Beta helpers (FastICA Newton step)
+    "SmoothTanhDenoiser",
     "beta_tanh",
     "beta_pow3",
     "beta_gauss",
-    # Deprecated
-    "VarianceMaskDenoiser",
-    "TemporalSmoothnessDenoiser",
+    "TimeShiftBias",
+    "SmoothingBias",
 ]
-
-# Add MNE integration to exports if available
-if _HAS_MNE_INTEGRATION:
-    __all__.extend([
-        "apply_dss_to_raw",
-        "apply_dss_to_epochs",
-        "apply_zapline_to_raw",
-        "apply_zapline_to_epochs",
-        "get_dss_components",
-    ])

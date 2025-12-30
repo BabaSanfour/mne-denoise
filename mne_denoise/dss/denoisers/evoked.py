@@ -1,6 +1,14 @@
 """Evoked response bias for DSS.
 
 Implements trial averaging to enhance stimulus-locked activity.
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+
+References
+----------
+.. [1] Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
+.. [2] de Cheveigné & Simon (2008). Denoising based on spatial filtering. J. Neurosci. Methods.
 """
 
 from __future__ import annotations
@@ -14,8 +22,8 @@ class TrialAverageBias(LinearDenoiser):
     """Bias function for evoked response enhancement.
 
     Applies trial averaging to emphasize reproducible evoked responses
-    while canceling non-phase-locked noise. This is the classic DSS approach
-    from de Cheveigné & Simon (2008).
+    while canceling non-phase-locked noise. This maximizes the
+    reproducibility of the response across trials.
 
     Parameters
     ----------
@@ -24,10 +32,16 @@ class TrialAverageBias(LinearDenoiser):
 
     Examples
     --------
+    >>> from mne_denoise.dss.denoisers import TrialAverageBias
     >>> epochs_data = np.random.randn(64, 100, 50)  # channels x times x trials
     >>> bias = TrialAverageBias()
     >>> biased = bias.apply(epochs_data)
     >>> # biased has same shape, but each trial is replaced by the average
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.4 "DENOISING OF QUASIPERIODIC SIGNALS"
+    de Cheveigné & Simon (2008). Bias function
     """
 
     def __init__(self, weights: np.ndarray | None = None) -> None:
@@ -60,8 +74,7 @@ class TrialAverageBias(LinearDenoiser):
             weights = np.asarray(self.weights)
             if weights.shape[0] != n_epochs:
                 raise ValueError(
-                    f"weights length ({len(weights)}) must match "
-                    f"n_epochs ({n_epochs})"
+                    f"weights length ({len(weights)}) must match n_epochs ({n_epochs})"
                 )
             weights = weights / weights.sum()  # Normalize
             avg = np.tensordot(data, weights, axes=(2, 0))  # (n_ch, n_times)

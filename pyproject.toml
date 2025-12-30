@@ -8,19 +8,28 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mne-denoise"
 version = "0.0.1"
-description = "Narrow-band artefact suppression utilities integrated with MNE-Python."
+description = "Denoising Source Separation (DSS) and artifact removal algorithms for MNE-Python."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
 authors = [
-  { name = "Sina Esmaeili" },
+  { name = "Sina Esmaeili", email = "sina.esmaeili@umontreal.ca" },
+  { name = "Hamza Abdelhedi", email = "hamza.abdelhedi@umontreal.ca" },
+]
+maintainers = [
+  { name = "Sina Esmaeili", email = "sina.esmaeili@umontreal.ca" },
+  { name = "Hamza Abdelhedi", email = "hamza.abdelhedi@umontreal.ca" },
 ]
 keywords = [
   "mne",
   "denoising",
+  "dss",
+  "zapline",
   "neuroscience",
   "electrophysiology",
 ]
+
+
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
@@ -38,13 +47,19 @@ dependencies = [
   "numpy>=1.21",
   "scipy>=1.6",
   "matplotlib>=3.5",
+  "scikit-learn>=1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/mne-tools/mne-denoise"
+Repository = "https://github.com/mne-tools/mne-denoise"
+Issues = "https://github.com/mne-tools/mne-denoise/issues"
 
 [project.optional-dependencies]
 dev = [
-  "black>=24.3.0",
-  "flake8>=6.1.0",
-  "isort>=5.12.0",
+  "ruff>=0.1.0",
+  "build>=1.0.0",
+  "twine>=4.0.0",
   "mypy>=1.6.0",
   "pre-commit>=3.4.0",
   "pytest>=7.4.0",
@@ -58,14 +73,11 @@ docs = [
   "sphinx>=7.1.0",
   "sphinx-copybutton>=0.5.2",
   "sphinx-design>=0.5.0",
-]
-sklearn = [
-  "scikit-learn>=1.0",
+  "sphinx-gallery>=0.14.0",
+  "myst-parser>=2.0.0",
 ]
 all = [
-  "black>=24.3.0",
-  "flake8>=6.1.0",
-  "isort>=5.12.0",
+  "ruff>=0.1.0",
   "mypy>=1.6.0",
   "pre-commit>=3.4.0",
   "pytest>=7.4.0",
@@ -86,24 +98,28 @@ include-package-data = true
 [tool.setuptools.packages.find]
 where = [""]
 
-[tool.black]
+[tool.ruff]
 line-length = 88
-target-version = ["py39"]
+target-version = "py39"
 
-[tool.isort]
-profile = "black"
-line_length = 88
-known_first_party = ["mne_denoise"]
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "D"]
+ignore = [
+  "E501", "E731", "E402", "E722",
+  "D100", # Missing docstring in public module
+  "D104", # Missing docstring in public package
+  "D203", # One-blank-line-before-class (conflicts with D211)
+  "D212", # Multi-line-summary-first-line (conflicts with D213)
+  "D105", # Missing docstring in magic method
+]
 
-[tool.flake8]
-max-line-length = 88
-extend-ignore = [
-  "E203",
-  "W503",
-]
-per-file-ignores = [
-  "mne_denoise/__init__.py:F401",
-]
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/**" = ["D103"]
+"examples/**" = ["D", "E402"] # E402 often happens in examples with magics/paths
 
 [tool.pytest.ini_options]
 minversion = "7.0"

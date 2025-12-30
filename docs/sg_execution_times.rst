@@ -1,0 +1,70 @@
+
+:orphan:
+
+.. _sphx_glr_sg_execution_times:
+
+
+Computation times
+=================
+**04:50.250** total execution time for 12 files **from all galleries**:
+
+.. container::
+
+  .. raw:: html
+
+    <style scoped>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet" />
+    </style>
+    <script src="https://code.jquery.com/jquery-3.7.0.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script type="text/javascript" class="init">
+    $(document).ready( function () {
+        $('table.sg-datatable').DataTable({order: [[1, 'desc']]});
+    } );
+    </script>
+
+  .. list-table::
+   :header-rows: 1
+   :class: table table-striped sg-datatable
+
+   * - Example
+     - Time
+     - Mem (MB)
+   * - :ref:`sphx_glr_auto_examples_dss_plot_03_evoked_responses.py` (``../examples/dss/plot_03_evoked_responses.py``)
+     - 02:09.226
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_dss_plot_04_spectral_dss.py` (``../examples/dss/plot_04_spectral_dss.py``)
+     - 01:58.524
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_dss_plot_01_dss_fundamentals.py` (``../examples/dss/plot_01_dss_fundamentals.py``)
+     - 00:42.500
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_dss_plot_02_artifact_correction.py` (``../examples/dss/plot_02_artifact_correction.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_dss_plot_05_periodic_dss.py` (``../examples/dss/plot_05_periodic_dss.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_dss_plot_06_temporal_dss.py` (``../examples/dss/plot_06_temporal_dss.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_dss_plot_07_spectrogram_dss.py` (``../examples/dss/plot_07_spectrogram_dss.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_dss_plot_08_blind_source_separation.py` (``../examples/dss/plot_08_blind_source_separation.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_dss_plot_09_custom_bias.py` (``../examples/dss/plot_09_custom_bias.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_dss_plot_10_benchmarking.py` (``../examples/dss/plot_10_benchmarking.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_dss_plot_11_wiener_masking.py` (``../examples/dss/plot_11_wiener_masking.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_robust_dss_tutorial.py` (``../examples/robust_dss_tutorial.py``)
+     - 00:00.000
+     - 0.0

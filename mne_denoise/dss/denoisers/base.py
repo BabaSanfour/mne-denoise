@@ -2,6 +2,13 @@
 
 Provides abstract interfaces for linear and nonlinear bias functions
 that can be plugged into the DSS pipeline.
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+
+References
+----------
+.. [1] Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
 """
 
 from __future__ import annotations
@@ -19,6 +26,10 @@ class LinearDenoiser(ABC):
     spatial filters that maximize the ratio of biased to baseline variance.
 
     Subclasses must implement the `apply` method.
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 2.2 "Linear DSS"
     """
 
     @abstractmethod
@@ -52,6 +63,11 @@ class NonlinearDenoiser(ABC):
 
     Examples include variance-based masking, kurtosis maximization,
     and other adaptive transformations.
+
+    References
+    ----------
+    Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
+    Section 2.1 "One-Unit Algorithm for Source Separation"
     """
 
     @abstractmethod
