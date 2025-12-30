@@ -13,7 +13,7 @@ References
 
 from __future__ import annotations
 
-from typing import Optional, Tuple, List
+from typing import List, Optional, Tuple
 
 import numpy as np
 from scipy import ndimage, signal
@@ -44,8 +44,12 @@ class PeakFilterBias(LinearDenoiser):
     --------
     >>> # Extract 10 Hz alpha with tight filter
     >>> from mne_denoise.dss.denoisers import PeakFilterBias
-    >>> bias = PeakFilterBias(freq=10, sfreq=250, q_factor=20)
+    >>> bias = PeakFilterBias(freq=10, sfreq=250, q_factor=30)
     >>> biased_data = bias.apply(data)
+
+    See Also
+    --------
+    mne_denoise.dss.denoisers.spectral.BandpassBias : For broader band rhythms.
 
     Notes
     -----
@@ -86,7 +90,7 @@ class PeakFilterBias(LinearDenoiser):
         w0 = self.freq / nyq
 
         # Bandwidth from Q factor
-        bw = w0 / self.q_factor
+        w0 / self.q_factor
 
         # Design peak filter using iirpeak
         b, a = signal.iirpeak(w0, self.q_factor)
@@ -111,9 +115,7 @@ class PeakFilterBias(LinearDenoiser):
             n_channels, n_times, n_epochs = data.shape
             biased = np.zeros_like(data)
             for ep in range(n_epochs):
-                biased[:, :, ep] = signal.sosfiltfilt(
-                    self._sos, data[:, :, ep], axis=1
-                )
+                biased[:, :, ep] = signal.sosfiltfilt(self._sos, data[:, :, ep], axis=1)
         elif data.ndim == 2:
             biased = signal.sosfiltfilt(self._sos, data, axis=1)
         else:
@@ -128,7 +130,7 @@ class CombFilterBias(LinearDenoiser):
     Applies a comb filter that passes the fundamental frequency and its
     harmonics. Ideal for SSVEP analysis where stimulus frequency creates
     responses at multiple harmonic frequencies.
-    
+
     Parameters
     ----------
     fundamental_freq : float
@@ -148,14 +150,18 @@ class CombFilterBias(LinearDenoiser):
     --------
     >>> # SSVEP at 15 Hz with 3 harmonics (15, 30, 45 Hz)
     >>> from mne_denoise.dss.denoisers import CombFilterBias
-    >>> bias = CombFilterBias(fundamental_freq=15, sfreq=250, n_harmonics=3)
+    >>> bias = CombFilterBias(fundamental_freq=50, sfreq=1000, n_harmonics=5)
     >>> biased_data = bias.apply(data)
-
     >>> # Custom weighting (equal weight for all harmonics)
     >>> bias = CombFilterBias(
     ...     fundamental_freq=12, sfreq=500, n_harmonics=4,
     ...     weights=[1.0, 1.0, 1.0, 1.0]
     ... )
+
+    See Also
+    --------
+    PeakFilterBias : For single frequency targets.
+
 
     Notes
     -----
@@ -180,7 +186,7 @@ class CombFilterBias(LinearDenoiser):
         self.sfreq = sfreq
         self.n_harmonics = n_harmonics
         self.q_factor = q_factor
-        
+
         # Set up weights
         if weights is None:
             self.weights = np.array([1.0 / h for h in range(1, n_harmonics + 1)])
@@ -202,7 +208,7 @@ class CombFilterBias(LinearDenoiser):
 
         for h in range(1, self.n_harmonics + 1):
             freq = self.fundamental_freq * h
-            
+
             if freq >= nyq * 0.95:
                 continue  # Skip harmonics too close to Nyquist
 
@@ -375,9 +381,7 @@ class QuasiPeriodicDenoiser(NonlinearDenoiser):
             if len(cycle) >= 3:
                 # Resample to warp_len
                 warped = np.interp(
-                    np.linspace(0, 1, warp_len),
-                    np.linspace(0, 1, len(cycle)),
-                    cycle
+                    np.linspace(0, 1, warp_len), np.linspace(0, 1, len(cycle)), cycle
                 )
                 warped_cycles.append(warped)
 
@@ -390,7 +394,9 @@ class QuasiPeriodicDenoiser(NonlinearDenoiser):
         # Optional smoothing
         if self.smooth_template:
             smooth_window = max(3, warp_len // 20)
-            template = ndimage.uniform_filter1d(template, size=smooth_window, mode='reflect')
+            template = ndimage.uniform_filter1d(
+                template, size=smooth_window, mode="reflect"
+            )
 
         # Step 5: Replace each cycle with time-warped template
         denoised = np.zeros_like(source)
@@ -398,13 +404,11 @@ class QuasiPeriodicDenoiser(NonlinearDenoiser):
             start = boundaries[i]
             end = boundaries[i + 1]
             cycle_len = end - start
-            
+
             if cycle_len >= 3:
                 # Warp template back to original cycle length
                 warped_template = np.interp(
-                    np.linspace(0, 1, cycle_len),
-                    np.linspace(0, 1, warp_len),
-                    template
+                    np.linspace(0, 1, cycle_len), np.linspace(0, 1, warp_len), template
                 )
                 # Match amplitude to original cycle
                 scale = np.std(cycle) / (np.std(warped_template) + 1e-15)
@@ -412,4 +416,3 @@ class QuasiPeriodicDenoiser(NonlinearDenoiser):
                 denoised[start:end] = warped_template * scale + offset
 
         return denoised
-

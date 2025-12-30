@@ -31,7 +31,7 @@ class WienerMaskDenoiser(NonlinearDenoiser):
         s⁺(t) = s(t) · m(t)
 
     This is adaptive/nonlinear because the mask is estimated from the data.
-    Ideal for bursty, non-stationary signals (spindles, beta bursts, 
+    Ideal for bursty, non-stationary signals (spindles, beta bursts,
     intermittent artifacts).
 
     Parameters
@@ -101,10 +101,10 @@ class WienerMaskDenoiser(NonlinearDenoiser):
         window = min(self.window_samples, n_samples // 2)
 
         # Estimate local signal variance: σ²(t) = E[s²] - E[s]²
-        source_sq = source ** 2
-        local_mean_sq = ndimage.uniform_filter1d(source_sq, size=window, mode='reflect')
-        local_mean = ndimage.uniform_filter1d(source, size=window, mode='reflect')
-        local_var = np.maximum(local_mean_sq - local_mean ** 2, 0)
+        source_sq = source**2
+        local_mean_sq = ndimage.uniform_filter1d(source_sq, size=window, mode="reflect")
+        local_mean = ndimage.uniform_filter1d(source, size=window, mode="reflect")
+        local_var = np.maximum(local_mean_sq - local_mean**2, 0)
 
         # Estimate noise variance (from quiet periods)
         if self.noise_variance is not None:
@@ -118,7 +118,7 @@ class WienerMaskDenoiser(NonlinearDenoiser):
         # where σ²_signal = max(0, local_var - noise_var)
         signal_var = np.maximum(local_var - noise_var, 0)
         mask = signal_var / (signal_var + noise_var + 1e-15)
-        
+
         # Apply minimum gain
         mask = np.maximum(mask, self.min_gain)
 
@@ -150,7 +150,7 @@ class VarianceMaskDenoiser(NonlinearDenoiser):
 
     References
     ----------
-    Särelä & Valpola (2005). Section 4.4 "Spectral Shift and Approximation of the Objective 
+    Särelä & Valpola (2005). Section 4.4 "Spectral Shift and Approximation of the Objective
     Function with Mask-Based Denoisings"
     """
 
@@ -181,12 +181,12 @@ class VarianceMaskDenoiser(NonlinearDenoiser):
     def _denoise_1d(self, source: np.ndarray) -> np.ndarray:
         """Process single 1D source."""
         n_samples = len(source)
-        source_sq = source ** 2
+        source_sq = source**2
         window = min(self.window_samples, n_samples)
 
-        local_mean_sq = ndimage.uniform_filter1d(source_sq, size=window, mode='reflect')
-        local_mean = ndimage.uniform_filter1d(source, size=window, mode='reflect')
-        local_var = np.maximum(local_mean_sq - local_mean ** 2, 0)
+        local_mean_sq = ndimage.uniform_filter1d(source_sq, size=window, mode="reflect")
+        local_mean = ndimage.uniform_filter1d(source, size=window, mode="reflect")
+        local_var = np.maximum(local_mean_sq - local_mean**2, 0)
 
         if self.soft:
             threshold = np.percentile(local_var, self.percentile)

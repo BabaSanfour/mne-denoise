@@ -16,7 +16,7 @@ References
 
 from __future__ import annotations
 
-from typing import Union, Optional
+from typing import Optional, Union
 
 import numpy as np
 
@@ -42,9 +42,12 @@ class TimeShiftBias(LinearDenoiser):
 
     Examples
     --------
-    >>> bias = TimeShiftBias(shifts=10)
-    >>> dss = DSS(bias=bias)
-    >>> dss.fit(data)
+    >>> bias = TimeShiftBias(shifts=[1, 2, 5, 10], method='prediction')
+    >>> biased_data = bias.apply(data)
+
+    See Also
+    --------
+    SmoothingBias : Bias for low-frequency signals.
     """
 
     def __init__(
@@ -101,7 +104,9 @@ class TimeShiftBias(LinearDenoiser):
         max_shift = np.max(np.abs(shifts))
 
         if max_shift >= n_samples // 2:
-            raise ValueError(f"Max shift ({max_shift}) too large for data length ({n_samples})")
+            raise ValueError(
+                f"Max shift ({max_shift}) too large for data length ({n_samples})"
+            )
 
         valid_start = max_shift
         valid_end = n_samples - max_shift
@@ -159,8 +164,11 @@ class SmoothingBias(LinearDenoiser):
     Examples
     --------
     >>> bias = SmoothingBias(window=20)
-    >>> dss = DSS(bias=bias)
-    >>> dss.fit(data)
+    >>> biased_data = bias.apply(data)
+
+    See Also
+    --------
+    TimeShiftBias : Bias for periodic or autocorrelated signals.
     """
 
     def __init__(self, window: int = 10) -> None:
@@ -208,15 +216,21 @@ class DCTDenoiser(NonlinearDenoiser):
         If mask is None, this fraction of DCT coefficients are kept.
         Default 0.5 (lowpass, keep first 50% of coefficients).
 
+    Examples
+    --------
+    >>> from mne_denoise.dss.denoisers import DCTDenoiser
+    >>> # Keep only the lowest 20% of DCT coefficients (smooth signal)
+    >>> denoiser = DCTDenoiser(cutoff_fraction=0.2)
+    >>> smooth_source = denoiser.denoise(source)
+
+
     References
     ----------
     Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
     """
 
     def __init__(
-        self, 
-        mask: Optional[np.ndarray] = None, 
-        cutoff_fraction: float = 0.5
+        self, mask: Optional[np.ndarray] = None, cutoff_fraction: float = 0.5
     ) -> None:
         self.mask = mask
         self.cutoff_fraction = cutoff_fraction
@@ -226,9 +240,9 @@ class DCTDenoiser(NonlinearDenoiser):
     def denoise(self, source: np.ndarray) -> np.ndarray:
         """Apply DCT filtering."""
         from scipy.fftpack import dct, idct
-        
+
         n = len(source)
-        
+
         # Create or retrieve mask
         if self.mask is not None:
             if len(self.mask) == n:
@@ -236,9 +250,7 @@ class DCTDenoiser(NonlinearDenoiser):
             else:
                 # Resample mask to match signal length
                 mask = np.interp(
-                    np.linspace(0, 1, n),
-                    np.linspace(0, 1, len(self.mask)),
-                    self.mask
+                    np.linspace(0, 1, n), np.linspace(0, 1, len(self.mask)), self.mask
                 )
         else:
             # Create lowpass mask if not cached or length changed
@@ -250,25 +262,26 @@ class DCTDenoiser(NonlinearDenoiser):
                 self._cached_len = n
             else:
                 mask = self._cached_mask
-        
+
         if source.ndim == 1:
-            dct_coeffs = dct(source, type=2, norm='ortho')
+            dct_coeffs = dct(source, type=2, norm="ortho")
             dct_filtered = dct_coeffs * mask
-            return idct(dct_filtered, type=2, norm='ortho')
-        elif source.ndim == 2:            
+            return idct(dct_filtered, type=2, norm="ortho")
+        elif source.ndim == 2:
             _, n_epochs = source.shape
             denoised = np.zeros_like(source)
             for ep in range(n_epochs):
-                 denoised[:, ep] = self._denoise_1d(source[:, ep], mask)
+                denoised[:, ep] = self._denoise_1d(source[:, ep], mask)
             return denoised
         else:
             raise ValueError(f"Source must be 1D or 2D, got {source.ndim}D")
 
     def _denoise_1d(self, source, mask):
         from scipy.fftpack import dct, idct
-        dct_coeffs = dct(source, type=2, norm='ortho')
+
+        dct_coeffs = dct(source, type=2, norm="ortho")
         dct_filtered = dct_coeffs * mask
-        return idct(dct_filtered, type=2, norm='ortho')
+        return idct(dct_filtered, type=2, norm="ortho")
 
 
 class TemporalSmoothnessDenoiser(NonlinearDenoiser):
@@ -308,16 +321,20 @@ class TemporalSmoothnessDenoiser(NonlinearDenoiser):
         if source.ndim == 1:
             window = max(3, int(len(source) * self.smoothing_factor))
             weights = np.ones(window) / window
-            smoothed = np.convolve(source, weights, mode='same')
-            return (1 - self.smoothing_factor) * source + self.smoothing_factor * smoothed
+            smoothed = np.convolve(source, weights, mode="same")
+            return (
+                1 - self.smoothing_factor
+            ) * source + self.smoothing_factor * smoothed
         elif source.ndim == 2:
             n_times, n_trials = source.shape
             window = max(3, int(n_times * self.smoothing_factor))
             weights = np.ones(window) / window
             denoised = np.zeros_like(source)
             for t in range(n_trials):
-                smoothed = np.convolve(source[:, t], weights, mode='same')
-                denoised[:, t] = (1 - self.smoothing_factor) * source[:, t] + self.smoothing_factor * smoothed
+                smoothed = np.convolve(source[:, t], weights, mode="same")
+                denoised[:, t] = (1 - self.smoothing_factor) * source[
+                    :, t
+                ] + self.smoothing_factor * smoothed
             return denoised
         else:
             raise ValueError(f"Source must be 1D or 2D, got {source.ndim}D")

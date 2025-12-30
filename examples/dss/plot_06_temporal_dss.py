@@ -1,7 +1,7 @@
 """
-==================================
-Temporal DSS: Time-Shift Regression & Smoothness
-==================================
+=================================================
+Temporal DSS: Time-Shift Regression & Smoothness.
+=================================================
 
 This example demonstrates DSS for extracting **temporally structured** signals:
 autocorrelated components, slow drifts, and smooth waveforms.
@@ -16,29 +16,32 @@ We cover both **linear biases** (TimeShiftBias, SmoothingBias) and
 - Part 3: DCTDenoiser + IterativeDSS (DCT Domain)
 - Part 4: TemporalSmoothnessDenoiser + IterativeDSS
 - Part 5: Real EEG Slow Cortical Potentials
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 """
 
 # %%
 # Imports
 # -------
 
-import numpy as np
 import matplotlib.pyplot as plt
 import mne
+import numpy as np
 from scipy import signal
 
 from mne_denoise.dss import DSS, IterativeDSS
 from mne_denoise.dss.denoisers import (
-    TimeShiftBias,
-    SmoothingBias,
     DCTDenoiser,
-    TemporalSmoothnessDenoiser
+    SmoothingBias,
+    TemporalSmoothnessDenoiser,
+    TimeShiftBias,
 )
-from mne_denoise.dss.variants import time_shift_dss, smooth_dss
+from mne_denoise.dss.variants import smooth_dss, time_shift_dss
 from mne_denoise.viz import (
     plot_component_summary,
+    plot_psd_comparison,
     plot_time_course_comparison,
-    plot_psd_comparison
 )
 
 # %%
@@ -71,10 +74,26 @@ data[:4] += drift * np.array([[1.0], [0.8], [0.6], [0.4]])
 print(f"Simulated {n_channels} ch × {n_seconds}s with slow drift in first 4 channels")
 
 # Create MNE Raw with montage
-ch_names = ['Fz', 'F3', 'F4', 'Cz', 'C3', 'C4', 'Pz', 'P3',
-            'P4', 'Oz', 'O1', 'O2', 'Fp1', 'Fp2', 'T7', 'T8']
+ch_names = [
+    "Fz",
+    "F3",
+    "F4",
+    "Cz",
+    "C3",
+    "C4",
+    "Pz",
+    "P3",
+    "P4",
+    "Oz",
+    "O1",
+    "O2",
+    "Fp1",
+    "Fp2",
+    "T7",
+    "T8",
+]
 info_sim = mne.create_info(ch_names, sfreq, "eeg")
-montage = mne.channels.make_standard_montage('standard_1020')
+montage = mne.channels.make_standard_montage("standard_1020")
 info_sim.set_montage(montage)
 raw_sim = mne.io.RawArray(data, info_sim)
 
@@ -82,16 +101,18 @@ raw_sim = mne.io.RawArray(data, info_sim)
 fig, axes = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
 t_plot = times[:1000]  # First 4 seconds
 
-axes[0].plot(t_plot, drift[:1000], 'b', linewidth=2, label='Ground Truth Drift')
-axes[0].set_title('Slow Drift Component (Random Walk)')
-axes[0].set_ylabel('Amplitude')
+axes[0].plot(t_plot, drift[:1000], "b", linewidth=2, label="Ground Truth Drift")
+axes[0].set_title("Slow Drift Component (Random Walk)")
+axes[0].set_ylabel("Amplitude")
 axes[0].legend()
 axes[0].grid(True, alpha=0.3)
 
-axes[1].plot(t_plot, data[0, :1000], 'gray', alpha=0.7, label='Channel Fz (drift + noise)')
-axes[1].set_title('Observed Data (Drift Mixed with Noise)')
-axes[1].set_xlabel('Time (s)')
-axes[1].set_ylabel('Amplitude')
+axes[1].plot(
+    t_plot, data[0, :1000], "gray", alpha=0.7, label="Channel Fz (drift + noise)"
+)
+axes[1].set_title("Observed Data (Drift Mixed with Noise)")
+axes[1].set_xlabel("Time (s)")
+axes[1].set_ylabel("Amplitude")
 axes[1].legend()
 axes[1].grid(True, alpha=0.3)
 
@@ -107,7 +128,7 @@ plt.show(block=False)
 print("\n--- Part 1: Time-Shift Regression ---")
 
 # Manual TimeShiftBias
-bias_tsr = TimeShiftBias(shifts=10, method='autocorrelation')
+bias_tsr = TimeShiftBias(shifts=10, method="autocorrelation")
 dss_tsr_manual = DSS(n_components=5, bias=bias_tsr)
 dss_tsr_manual.fit(raw_sim)
 
@@ -122,7 +143,7 @@ print("(Should be identical)")
 
 # Use manual for visualization
 plot_component_summary(dss_tsr_manual, data=raw_sim, n_components=3, show=False)
-plt.gcf().suptitle('TimeShiftBias (TSR): Autocorrelated Components')
+plt.gcf().suptitle("TimeShiftBias (TSR): Autocorrelated Components")
 plt.show(block=False)
 
 # Compare first component with ground truth
@@ -139,12 +160,18 @@ print(f"\nCorrelation with ground truth drift: {corr_tsr:.3f}")
 # Plot comparison
 plt.figure(figsize=(12, 5))
 t_zoom = times[:2000]  # First 8 seconds
-plt.plot(t_zoom, drift[:2000], 'b', linewidth=2, label='Ground Truth Drift', alpha=0.7)
-plt.plot(t_zoom, comp0_tsr[:2000] * (np.std(drift) / np.std(comp0_tsr)), 
-         'r', linewidth=1.5, label=f'TSR Component 0 (r={corr_tsr:.3f})', alpha=0.8)
-plt.xlabel('Time (s)')
-plt.ylabel('Amplitude (scaled)')
-plt.title('Time-Shift Regression: Extracted Slow Drift')
+plt.plot(t_zoom, drift[:2000], "b", linewidth=2, label="Ground Truth Drift", alpha=0.7)
+plt.plot(
+    t_zoom,
+    comp0_tsr[:2000] * (np.std(drift) / np.std(comp0_tsr)),
+    "r",
+    linewidth=1.5,
+    label=f"TSR Component 0 (r={corr_tsr:.3f})",
+    alpha=0.8,
+)
+plt.xlabel("Time (s)")
+plt.ylabel("Amplitude (scaled)")
+plt.title("Time-Shift Regression: Extracted Slow Drift")
 plt.legend()
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
@@ -173,7 +200,7 @@ print(f"Wrapper Eigenvalues: {dss_smooth_wrapper.eigenvalues_[:5]}")
 
 # Visualize
 plot_component_summary(dss_smooth_manual, data=raw_sim, n_components=3, show=False)
-plt.gcf().suptitle('SmoothingBias: Low-Frequency Components')
+plt.gcf().suptitle("SmoothingBias: Low-Frequency Components")
 plt.show(block=False)
 
 # Compare with ground truth
@@ -198,19 +225,15 @@ print("\n--- Part 3: DCT Denoiser + IterativeDSS ---")
 dct_denoiser = DCTDenoiser(cutoff_fraction=0.3)
 
 # IterativeDSS with DCT denoising
-idss_dct = IterativeDSS(
-    denoiser=dct_denoiser,
-    n_components=3,
-    max_iter=5
-)
+idss_dct = IterativeDSS(denoiser=dct_denoiser, n_components=3, max_iter=5)
 
 idss_dct.fit(raw_sim)
 
-print(f"IterativeDSS (DCT) converged")
+print("IterativeDSS (DCT) converged")
 
 # Visualize
 plot_component_summary(idss_dct, data=raw_sim, n_components=3, show=False)
-plt.gcf().suptitle('DCTDenoiser + IterativeDSS: DCT Domain Smoothing')
+plt.gcf().suptitle("DCTDenoiser + IterativeDSS: DCT Domain Smoothing")
 plt.show(block=False)
 
 # Compare with ground truth
@@ -235,18 +258,16 @@ print("\n--- Part 4: TemporalSmoothnessDenoiser + IterativeDSS ---")
 temp_smooth_denoiser = TemporalSmoothnessDenoiser(smoothing_factor=0.2)
 
 idss_tempsmooth = IterativeDSS(
-    denoiser=temp_smooth_denoiser,
-    n_components=3,
-    max_iter=5
+    denoiser=temp_smooth_denoiser, n_components=3, max_iter=5
 )
 
 idss_tempsmooth.fit(raw_sim)
 
-print(f"IterativeDSS (TempSmooth) converged")
+print("IterativeDSS (TempSmooth) converged")
 
 # Visualize
 plot_component_summary(idss_tempsmooth, data=raw_sim, n_components=3, show=False)
-plt.gcf().suptitle('TemporalSmoothnessDenoiser + IterativeDSS')
+plt.gcf().suptitle("TemporalSmoothnessDenoiser + IterativeDSS")
 plt.show(block=False)
 
 sources_tempsmooth = idss_tempsmooth.transform(raw_sim)
@@ -268,35 +289,44 @@ fig, axes = plt.subplots(5, 1, figsize=(14, 10), sharex=True)
 t_compare = times[:2000]
 scale = np.std(drift) / np.std(comp0_tsr)
 
-axes[0].plot(t_compare, drift[:2000], 'k', linewidth=2, label='Ground Truth')
-axes[0].set_title('Ground Truth: Slow Drift (Random Walk)')
-axes[0].set_ylabel('Amplitude')
+axes[0].plot(t_compare, drift[:2000], "k", linewidth=2, label="Ground Truth")
+axes[0].set_title("Ground Truth: Slow Drift (Random Walk)")
+axes[0].set_ylabel("Amplitude")
 axes[0].legend()
 axes[0].grid(True, alpha=0.3)
 
-axes[1].plot(t_compare, comp0_tsr[:2000] * scale, 'r', label=f'TSR (r={corr_tsr:.3f})')
-axes[1].set_title('TimeShiftBias (Time-Shift Regression)')
-axes[1].set_ylabel('Amplitude')
+axes[1].plot(t_compare, comp0_tsr[:2000] * scale, "r", label=f"TSR (r={corr_tsr:.3f})")
+axes[1].set_title("TimeShiftBias (Time-Shift Regression)")
+axes[1].set_ylabel("Amplitude")
 axes[1].legend()
 axes[1].grid(True, alpha=0.3)
 
-axes[2].plot(t_compare, comp0_smooth[:2000] * scale, 'b', label=f'Smoothing (r={corr_smooth:.3f})')
-axes[2].set_title('SmoothingBias (Moving Average)')
-axes[2].set_ylabel('Amplitude')
+axes[2].plot(
+    t_compare,
+    comp0_smooth[:2000] * scale,
+    "b",
+    label=f"Smoothing (r={corr_smooth:.3f})",
+)
+axes[2].set_title("SmoothingBias (Moving Average)")
+axes[2].set_ylabel("Amplitude")
 axes[2].legend()
 axes[2].grid(True, alpha=0.3)
 
-axes[3].plot(t_compare, comp0_dct[:2000] * scale, 'g', label=f'DCT (r={corr_dct:.3f})')
-axes[3].set_title('DCTDenoiser (DCT Domain Lowpass)')
-axes[3].set_ylabel('Amplitude')
+axes[3].plot(t_compare, comp0_dct[:2000] * scale, "g", label=f"DCT (r={corr_dct:.3f})")
+axes[3].set_title("DCTDenoiser (DCT Domain Lowpass)")
+axes[3].set_ylabel("Amplitude")
 axes[3].legend()
 axes[3].grid(True, alpha=0.3)
 
-axes[4].plot(t_compare, comp0_tempsmooth[:2000] * scale, 'purple', 
-             label=f'TempSmooth (r={corr_tempsmooth:.3f})')
-axes[4].set_title('TemporalSmoothnessDenoiser (Adaptive Smoothing)')
-axes[4].set_xlabel('Time (s)')
-axes[4].set_ylabel('Amplitude')
+axes[4].plot(
+    t_compare,
+    comp0_tempsmooth[:2000] * scale,
+    "purple",
+    label=f"TempSmooth (r={corr_tempsmooth:.3f})",
+)
+axes[4].set_title("TemporalSmoothnessDenoiser (Adaptive Smoothing)")
+axes[4].set_xlabel("Time (s)")
+axes[4].set_ylabel("Amplitude")
 axes[4].legend()
 axes[4].grid(True, alpha=0.3)
 
@@ -324,11 +354,11 @@ raw_path = eegbci.load_data(subject, runs)[0]
 raw_eeg = mne.io.read_raw_edf(raw_path, preload=True, verbose=False)
 
 # Add montage for topomap plotting
-montage = mne.channels.make_standard_montage('standard_1005')
-raw_eeg.set_montage(montage, on_missing='ignore', verbose=False)
+montage = mne.channels.make_standard_montage("standard_1005")
+raw_eeg.set_montage(montage, on_missing="ignore", verbose=False)
 
-raw_eeg.filter(0.1, 10, fir_design='firwin', verbose=False)  # Slow oscillations
-raw_eeg.set_eeg_reference('average', projection=True, verbose=False)
+raw_eeg.filter(0.1, 10, fir_design="firwin", verbose=False)  # Slow oscillations
+raw_eeg.set_eeg_reference("average", projection=True, verbose=False)
 raw_eeg.apply_proj()
 raw_eeg.crop(0, 30)  # 30 seconds
 
@@ -345,15 +375,16 @@ sources_eeg = dss_eeg_tsr.transform(raw_eeg)
 
 # Create comparison plots using viz
 raw_single = raw_eeg.copy().pick([0])  # First channel
-comp_raw = mne.io.RawArray(sources_eeg[[0]], 
-                           mne.create_info(1, raw_eeg.info['sfreq'], 'misc'))
+comp_raw = mne.io.RawArray(
+    sources_eeg[[0]], mne.create_info(1, raw_eeg.info["sfreq"], "eeg")
+)
 
 plot_time_course_comparison(raw_single, comp_raw, start=0, stop=10, show=False)
-plt.gcf().suptitle('Real EEG: Original vs TSR Component 0')
+plt.gcf().suptitle("Real EEG: Original vs TSR Component 0")
 plt.show(block=False)
 
 plot_psd_comparison(raw_single, comp_raw, fmin=0.1, fmax=10, show=False)
-plt.gcf().axes[0].set_title('Real EEG: PSD Comparison (Slow Oscillations)')
+plt.gcf().axes[0].set_title("Real EEG: PSD Comparison (Slow Oscillations)")
 plt.show(block=False)
 
 print("\nTSR successfully extracted slow cortical potentials from real EEG!")

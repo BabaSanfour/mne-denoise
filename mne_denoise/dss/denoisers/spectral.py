@@ -20,7 +20,7 @@ from typing import Optional, Tuple
 import numpy as np
 from scipy import signal
 
-from .base import LinearDenoiser, NonlinearDenoiser
+from .base import LinearDenoiser
 
 
 class BandpassBias(LinearDenoiser):
@@ -45,7 +45,11 @@ class BandpassBias(LinearDenoiser):
     --------
     >>> from mne_denoise.dss.denoisers import BandpassBias
     >>> bias = BandpassBias(freq_band=(8, 12), sfreq=250)  # Alpha band
-    >>> biased_data = bias.apply(raw_data)
+    >>> dss.fit(data)
+
+    See Also
+    --------
+    mne_denoise.dss.denoisers.PeakFilterBias : For strictly periodic signals.
 
     References
     ----------
@@ -79,9 +83,7 @@ class BandpassBias(LinearDenoiser):
         if low <= 0:
             raise ValueError(f"Low frequency must be > 0, got {low}")
         if high >= nyq:
-            raise ValueError(
-                f"High frequency ({high}) must be < Nyquist ({nyq})"
-            )
+            raise ValueError(f"High frequency ({high}) must be < Nyquist ({nyq})")
 
         if self.method == "butter":
             # Use second-order sections for stability
@@ -113,9 +115,7 @@ class BandpassBias(LinearDenoiser):
             # Process each epoch separately to avoid edge effects between epochs
             biased = np.zeros_like(data)
             for ep in range(n_epochs):
-                biased[:, :, ep] = signal.sosfiltfilt(
-                    self._sos, data[:, :, ep], axis=1
-                )
+                biased[:, :, ep] = signal.sosfiltfilt(self._sos, data[:, :, ep], axis=1)
         elif data.ndim == 2:
             biased = signal.sosfiltfilt(self._sos, data, axis=1)
         else:
@@ -143,8 +143,12 @@ class NotchBias(LinearDenoiser):
     Examples
     --------
     >>> from mne_denoise.dss.denoisers import NotchBias
-    >>> bias = NotchBias(freq_band=50, sfreq=250, bandwidth=2)  # Line noise
-    >>> biased = bias.apply(data)  # Contains mostly 50 Hz component
+    >>> bias = NotchBias(freq=60, sfreq=250, bandwidth=2)
+    >>> biased_data = bias.apply(data)
+
+    See Also
+    --------
+    BandpassBias : Band-pass filter bias.
 
     References
     ----------

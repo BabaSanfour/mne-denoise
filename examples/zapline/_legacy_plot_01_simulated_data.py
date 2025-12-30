@@ -1,5 +1,5 @@
 """
-ZapLine: Simulated Data Demo
+ZapLine: Simulated Data Demo.
 ============================
 
 This example demonstrates the ZapLine algorithm (de Cheveigné, 2020) for
@@ -10,6 +10,9 @@ The algorithm combines spectral and spatial filtering:
 2. Apply DSS spatial filter to remove line components from contaminated part
 3. Combine to get clean, full-rank data
 
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+
 Reference
 ---------
 de Cheveigné, A. (2020). ZapLine: A simple and effective method to remove
@@ -19,15 +22,16 @@ power line artifacts. NeuroImage, 207, 116356.
 # %%
 # Imports
 # -------
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy import signal
-
 # Add parent to path for development
 import sys
-sys.path.insert(0, r'D:\PhD\mne-denoise')
 
-from mne_denoise import dss_zapline, compute_psd_reduction
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy import signal
+
+sys.path.insert(0, r"D:\PhD\mne-denoise")
+
+from mne_denoise import compute_psd_reduction, dss_zapline
 
 # %%
 # Create Simulated Data
@@ -60,21 +64,22 @@ line_mixing = np.random.randn(n_channels, 1)
 line_noise = line_mixing * line_waveform
 
 # Scale to approximately equal power
-signal_power = np.mean(signal_data ** 2)
-noise_power = np.mean(line_noise ** 2)
+signal_power = np.mean(signal_data**2)
+noise_power = np.mean(line_noise**2)
 line_noise = line_noise * np.sqrt(signal_power / noise_power)
 
 # Mixture
 data = signal_data + line_noise
 
 print(f"Data shape: {data.shape}")
-print(f"Signal power: {np.mean(signal_data ** 2):.4f}")
-print(f"Noise power: {np.mean(line_noise ** 2):.4f}")
-print(f"SNR: {10 * np.log10(signal_power / np.mean(line_noise ** 2)):.1f} dB")
+print(f"Signal power: {np.mean(signal_data**2):.4f}")
+print(f"Noise power: {np.mean(line_noise**2):.4f}")
+print(f"SNR: {10 * np.log10(signal_power / np.mean(line_noise**2)):.1f} dB")
 
 # %%
 # Compute PSD Before Cleaning
 # ---------------------------
+
 
 def compute_normalized_psd(data, sfreq, nperseg=1024):
     """Compute normalized PSD (sum over frequencies = 1)."""
@@ -84,6 +89,7 @@ def compute_normalized_psd(data, sfreq, nperseg=1024):
     # Normalize
     mean_psd = mean_psd / np.sum(mean_psd)
     return freqs, mean_psd
+
 
 freqs, psd_before = compute_normalized_psd(data, sfreq)
 
@@ -95,12 +101,14 @@ freqs, psd_before = compute_normalized_psd(data, sfreq)
 
 # Apply ZapLine with d=4 (as suggested in paper for MEG-like data)
 result = dss_zapline(
-    data, line_freq=line_freq, sfreq=sfreq,
+    data,
+    line_freq=line_freq,
+    sfreq=sfreq,
     n_remove=4,  # Remove 4 components
     n_harmonics=4,  # Include harmonics up to 200 Hz
 )
 
-print(f"\nZapLine Results:")
+print("\nZapLine Results:")
 print(f"  Components removed: {result.n_removed}")
 print(f"  Harmonics processed: {result.n_harmonics}")
 
@@ -119,39 +127,39 @@ fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
 # Original data
 ax = axes[0]
-ax.semilogy(freqs, psd_before, 'k-', linewidth=1.5, label='Original')
-ax.set_xlabel('Frequency (Hz)')
-ax.set_ylabel('Normalized PSD')
-ax.set_title('Line-Contaminated Data')
-ax.set_xlim([0, sfreq/2])
+ax.semilogy(freqs, psd_before, "k-", linewidth=1.5, label="Original")
+ax.set_xlabel("Frequency (Hz)")
+ax.set_ylabel("Normalized PSD")
+ax.set_title("Line-Contaminated Data")
+ax.set_xlim([0, sfreq / 2])
 ax.grid(True, alpha=0.3)
 ax.legend()
 
 # Mark line frequency and harmonics
 for h in range(1, 5):
     f = line_freq * h
-    if f < sfreq/2:
-        ax.axvline(f, color='r', alpha=0.3, linestyle='--')
+    if f < sfreq / 2:
+        ax.axvline(f, color="r", alpha=0.3, linestyle="--")
 
 # Cleaned vs Removed
 ax = axes[1]
-ax.semilogy(freqs, psd_after, 'g-', linewidth=1.5, label='Cleaned')
-ax.semilogy(freqs, psd_removed, 'r-', linewidth=1.5, alpha=0.7, label='Removed')
-ax.set_xlabel('Frequency (Hz)')
-ax.set_ylabel('Normalized PSD')
-ax.set_title('After ZapLine (d=4)')
-ax.set_xlim([0, sfreq/2])
+ax.semilogy(freqs, psd_after, "g-", linewidth=1.5, label="Cleaned")
+ax.semilogy(freqs, psd_removed, "r-", linewidth=1.5, alpha=0.7, label="Removed")
+ax.set_xlabel("Frequency (Hz)")
+ax.set_ylabel("Normalized PSD")
+ax.set_title("After ZapLine (d=4)")
+ax.set_xlim([0, sfreq / 2])
 ax.grid(True, alpha=0.3)
 ax.legend()
 
 # Mark line frequency and harmonics
 for h in range(1, 5):
     f = line_freq * h
-    if f < sfreq/2:
-        ax.axvline(f, color='r', alpha=0.3, linestyle='--')
+    if f < sfreq / 2:
+        ax.axvline(f, color="r", alpha=0.3, linestyle="--")
 
 plt.tight_layout()
-plt.savefig('zapline_simulated_results.png', dpi=150, bbox_inches='tight')
+plt.savefig("zapline_simulated_results.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 # %%
@@ -163,7 +171,9 @@ metrics = compute_psd_reduction(data, result.cleaned, sfreq, line_freq)
 print("\nPower Reduction Metrics:")
 print(f"  Power at 50 Hz (before): {metrics['power_original']:.2e}")
 print(f"  Power at 50 Hz (after):  {metrics['power_cleaned']:.2e}")
-print(f"  Reduction: {metrics['reduction_db']:.1f} dB ({metrics['reduction_ratio']:.1f}x)")
+print(
+    f"  Reduction: {metrics['reduction_db']:.1f} dB ({metrics['reduction_ratio']:.1f}x)"
+)
 
 # Check that the floor of the removed signal is low
 floor_ratio = np.mean(psd_removed) / np.mean(psd_after)
@@ -182,24 +192,26 @@ axes = axes.flatten()
 for idx, d in enumerate([1, 2, 3, 4, 5, 6]):
     result_d = dss_zapline(data, line_freq=line_freq, sfreq=sfreq, n_remove=d)
     freqs_d, psd_d = compute_normalized_psd(result_d.cleaned, sfreq)
-    
+
     ax = axes[idx]
-    ax.semilogy(freqs_d, psd_d, 'g-', linewidth=1.5)
-    ax.set_xlabel('Frequency (Hz)')
-    ax.set_ylabel('Normalized PSD')
-    ax.set_title(f'd = {d}')
-    ax.set_xlim([0, sfreq/2])
+    ax.semilogy(freqs_d, psd_d, "g-", linewidth=1.5)
+    ax.set_xlabel("Frequency (Hz)")
+    ax.set_ylabel("Normalized PSD")
+    ax.set_title(f"d = {d}")
+    ax.set_xlim([0, sfreq / 2])
     ax.grid(True, alpha=0.3)
-    
+
     # Mark line frequencies
     for h in range(1, 5):
         f = line_freq * h
-        if f < sfreq/2:
-            ax.axvline(f, color='r', alpha=0.3, linestyle='--')
+        if f < sfreq / 2:
+            ax.axvline(f, color="r", alpha=0.3, linestyle="--")
 
-plt.suptitle('Effect of Number of Components Removed (d)', fontsize=14, fontweight='bold')
+plt.suptitle(
+    "Effect of Number of Components Removed (d)", fontsize=14, fontweight="bold"
+)
 plt.tight_layout()
-plt.savefig('zapline_d_parameter.png', dpi=150, bbox_inches='tight')
+plt.savefig("zapline_d_parameter.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 # %%
@@ -212,24 +224,28 @@ fig, ax = plt.subplots(figsize=(10, 5))
 
 # Plot eigenvalues (scores)
 scores = result.dss_eigenvalues
-ax.plot(np.arange(1, len(scores)+1), scores, 'b.-', markersize=10)
-ax.axhline(y=scores[4] if len(scores) > 4 else scores[-1], color='r', linestyle='--', 
-           label=f'd=4 threshold')
-ax.set_xlabel('Component')
-ax.set_ylabel('Score (Artifact Power Ratio)')
-ax.set_title('DSS Component Scores - Line Noise Dominance')
+ax.plot(np.arange(1, len(scores) + 1), scores, "b.-", markersize=10)
+ax.axhline(
+    y=scores[4] if len(scores) > 4 else scores[-1],
+    color="r",
+    linestyle="--",
+    label="d=4 threshold",
+)
+ax.set_xlabel("Component")
+ax.set_ylabel("Score (Artifact Power Ratio)")
+ax.set_title("DSS Component Scores - Line Noise Dominance")
 ax.set_xlim([0.5, min(20, len(scores)) + 0.5])
 ax.grid(True, alpha=0.3)
 ax.legend()
 
 plt.tight_layout()
-plt.savefig('zapline_component_scores.png', dpi=150, bbox_inches='tight')
+plt.savefig("zapline_component_scores.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 print("\nTop 8 component scores:")
 for i, score in enumerate(scores[:8]):
     marker = " <-- removed" if i < result.n_removed else ""
-    print(f"  Component {i+1}: {score:.4f}{marker}")
+    print(f"  Component {i + 1}: {score:.4f}{marker}")
 
 # %%
 # Summary
@@ -240,9 +256,9 @@ for i, score in enumerate(scores[:8]):
 # 3. Minimal distortion at non-artifact frequencies
 # 4. Works with a single parameter (d = number of components to remove)
 
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("ZapLine Simulated Data Demo Complete!")
-print("="*60)
+print("=" * 60)
 print("\nKey findings:")
 print("  - Line artifacts completely removed from cleaned data")
 print("  - Removed signal shows clear line frequency peaks")

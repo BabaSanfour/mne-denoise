@@ -1,38 +1,36 @@
-"""Pluggable denoiser functions for DSS.
-"""
+"""Pluggable denoiser functions for DSS."""
 
 from __future__ import annotations
 
+from .artifact import CycleAverageBias
 from .base import LinearDenoiser, NonlinearDenoiser
 from .evoked import TrialAverageBias
-
-from .artifact import CycleAverageBias
-from .spectrogram import SpectrogramBias, SpectrogramDenoiser
 from .ica import (
-    TanhMaskDenoiser,
-    RobustTanhDenoiser,
     GaussDenoiser,
-    SkewDenoiser,
     KurtosisDenoiser,
+    RobustTanhDenoiser,
+    SkewDenoiser,
     SmoothTanhDenoiser,
-    beta_tanh,
-    beta_pow3,
+    TanhMaskDenoiser,
     beta_gauss,
+    beta_pow3,
+    beta_tanh,
 )
 from .masking import (
-    WienerMaskDenoiser,
     VarianceMaskDenoiser,
+    WienerMaskDenoiser,
 )
-from .periodic import PeakFilterBias, CombFilterBias, QuasiPeriodicDenoiser
+from .periodic import CombFilterBias, PeakFilterBias, QuasiPeriodicDenoiser
 from .spectral import (
     BandpassBias,
     NotchBias,
 )
+from .spectrogram import SpectrogramBias, SpectrogramDenoiser
 from .temporal import (
-    TimeShiftBias,
-    SmoothingBias,
     DCTDenoiser,
+    SmoothingBias,
     TemporalSmoothnessDenoiser,
+    TimeShiftBias,
 )
 
 __all__ = [

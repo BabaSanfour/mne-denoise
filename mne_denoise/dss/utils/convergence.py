@@ -18,16 +18,17 @@ import numpy as np
 
 class Gamma179:
     """Detects oscillation by comparing consecutive weight deltas.
+
     If the angle between deltas is > 90°, reduces gamma to 0.5.
 
 
-    
+
     Usage
     -----
     >>> from mne_denoise.dss.convergence import Gamma179
     >>> gamma_fn = Gamma179()
     >>> # idss = IterativeDSS(..., gamma=gamma_fn) (Illustrative)
-    
+
     References
     ----------
     Särelä & Valpola (2005). Section 2.5 "Spectral Shift" and 3.3 "Spectral Shift Revisited"
@@ -37,9 +38,7 @@ class Gamma179:
         self.gamma = 1.0
         self.deltaw = None
 
-    def __call__(
-        self, w_new: np.ndarray, w_old: np.ndarray, iteration: int
-    ) -> float:
+    def __call__(self, w_new: np.ndarray, w_old: np.ndarray, iteration: int) -> float:
         """Compute adaptive gamma."""
         if iteration <= 2:
             self.gamma = 1.0
@@ -48,7 +47,7 @@ class Gamma179:
         elif iteration > 2:
             deltaw_old = self.deltaw
             self.deltaw = w_old - w_new
-            
+
             # Check angle between consecutive deltas
             limit = 0.0  # cos(90°)
             norm_prod = np.linalg.norm(self.deltaw) * np.linalg.norm(deltaw_old)
@@ -56,7 +55,7 @@ class Gamma179:
                 cos_angle = np.dot(self.deltaw, deltaw_old) / norm_prod
                 if cos_angle <= limit:
                     self.gamma = 0.5
-        
+
         return self.gamma
 
     def reset(self):
@@ -67,6 +66,7 @@ class Gamma179:
 
 class GammaPredictive:
     """Adjusts gamma based on correlation between consecutive weight deltas.
+
     More aggressive than gamma_179.
 
     Usage
@@ -85,9 +85,7 @@ class GammaPredictive:
         self.deltaw = None
         self.min_gamma = min_gamma
 
-    def __call__(
-        self, w_new: np.ndarray, w_old: np.ndarray, iteration: int
-    ) -> float:
+    def __call__(self, w_new: np.ndarray, w_old: np.ndarray, iteration: int) -> float:
         """Compute adaptive gamma using predictive controller."""
         if iteration <= 2:
             self.gamma = 1.0
@@ -96,14 +94,14 @@ class GammaPredictive:
         else:
             deltaw_old = self.deltaw
             self.deltaw = w_old - w_new
-            
+
             # Predictive update
             norm_sq = np.dot(deltaw_old, deltaw_old)
             if norm_sq > 1e-12:
                 self.gamma = self.gamma + np.dot(self.deltaw, deltaw_old) / norm_sq
                 if self.gamma < self.min_gamma:
                     self.gamma = self.min_gamma
-        
+
         return self.gamma
 
     def reset(self):

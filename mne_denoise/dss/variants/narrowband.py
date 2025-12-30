@@ -12,8 +12,8 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-from ..linear import DSS
 from ..denoisers.spectral import BandpassBias
+from ..linear import DSS
 
 
 def narrowband_dss(
@@ -108,7 +108,7 @@ def narrowband_scan(
     >>> best_dss, freqs, eigs = narrowband_scan(data, sfreq=250, freq_range=(7, 14))
     >>> print(f"Peak alpha at {freqs[np.argmax(eigs)]:.1f} Hz")
     >>> alpha_sources = best_dss.transform(data)
-    
+
     >>> # Plot eigenvalue spectrum
     >>> import matplotlib.pyplot as plt
     >>> plt.plot(freqs, eigs)

@@ -74,8 +74,7 @@ class TrialAverageBias(LinearDenoiser):
             weights = np.asarray(self.weights)
             if weights.shape[0] != n_epochs:
                 raise ValueError(
-                    f"weights length ({len(weights)}) must match "
-                    f"n_epochs ({n_epochs})"
+                    f"weights length ({len(weights)}) must match n_epochs ({n_epochs})"
                 )
             weights = weights / weights.sum()  # Normalize
             avg = np.tensordot(data, weights, axes=(2, 0))  # (n_ch, n_times)

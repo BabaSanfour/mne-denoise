@@ -1,6 +1,6 @@
 """
 =============================================================================
-10. Efficiency Benchmark: DSS vs PCA, ICA, and Averaging
+10. Efficiency Benchmark: DSS vs PCA, ICA, and Averaging.
 =============================================================================
 
 This example demonstrates the superior efficiency
@@ -18,13 +18,14 @@ We define "SNR Proxy" as the variance of the trial-averaged signal.
 Since the noise is uncorrelated across trials, averaging suppresses noise by $1/N_{trials}$.
 Higher variance of the average indicates better recovery of the phase-locked evoked response.
 
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
-from scipy import signal
-from sklearn.decomposition import PCA, FastICA
 import mne
+import numpy as np
+from sklearn.decomposition import PCA, FastICA
 
 from mne_denoise.dss import DSS, TrialAverageBias
 
@@ -49,12 +50,14 @@ sfreq = 500
 times = np.linspace(-0.2, 0.5, n_times)
 
 # create M100-like waveform (Gabor patch)
-evoked_src = np.exp(-((times - 0.1)**2) / (2 * 0.03**2)) * np.sin(2*np.pi*10*times)
+evoked_src = np.exp(-((times - 0.1) ** 2) / (2 * 0.03**2)) * np.sin(
+    2 * np.pi * 10 * times
+)
 evoked_src /= np.std(evoked_src)
 
 # Spatial pattern (e.g., bilateral dipoles)
 rng = np.random.default_rng(42)
-pattern = np.sin(np.linspace(0, 2*np.pi, n_channels))
+pattern = np.sin(np.linspace(0, 2 * np.pi, n_channels))
 pattern /= np.linalg.norm(pattern)
 
 # Generate Data
@@ -66,18 +69,18 @@ print("Generating synthetic data...")
 for i in range(n_epochs):
     # Fixed signal (Evoked)
     sig = signal_power * np.outer(pattern, evoked_src)
-    
+
     # Random noise (uncorrelated across trials, but some spatial structure)
     # We mix random noise to create spatial correlation
     noise_raw = rng.standard_normal((n_channels + 10, n_times))
     mix_noise = rng.standard_normal((n_channels, n_channels + 10))
     noise = noise_power * (mix_noise @ noise_raw)
     noise /= np.std(noise)
-    
+
     data[i] = sig + noise
 
 # Create MNE Epochs for convenience
-info = mne.create_info(n_channels, sfreq, 'eeg')
+info = mne.create_info(n_channels, sfreq, "eeg")
 epochs = mne.EpochsArray(data, info, tmin=-0.2, verbose=False)
 
 # Compute true Evoked for reference
@@ -92,11 +95,11 @@ print(f"Data shape: {epochs.get_data().shape} (Epochs, Channels, Times)")
 def compute_snr_proxy(data_3d):
     """
     Compute SNR proxy: Variance of the trial-averaged signal.
-    
+
     Parameters
     ----------
     data_3d : ndarray (n_epochs, n_ch/n_comp, n_times)
-    
+
     Returns
     -------
     snr : float (for best channel/component)
@@ -105,14 +108,14 @@ def compute_snr_proxy(data_3d):
     """
     # Average over epochs (Evoked response)
     evoked = data_3d.mean(axis=0)
-    
+
     # Calculate variance (power) of the evoked response for each channel/component
     power = np.var(evoked, axis=1)
-    
+
     best_idx = np.argmax(power)
     best_snr = power[best_idx]
     best_waveform = evoked[best_idx]
-    
+
     return best_idx, best_snr, best_waveform
 
 
@@ -161,7 +164,9 @@ print(f"  Average 20 SNR: {snr_avg_20:.2f}")
 print("\nRunning Method 3: PCA...")
 # Reshape to (n_samples_total, n_channels) for sklearn
 # PCA finds directions of maximum TOTAL variance (Signal + Noise)
-X_concat = np.transpose(epochs.get_data(), (0, 2, 1)).reshape(-1, n_channels) # (n_epochs*n_times, n_ch)
+X_concat = np.transpose(epochs.get_data(), (0, 2, 1)).reshape(
+    -1, n_channels
+)  # (n_epochs*n_times, n_ch)
 
 pca = PCA(n_components=10, random_state=42)
 X_pca = pca.fit_transform(X_concat)
@@ -206,7 +211,7 @@ print("\nRunning Method 5: DSS (Our Method)...")
 
 dss = DSS(bias=TrialAverageBias(), n_components=5)
 dss.fit(epochs)
-data_dss = dss.transform(epochs) # returns (n_epochs, n_comps, n_times)
+data_dss = dss.transform(epochs)  # returns (n_epochs, n_comps, n_times)
 
 # Component 0 is guaranteed to be the best by DSS design (eigenvalue sorting)
 best_dss_idx = 0
@@ -218,22 +223,29 @@ print(f"  Best DSS: #{best_dss_idx}, SNR: {snr_dss:.2f}")
 # Re-scale DSS pattern if sign flipped (arbitrary sign)
 if np.corrcoef(wave_dss, true_evoked_data)[0, 1] < 0:
     wave_dss *= -1
-    
+
 # Scale for visual comparison (DSS is scale-invariant/whitened)
-wave_dss *= (np.std(wave_best_ch) / np.std(wave_dss))
+wave_dss *= np.std(wave_best_ch) / np.std(wave_dss)
 
 
 ###############################################################################
 # 3. Visualization: Bar Chart Comparison
 # --------------------------------------
 
-methods = ['Best Channel', 'Avg 20 Ch', 'Best PCA', 'Best ICA', 'DSS']
-snrs = [snr_best_ch, snr_avg_20, snr_pca, snr_ica, snr_dss] # Raw variance values might vary due to scale
+methods = ["Best Channel", "Avg 20 Ch", "Best PCA", "Best ICA", "DSS"]
+snrs = [
+    snr_best_ch,
+    snr_avg_20,
+    snr_pca,
+    snr_ica,
+    snr_dss,
+]  # Raw variance values might vary due to scale
 # We normalize improvements relative to Best Channel = 1.0
 relative_improvement = np.array(snrs) / snrs[0]
 
-# IMPORTANT: ICA/PCA/DSS scales are arbitrary. 
-# Comparing "Raw Variance" (which is SNR Proxy *if* noise is constant) is tricky across methods 
+
+# IMPORTANT: ICA/PCA/DSS scales are arbitrary.
+# Comparing "Raw Variance" (which is SNR Proxy *if* noise is constant) is tricky across methods
 # if they apply different gains.
 # However, "SNR" in the context of Evoked BCI is usually (Power of Avg) / (Residual Variance).
 # Our proxy `var(mean)` assumes noise cancels out exactly or similarly.
@@ -246,6 +258,7 @@ def compute_true_snr(data_3d, idx):
     residual = data_3d[:, idx, :] - evoked[None, :]
     return np.var(evoked) / np.var(residual)
 
+
 print("\nCalculating True SNR (Signal / Residual)...")
 true_snr_vals = []
 true_snr_vals.append(compute_true_snr(epochs.get_data(), best_ch_idx))
@@ -257,7 +270,13 @@ true_snr_vals.append(compute_true_snr(data_dss, best_dss_idx))
 relative_improvement_true = np.array(true_snr_vals) / true_snr_vals[0]
 
 fig, ax = plt.subplots(figsize=(10, 6))
-bars = ax.bar(methods, relative_improvement_true, color=['gray', 'gray', 'orange', 'purple', 'blue'], alpha=0.8, edgecolor='k')
+bars = ax.bar(
+    methods,
+    relative_improvement_true,
+    color=["gray", "gray", "orange", "purple", "blue"],
+    alpha=0.8,
+    edgecolor="k",
+)
 
 # Highlight DSS
 bars[-1].set_alpha(1.0)
@@ -266,12 +285,19 @@ bars[-1].set_linewidth(2)
 # Add labels
 for bar, val in zip(bars, relative_improvement_true):
     height = bar.get_height()
-    ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
-            f'{val:.1f}x', ha='center', va='bottom', fontweight='bold', fontsize=12)
+    ax.text(
+        bar.get_x() + bar.get_width() / 2.0,
+        height + 0.1,
+        f"{val:.1f}x",
+        ha="center",
+        va="bottom",
+        fontweight="bold",
+        fontsize=12,
+    )
 
-ax.axhline(1.0, color='r', linestyle='--', alpha=0.5, label='Baseline')
-ax.set_ylabel('SNR Improvement (Relative to Best Channel)')
-ax.set_title('Denoising Efficiency Comparison (Higher is Better)')
+ax.axhline(1.0, color="r", linestyle="--", alpha=0.5, label="Baseline")
+ax.set_ylabel("SNR Improvement (Relative to Best Channel)")
+ax.set_title("Denoising Efficiency Comparison (Higher is Better)")
 ax.legend()
 plt.tight_layout()
 plt.show(block=False)
@@ -285,20 +311,43 @@ plt.show(block=False)
 fig, ax = plt.subplots(figsize=(12, 6))
 
 t = times
-ax.plot(t, wave_best_ch / np.max(np.abs(wave_best_ch)), 'k--', alpha=0.4, label='Best Single Channel')
-ax.plot(t, wave_avg_20 / np.max(np.abs(wave_avg_20)), 'g-.', alpha=0.6, label='Avg 20 Channels')
-ax.plot(t, wave_pca / np.max(np.abs(wave_pca)), color='orange', alpha=0.6, label='Best PCA')
+ax.plot(
+    t,
+    wave_best_ch / np.max(np.abs(wave_best_ch)),
+    "k--",
+    alpha=0.4,
+    label="Best Single Channel",
+)
+ax.plot(
+    t,
+    wave_avg_20 / np.max(np.abs(wave_avg_20)),
+    "g-.",
+    alpha=0.6,
+    label="Avg 20 Channels",
+)
+ax.plot(
+    t, wave_pca / np.max(np.abs(wave_pca)), color="orange", alpha=0.6, label="Best PCA"
+)
 # ax.plot(t, wave_ica, color='purple', alpha=0.6, label='Best ICA') # ICA often poor for this
-ax.plot(t, wave_dss / np.max(np.abs(wave_dss)), 'b', linewidth=2.5, label='DSS (Optimal)')
+ax.plot(
+    t, wave_dss / np.max(np.abs(wave_dss)), "b", linewidth=2.5, label="DSS (Optimal)"
+)
 
 # Plot ground truth
-ax.plot(t, evoked_src / np.max(np.abs(evoked_src)), 'r:', linewidth=2, alpha=0.8, label='True Source')
+ax.plot(
+    t,
+    evoked_src / np.max(np.abs(evoked_src)),
+    "r:",
+    linewidth=2,
+    alpha=0.8,
+    label="True Source",
+)
 
-ax.set_xlabel('Time (s)')
-ax.set_ylabel('Normalized Amplitude')
-ax.set_title('Recovered Evoked Responses')
-ax.legend(loc='upper right')
-ax.grid(True, linestyle=':')
+ax.set_xlabel("Time (s)")
+ax.set_ylabel("Normalized Amplitude")
+ax.set_title("Recovered Evoked Responses")
+ax.legend(loc="upper right")
+ax.grid(True, linestyle=":")
 
 plt.tight_layout()
 plt.show()

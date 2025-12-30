@@ -1,7 +1,7 @@
 """Time-Shift DSS (TSR) variant.
 
 Convenience wrapper for extracting temporally extended structure
-(autocorrelated signals, slow waves, DC shifts).
+(autocorrelated signals, slow waves, DC shifts) [1]_.
 
 Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
          Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
@@ -18,8 +18,8 @@ from typing import Optional, Union
 
 import numpy as np
 
+from ..denoisers.temporal import SmoothingBias, TimeShiftBias
 from ..linear import DSS
-from ..denoisers.temporal import TimeShiftBias, SmoothingBias
 
 
 def time_shift_dss(
@@ -60,15 +60,10 @@ def time_shift_dss(
     >>> dss = time_shift_dss(shifts=20)
     >>> dss.fit(data)
     >>> slow_sources = dss.transform(data)
-    
+
     >>> # Use specific lags
     >>> dss = time_shift_dss(shifts=np.array([1, 2, 5, 10, 20]))
     >>> dss.fit(data)
-
-    Notes
-    -----
-    This is equivalent to NoiseTools' nt_tsr.m. Components are ordered by
-    temporal predictability (highest eigenvalue = most predictable).
     """
     bias = TimeShiftBias(shifts=shifts, method=method)
     return DSS(bias=bias, n_components=n_components, **dss_kws)

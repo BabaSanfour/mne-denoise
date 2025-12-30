@@ -6,9 +6,9 @@ Contains specialized implementations of DSS for specific tasks:
 - Narrowband: Frequency scanning and band-specific extraction
 """
 
-from .tsr import time_shift_dss, smooth_dss
+from .narrowband import narrowband_dss, narrowband_scan
 from .ssvep import ssvep_dss
-from .narrowband import narrowband_scan, narrowband_dss
+from .tsr import smooth_dss, time_shift_dss
 
 __all__ = [
     "time_shift_dss",

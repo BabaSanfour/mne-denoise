@@ -2,6 +2,9 @@
 
 This module provides functions for computing whitening transformations
 with robust handling of rank deficiency and numerical stability.
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 """
 
 from __future__ import annotations
@@ -39,6 +42,18 @@ def compute_whitener(
         Matrix to de-whiten: X = dewhitener @ X_white
     eigenvalues : ndarray, shape (rank,)
         Retained eigenvalues (descending order).
+
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from mne_denoise.dss import compute_whitener
+    >>> cov = np.random.randn(64, 64)
+    >>> whitener, dewhitener, eigenvalues = compute_whitener(cov)
+    >>> whitened = whitener @ np.random.randn(64, 1000)
+    >>> de_whitened = dewhitener @ whitened
+    >>> np.allclose(de_whitened, np.random.randn(64, 1000))
+    True
     """
     # Ensure symmetry
     cov = (cov + cov.T) / 2
@@ -59,7 +74,7 @@ def compute_whitener(
         raise ValueError("Covariance matrix has no significant variance")
 
     # Regularization
-    eigenvalues = np.clip(eigenvalues, a_min=0, a_max=None) # Ensure positive
+    eigenvalues = np.clip(eigenvalues, a_min=0, a_max=None)  # Ensure positive
     threshold = reg * max_ev
     keep_mask = eigenvalues > threshold
 

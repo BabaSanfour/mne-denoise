@@ -1,6 +1,6 @@
 """
-Robust DSS with Data Cleaning
-=============================
+Robust DSS with Data Cleaning.
+==============================
 
 This example demonstrates how to use DSS with automatic bad channel
 and segment detection for noisy real-world data.
@@ -17,6 +17,9 @@ For production use with MNE data, consider using MNE's built-in methods:
 - `mne.preprocessing.find_bad_channels_maxwell()`
 - `raw.interpolate_bads()`
 - `mne.preprocessing.annotate_*`
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 """
 
 import numpy as np
@@ -25,10 +28,10 @@ from scipy import stats
 # Import DSS
 from mne_denoise.dss import DSS
 
-
 # =============================================================================
 # Helper Functions (Simplified numpy-based implementations)
 # =============================================================================
+
 
 def detect_bad_channels(
     data: np.ndarray,
@@ -192,6 +195,7 @@ def detect_bad_segments(
 # Main Workflow
 # =============================================================================
 
+
 def robust_dss_workflow(
     data: np.ndarray,
     sfreq: float,
@@ -288,9 +292,7 @@ if __name__ == "__main__":
         return uniform_filter1d(x, size=25, axis=1)
 
     # Run robust DSS workflow
-    dss, info = robust_dss_workflow(
-        data, sfreq=sfreq, bias=simple_bias, n_components=5
-    )
+    dss, info = robust_dss_workflow(data, sfreq=sfreq, bias=simple_bias, n_components=5)
 
     print(f"Bad channels: {info['n_bad_channels']}")
     print(f"Bad samples: {info['n_bad_samples']}")

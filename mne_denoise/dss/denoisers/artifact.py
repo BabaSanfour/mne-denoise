@@ -17,7 +17,6 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-
 from .base import LinearDenoiser
 
 
@@ -70,13 +69,13 @@ class CycleAverageBias(LinearDenoiser):
         sfreq: Optional[float] = None,
     ) -> None:
         self.event_samples = np.asarray(event_samples, dtype=int)
-        
+
         # Convert window to samples if sfreq provided
         if sfreq is not None:
             self.window = (int(window[0] * sfreq), int(window[1] * sfreq))
         else:
             self.window = (int(window[0]), int(window[1]))
-        
+
         self.sfreq = sfreq
         self._window_length = self.window[1] - self.window[0]
 
@@ -94,7 +93,7 @@ class CycleAverageBias(LinearDenoiser):
             Data where artifact-locked segments are replaced by cycle average.
         """
         original_shape = data.shape
-        
+
         # Handle 3D epoched data by concatenating
         if data.ndim == 3:
             n_channels, n_times, n_epochs = data.shape
@@ -109,9 +108,8 @@ class CycleAverageBias(LinearDenoiser):
 
         # Filter valid events (within data bounds)
         pre, post = self.window
-        valid_mask = (
-            (self.event_samples + pre >= 0) &
-            (self.event_samples + post <= total_samples)
+        valid_mask = (self.event_samples + pre >= 0) & (
+            self.event_samples + post <= total_samples
         )
         valid_events = self.event_samples[valid_mask]
 
@@ -122,7 +120,7 @@ class CycleAverageBias(LinearDenoiser):
         # Compute cycle average
         window_len = post - pre
         epochs_matrix = np.zeros((len(valid_events), n_channels, window_len))
-        
+
         for i, event in enumerate(valid_events):
             start = event + pre
             end = event + post
@@ -133,7 +131,7 @@ class CycleAverageBias(LinearDenoiser):
 
         # Create biased output: each artifact window gets the average
         biased_2d = np.zeros_like(data_2d)
-        
+
         for event in valid_events:
             start = event + pre
             end = event + post

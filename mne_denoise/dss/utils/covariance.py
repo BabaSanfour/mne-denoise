@@ -8,7 +8,9 @@ Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
 """
 
 from __future__ import annotations
+
 from typing import Optional
+
 import numpy as np
 
 
@@ -51,13 +53,13 @@ def compute_covariance(
     if data.ndim == 3:
         n_channels, n_times_in, n_epochs = data.shape
         data = data.reshape(n_channels, -1)
-        
+
         if weights is not None and weights.shape[0] == n_times_in:
             # Tile weights across epochs
             weights = np.tile(weights, n_epochs)
-                  
+
     n_channels, n_times = data.shape
-    
+
     if weights is not None:
         if data.shape[1] != weights.shape[0]:
             raise ValueError(
@@ -68,22 +70,24 @@ def compute_covariance(
         if total_weight == 0:
             raise ValueError("Sum of weights is zero")
 
-        if method != 'empirical':
+        if method != "empirical":
             # Currently we only support weighted empirical.
-            raise ValueError(f"Weighted covariance not implemented for method '{method}'")
-    else: 
+            raise ValueError(
+                f"Weighted covariance not implemented for method '{method}'"
+            )
+    else:
         # If no weights are provided, use equal weights; to simplify the implementation
         weights = np.ones(n_times)
         total_weight = n_times
-    
-    #mean 
+
+    # mean
     #   if weights are None, it will be equal to the mean.
     #   if weights are not None, it will be equal to the weighted mean.
     mean = np.sum(data * weights, axis=1, keepdims=True) / total_weight
 
     # Center data
     data_centered = data - mean
-    
+
     if method == "empirical":
         # Weighted covariance: (X * w) @ X.T / sum(w)
         # Unweighted covariance: X @ X.T / n_times
@@ -92,52 +96,54 @@ def compute_covariance(
     elif method == "shrinkage":
         # Ledoit-Wolf-like shrinkage
         emp_cov = data_centered @ data_centered.T / n_times
-        
+
         if shrinkage is None:
             # Estimate optimal shrinkage
             shrinkage = _ledoit_wolf_shrinkage(data_centered)
-        
+
         target = np.eye(n_channels) * np.trace(emp_cov) / n_channels
         cov = (1 - shrinkage) * emp_cov + shrinkage * target
-        
+
     elif method == "oas":
         # Oracle Approximating Shrinkage
         from sklearn.covariance import OAS
+
         oas = OAS().fit(data_centered.T)
         cov = oas.covariance_
 
     elif method == "mcd":
         # Minimum Covariance Determinant (robust)
         from sklearn.covariance import MinCovDet
+
         mcd = MinCovDet().fit(data_centered.T)
         cov = mcd.covariance_
     else:
         raise ValueError(f"Unknown covariance method: {method}")
-    
+
     # Ensure symmetry
     cov = (cov + cov.T) / 2
-    
+
     return cov
 
 
 def _ledoit_wolf_shrinkage(data: np.ndarray) -> float:
     """Estimate optimal Ledoit-Wolf shrinkage parameter."""
     n_channels, n_times = data.shape
-    
+
     # Sample covariance
     S = data @ data.T / n_times
-    
+
     # Target: scaled identity
     mu = np.trace(S) / n_channels
-    
+
     # Compute shrinkage intensity
-    delta = ((S - mu * np.eye(n_channels))**2).sum() / n_channels
-    
+    delta = ((S - mu * np.eye(n_channels)) ** 2).sum() / n_channels
+
     # Estimate beta
     X2 = data**2
     beta = np.sum(X2 @ X2.T / n_times - S**2) / (n_channels * n_times)
-    
+
     # Shrinkage
     shrinkage = min(1.0, beta / max(delta, 1e-10))
-    
+
     return max(0.0, shrinkage)

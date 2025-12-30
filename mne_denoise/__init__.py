@@ -6,8 +6,7 @@ Modules
 - `zapline`: ZapLine line noise removal.
 """
 
-from . import dss
-from . import zapline
+from . import dss, zapline
 
 __version__ = "0.0.1"
 

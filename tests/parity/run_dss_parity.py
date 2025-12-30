@@ -16,9 +16,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import numpy as np
-from scipy import signal
 import time
+
+import numpy as np
 
 from mne_denoise.dss import compute_dss
 from mne_denoise.dss.denoisers.spectral import BandpassBias
@@ -49,11 +49,11 @@ def generate_test_data(
     data = mixing @ sources + 0.3 * np.random.randn(n_channels, n_samples)
 
     return {
-        'data': data,
-        'sources': sources,
-        'mixing': mixing,
-        'sfreq': sfreq,
-        't': t,
+        "data": data,
+        "sources": sources,
+        "mixing": mixing,
+        "sfreq": sfreq,
+        "t": t,
     }
 
 
@@ -66,10 +66,10 @@ def run_python_dss(data: np.ndarray, biased_data: np.ndarray) -> dict:
     elapsed = time.perf_counter() - start
 
     return {
-        'filters': filters,
-        'patterns': patterns,
-        'eigenvalues': eigenvalues,
-        'time': elapsed,
+        "filters": filters,
+        "patterns": patterns,
+        "eigenvalues": eigenvalues,
+        "time": elapsed,
     }
 
 
@@ -91,44 +91,44 @@ def run_matlab_dss(eng, data: np.ndarray, biased_data: np.ndarray) -> dict:
     pwr = np.array(result[2]).ravel()  # eigenvalues
 
     return {
-        'filters': todss.T,  # Convert to (n_components, n_channels)
-        'patterns': fromdss.T,
-        'eigenvalues': pwr,
-        'time': elapsed,
+        "filters": todss.T,  # Convert to (n_components, n_channels)
+        "patterns": fromdss.T,
+        "eigenvalues": pwr,
+        "time": elapsed,
     }
 
 
 def compare_results(py_result: dict, mat_result: dict, name: str) -> dict:
     """Compare Python and MATLAB results."""
-    n_compare = min(5, len(py_result['eigenvalues']), len(mat_result['eigenvalues']))
+    n_compare = min(5, len(py_result["eigenvalues"]), len(mat_result["eigenvalues"]))
 
     # Compare filters
     filter_corrs = []
     for i in range(n_compare):
-        py_filt = py_result['filters'][i]
-        mat_filt = mat_result['filters'][i]
-        
+        py_filt = py_result["filters"][i]
+        mat_filt = mat_result["filters"][i]
+
         # Handle sign ambiguity
         corr = np.corrcoef(py_filt, mat_filt)[0, 1]
         filter_corrs.append(np.abs(corr))
 
     # Compare eigenvalues
-    py_eigs = py_result['eigenvalues'][:n_compare]
-    mat_eigs = mat_result['eigenvalues'][:n_compare]
-    
+    py_eigs = py_result["eigenvalues"][:n_compare]
+    mat_eigs = mat_result["eigenvalues"][:n_compare]
+
     # Normalize for comparison
     py_eigs_norm = py_eigs / py_eigs[0] if py_eigs[0] > 0 else py_eigs
     mat_eigs_norm = mat_eigs / mat_eigs[0] if mat_eigs[0] > 0 else mat_eigs
-    
+
     eig_corr = np.corrcoef(py_eigs_norm, mat_eigs_norm)[0, 1]
 
     return {
-        'name': name,
-        'filter_correlations': filter_corrs,
-        'mean_filter_corr': np.mean(filter_corrs),
-        'eigenvalue_corr': eig_corr,
-        'python_time': py_result['time'],
-        'matlab_time': mat_result['time'],
+        "name": name,
+        "filter_correlations": filter_corrs,
+        "mean_filter_corr": np.mean(filter_corrs),
+        "eigenvalue_corr": eig_corr,
+        "python_time": py_result["time"],
+        "matlab_time": mat_result["time"],
     }
 
 
@@ -139,9 +139,9 @@ def print_report(comparisons: list[dict]) -> None:
     print("=" * 70)
 
     all_passed = True
-    
+
     for comp in comparisons:
-        passed = comp['mean_filter_corr'] > 0.95 and comp['eigenvalue_corr'] > 0.95
+        passed = comp["mean_filter_corr"] > 0.95 and comp["eigenvalue_corr"] > 0.95
         status = "✅ PASS" if passed else "❌ FAIL"
         all_passed = all_passed and passed
 
@@ -165,22 +165,23 @@ def run_parity_tests(use_matlab: bool = True) -> None:
     """Run complete parity test suite."""
     print("Generating test data...")
     test_data = generate_test_data()
-    data = test_data['data']
-    sfreq = test_data['sfreq']
+    data = test_data["data"]
+    sfreq = test_data["sfreq"]
 
     comparisons = []
 
     # Test 1: Identity bias (biased = original)
     print("\n--- Test 1: Identity Bias ---")
     py_ident = run_python_dss(data, data.copy())
-    
+
     if use_matlab:
         try:
             import matlab.engine
+
             print("Starting MATLAB engine...")
             eng = matlab.engine.start_matlab()
             eng.addpath(eng.genpath(r"D:\PhD\NoiseTools"), nargout=0)  # Adjust path
-            
+
             mat_ident = run_matlab_dss(eng, data, data.copy())
             comp = compare_results(py_ident, mat_ident, "Identity Bias (C0 = C1)")
             comparisons.append(comp)
@@ -196,16 +197,16 @@ def run_parity_tests(use_matlab: bool = True) -> None:
     bias = BandpassBias(freq_band=(8, 12), sfreq=sfreq)
     biased = bias.apply(data)
     py_bp = run_python_dss(data, biased)
-    
+
     if use_matlab:
         # Apply same filter in MATLAB for fair comparison
         eng.eval("[b, a] = butter(4, [8 12]/(250/2), 'bandpass');", nargout=0)
-        biased_mat_str = "filtfilt(b, a, data')"
         import matlab
+
         data_mat = matlab.double(data.T.tolist())
-        eng.workspace['data'] = data_mat
+        eng.workspace["data"] = data_mat
         biased_mat = eng.eval("filtfilt(b, a, data)", nargout=1)
-        
+
         mat_bp = run_matlab_dss(eng, data, np.array(biased_mat).T)
         comp = compare_results(py_bp, mat_bp, "Bandpass Bias (8-12 Hz)")
         comparisons.append(comp)
@@ -233,25 +234,25 @@ def run_synthetic_validation() -> None:
     print("=" * 70)
 
     test_data = generate_test_data()
-    data = test_data['data']
-    sources = test_data['sources']
-    mixing = test_data['mixing']
-    sfreq = test_data['sfreq']
+    data = test_data["data"]
+    sources = test_data["sources"]
+    mixing = test_data["mixing"]
+    sfreq = test_data["sfreq"]
 
     # Test: Can we recover the 10 Hz source?
     print("\n--- Test: Recover 10 Hz source using bandpass bias ---")
     bias = BandpassBias(freq_band=(8, 12), sfreq=sfreq)
     biased = bias.apply(data)
-    
+
     filters, patterns, eigenvalues, _ = compute_dss(data, biased)
-    
+
     # Top component should correlate with first source (10 Hz)
     top_source_recovered = filters[0] @ data
     true_10hz = sources[0]
-    
+
     corr = np.abs(np.corrcoef(top_source_recovered, true_10hz)[0, 1])
     print(f"  Correlation with true 10 Hz source: {corr:.4f}")
-    
+
     # Pattern should correlate with mixing column
     pattern_corr = np.abs(np.corrcoef(patterns[:, 0], mixing[:, 0])[0, 1])
     print(f"  Pattern correlation with true mixing: {pattern_corr:.4f}")
@@ -267,8 +268,9 @@ def run_synthetic_validation() -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="DSS Parity Test")
-    parser.add_argument("--no-matlab", action="store_true",
-                        help="Skip MATLAB tests, run synthetic only")
+    parser.add_argument(
+        "--no-matlab", action="store_true", help="Skip MATLAB tests, run synthetic only"
+    )
     args = parser.parse_args()
 
     if args.no_matlab:

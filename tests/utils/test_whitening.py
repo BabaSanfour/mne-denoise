@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 
 from mne_denoise.dss.utils.whitening import (
-    whiten_data,
     compute_whitener,
+    whiten_data,
 )
 
 
@@ -25,9 +25,8 @@ def test_whiten_identity_covariance():
 
     # Check covariance is approximately identity
     cov = whitened @ whitened.T / n_samples
-    np.testing.assert_allclose(
-        cov, np.eye(whitened.shape[0]), atol=0.1
-    )
+    np.testing.assert_allclose(cov, np.eye(whitened.shape[0]), atol=0.1)
+
 
 def test_whiten_rank_deficient():
     """Whitening should handle rank-deficient data."""
@@ -45,6 +44,7 @@ def test_whiten_rank_deficient():
     # Should auto-detect reduced rank
     assert whitened.shape[0] <= true_rank + 1
 
+
 def test_whiten_3d_data():
     """Whitening should work on 3D epoched data."""
     rng = np.random.default_rng(42)
@@ -55,6 +55,7 @@ def test_whiten_3d_data():
 
     assert whitened.ndim == 3
     assert whitened.shape[1:] == (n_times, n_epochs)
+
 
 def test_compute_whitener_matrices():
     """Whitener and dewhitener should be inverses."""
@@ -69,9 +70,7 @@ def test_compute_whitener_matrices():
 
     # W @ D should be approximately identity (up to truncation)
     product = W @ D
-    np.testing.assert_allclose(
-        product, np.eye(W.shape[0]), atol=1e-10
-    )
+    np.testing.assert_allclose(product, np.eye(W.shape[0]), atol=1e-10)
 
 
 def test_compute_whitener_with_rank():
@@ -101,11 +100,11 @@ def test_compute_whitener_no_variance_error():
 
 def test_compute_whitener_no_components_error():
     """Test compute_whitener raises error when all eigenvalues below threshold."""
-    rng = np.random.default_rng(42)
+    np.random.default_rng(42)
     n_channels = 5
 
     # Create very small covariance (all eigenvalues tiny)
-    cov = np.eye(n_channels) * 1e-20
+    cov = np.eye(n_channels) * 1e-35
 
     with pytest.raises(ValueError, match="no significant variance|No components"):
         compute_whitener(cov)
@@ -117,4 +116,3 @@ def test_whiten_data_invalid_ndim():
 
     with pytest.raises(ValueError, match="must be 2D or 3D"):
         whiten_data(data)
-

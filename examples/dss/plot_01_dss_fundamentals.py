@@ -1,11 +1,11 @@
-"""
-Fundamentals of DSS
-===================
+r"""
+Fundamentals of DSS.
+=====================
 
-This tutorial introduces **Denoising Source Separation (DSS)**, a technique for 
+This tutorial introduces **Denoising Source Separation (DSS)**, a technique for
 extracting brain sources based on a specific criterion of "interestingness" (bias).
 
-Unlike PCA, which finds components of high *variance*, or ICA, which finds components 
+Unlike PCA, which finds components of high *variance*, or ICA, which finds components
 of high *non-Gaussianity*, DSS finds components that maximize a user-defined **Bias**.
 
 The core optimization is:
@@ -23,29 +23,30 @@ Typical biases include:
 *   **Bandpass Filtering**: Finds oscillatory sources (alpha, beta, etc.).
 *   **Time Masking**: Finds artifacts (blinks, heartbeats) to remove them.
 
-This tutorial demonstrates the "Hello World" of DSS: extracting a repetitive signal 
+This tutorial demonstrates the "Hello World" of DSS: extracting a repetitive signal
 buried in noise using the **Trial Average Bias**.
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 """
-
-
 
 # %%
 # Imports
 # -------
 import os
-import numpy as np
-import matplotlib.pyplot as plt
+
 import mne
+import numpy as np
 from mne.datasets import sample
 
-from mne_denoise.dss import DSS, TrialAverageBias, BandpassBias
+from mne_denoise.dss import DSS, BandpassBias, TrialAverageBias
 from mne_denoise.viz import (
     plot_component_summary,
-    plot_score_curve,
     plot_component_time_series,
-    plot_spatial_patterns,
     plot_evoked_comparison,
-    plot_psd_comparison
+    plot_psd_comparison,
+    plot_score_curve,
+    plot_spatial_patterns,
 )
 
 # %%
@@ -66,26 +67,26 @@ times = np.arange(n_times) / sfreq
 data = np.zeros((n_epochs, n_channels, n_times))
 
 # Create standard montage for realistic topomaps
-montage = mne.channels.make_standard_montage('standard_1020')
+montage = mne.channels.make_standard_montage("standard_1020")
 ch_names = montage.ch_names[:n_channels]
-info = mne.create_info(ch_names, sfreq, 'eeg')
+info = mne.create_info(ch_names, sfreq, "eeg")
 info.set_montage(montage)
 
 # Generate smooth spatial patterns (dipole-like)
 # This fixes the "noisy topomap" issue by ensuring adjacent sensors have similar weights.
-pos = np.array([ch['loc'][:3] for ch in info['chs']])
+pos = np.array([ch["loc"][:3] for ch in info["chs"]])
 center_head = np.mean(pos, axis=0)
 
 # Pattern 1: Left-ish
 target_pos_1 = center_head + np.array([-0.05, 0, 0])
 dists_1 = np.linalg.norm(pos - target_pos_1, axis=1)
-mixing_evoked = np.exp(-dists_1**2 / 0.02)
+mixing_evoked = np.exp(-(dists_1**2) / 0.02)
 mixing_evoked /= np.linalg.norm(mixing_evoked)
 
 # Pattern 2: Right-ish
 target_pos_2 = center_head + np.array([0.05, 0, 0.05])
 dists_2 = np.linalg.norm(pos - target_pos_2, axis=1)
-mixing_osc = np.exp(-dists_2**2 / 0.02)
+mixing_osc = np.exp(-(dists_2**2) / 0.02)
 mixing_osc /= np.linalg.norm(mixing_osc)
 
 rng = np.random.default_rng(42)
@@ -99,29 +100,32 @@ for k in range(n_noise_sources):
     rand_pos = center_head + rng.uniform(-0.06, 0.06, 3)
     dists = np.linalg.norm(pos - rand_pos, axis=1)
     # Smooth spatial field
-    field = np.exp(-dists**2 / 0.015)
+    field = np.exp(-(dists**2) / 0.015)
     noise_mix[:, k] = field / np.linalg.norm(field)
 
 for i in range(n_epochs):
     # 1. Evoked Signal (10 Hz, reproducible)
     signal_evoked = np.sin(2 * np.pi * 10 * times) * 2.0
-    
+
     # 2. Oscillatory interference (50 Hz, random phase)
     # We also give this a smooth topography (Oscillator pattern)
-    phase = rng.uniform(0, 2*np.pi)
+    phase = rng.uniform(0, 2 * np.pi)
     signal_osc = np.sin(2 * np.pi * 50 * times + phase) * 1.5
-    
+
     # 3. Background Brain Noise (Spatially Smooth)
     noise_src = rng.standard_normal((n_noise_sources, n_times))
     brain_noise = noise_mix @ noise_src * 0.5
-    
+
     # 4. Sensor Noise (White, small)
     sensor_noise = rng.standard_normal((n_channels, n_times)) * 0.1
-    
+
     # Combine
-    data[i] = (np.outer(mixing_evoked, signal_evoked) + 
-               np.outer(mixing_osc, signal_osc) + 
-               brain_noise + sensor_noise)
+    data[i] = (
+        np.outer(mixing_evoked, signal_evoked)
+        + np.outer(mixing_osc, signal_osc)
+        + brain_noise
+        + sensor_noise
+    )
 
 epochs = mne.EpochsArray(data, info)
 print(f"Created epochs: {epochs.get_data().shape}")
@@ -134,7 +138,7 @@ print(f"Created epochs: {epochs.get_data().shape}")
 # Bias: Maximize power of the mean over epochs.
 
 print("\n--- Synthetic: Trial Average Bias ---")
-dss_evoked = DSS(n_components=3, bias=TrialAverageBias(), return_type='sources')
+dss_evoked = DSS(n_components=3, bias=TrialAverageBias(), return_type="sources")
 dss_evoked.fit(epochs)
 
 # Visualize
@@ -143,7 +147,7 @@ dss_evoked.fit(epochs)
 # This plot shows the "Bias Ratio" for each component.
 # *   **Expectation**: The first component (Comp 0) should have a much higher score than the rest.
 # *   This indicates that Comp 0 is highly reproducible (signal), while others are noise.
-plot_score_curve(dss_evoked, mode='ratio', show=False)
+plot_score_curve(dss_evoked, mode="ratio", show=False)
 
 # 2. Component Time Series
 # ------------------------
@@ -155,14 +159,14 @@ plot_component_time_series(dss_evoked, data=epochs, n_components=3, show=False)
 # 3. Spatial Patterns
 # -------------------
 # The "Spatial Pattern" (or topomap) shows how the component maps onto the sensors.
-# 
+#
 # *   **Interpretation**:
-#     *   **Colors**: Red/Blue indicate opposite polarity. Strong colors mean the component 
+#     *   **Colors**: Red/Blue indicate opposite polarity. Strong colors mean the component
 #         is strongly present on those sensors.
 #     *   **Dots**: These represent the 32 electrodes of the 'standard_1020' montage.
 #     *   **Comp 0**: Shows a smooth dipolar field (the "Left-ish" pattern we simulated).
 #     *   **Comp 1+**: Often look "speckled" or messy, indicating they capture noise.
-# 
+#
 # Note: Since the data is synthetic, the sensor locations are idealized.
 plot_spatial_patterns(dss_evoked, n_components=3, show=False)
 
@@ -178,7 +182,7 @@ plot_component_summary(dss_evoked, data=epochs, n_components=[0], show=False)
 print("Reconstructing data from first component...")
 sources = dss_evoked.transform(epochs)
 # To reconstruct using only specific components, we zero out the others
-sources[1:, :, :] = 0 
+sources[1:, :, :] = 0
 epochs_denoised = dss_evoked.inverse_transform(sources)
 epochs_denoised = mne.EpochsArray(epochs_denoised, info)
 
@@ -203,7 +207,7 @@ dss_osc.fit(epochs)
 
 # Visualize
 # 1. Score Curve
-plot_score_curve(dss_osc, mode='ratio', show=False)
+plot_score_curve(dss_osc, mode="ratio", show=False)
 
 # 2. Component Time Series
 # *   **Expectation**: Comp 0 should look like a bursty/clean 50Hz oscillation.
@@ -231,7 +235,7 @@ epochs_osc = dss_osc.inverse_transform(sources)
 epochs_osc = mne.EpochsArray(epochs_osc, info)
 
 # Plot PSD Comparison
-# *   **Expectation**: The "Denoised" signal should have a massive peak at 50Hz 
+# *   **Expectation**: The "Denoised" signal should have a massive peak at 50Hz
 #     and very little power elsewhere (noise suppressed).
 plot_psd_comparison(epochs, epochs_osc, show=True, fmax=100)
 
@@ -254,11 +258,11 @@ if not os.path.exists(mne_data_path):
         pass
 
 data_path = sample.data_path()
-raw_fname = data_path / 'MEG' / 'sample' / 'sample_audvis_raw.fif'
-event_fname = data_path / 'MEG' / 'sample' / 'sample_audvis_raw-eve.fif'
+raw_fname = data_path / "MEG" / "sample" / "sample_audvis_raw.fif"
+event_fname = data_path / "MEG" / "sample" / "sample_audvis_raw-eve.fif"
 
 raw = mne.io.read_raw_fif(raw_fname, preload=True, verbose=False)
-raw.pick_types(meg='grad', eeg=False, eog=False, stim=False).crop(0, 60)
+raw.pick_types(meg="grad", eeg=False, eog=False, stim=False).crop(0, 60)
 print(f"Data: {len(raw.ch_names)} Gradiometers, 60s duration")
 
 # %%
@@ -267,13 +271,13 @@ print(f"Data: {len(raw.ch_names)} Gradiometers, 60s duration")
 # Goal: Find Alpha (8-12 Hz) components.
 
 print("\n--- Real: Bandpass Bias (Alpha) ---")
-bias_alpha = BandpassBias(freq_band=(8, 12), sfreq=raw.info['sfreq'])
+bias_alpha = BandpassBias(freq_band=(8, 12), sfreq=raw.info["sfreq"])
 dss_alpha = DSS(n_components=5, bias=bias_alpha)
 dss_alpha.fit(raw)
 
 # Visualize
 # 1. Score Curve
-plot_score_curve(dss_alpha, mode='ratio', show=False)
+plot_score_curve(dss_alpha, mode="ratio", show=False)
 
 # 2. Component Time Series
 # *   **Expectation**: Strong rhythmic activity (alpha waves) in the first component.
@@ -309,8 +313,16 @@ plot_psd_comparison(raw, raw_alpha, fmax=40, show=True)
 print("\n--- Real: Trial Average Bias (M100) ---")
 events = mne.read_events(event_fname)
 # Event ID 1 = Auditory/Left
-epochs_real = mne.Epochs(raw, events, event_id=1, tmin=-0.1, tmax=0.4, 
-                        baseline=(None, 0), preload=True, verbose=False)
+epochs_real = mne.Epochs(
+    raw,
+    events,
+    event_id=1,
+    tmin=-0.1,
+    tmax=0.4,
+    baseline=(None, 0),
+    preload=True,
+    verbose=False,
+)
 print(f"Epochs extracted: {len(epochs_real)}")
 
 dss_m100 = DSS(n_components=5, bias=TrialAverageBias())
@@ -318,7 +330,7 @@ dss_m100.fit(epochs_real)
 
 # Visualize
 # 1. Score Curve
-plot_score_curve(dss_m100, mode='ratio', show=False)
+plot_score_curve(dss_m100, mode="ratio", show=False)
 
 # 2. Component Time Series
 # *   **Expectation**: Comp 0 should show a clear evoked potential (M100) that is
@@ -350,5 +362,5 @@ plot_evoked_comparison(epochs_real, epochs_m100, show=True)
 # We successfully demonstrated the flexibility of DSS:
 # *   **TrialAverageBias**: Found phase-locked signals (Sine wave, M100) by averaging.
 # *   **BandpassBias**: Found induced/oscillatory signals (50Hz, Alpha) by filtering.
-# 
+#
 # The same algorithm, `DSS`, solved both problems simply by changing the definition of "interesting".

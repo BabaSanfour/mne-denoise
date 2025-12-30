@@ -8,22 +8,46 @@ For ZapLine, see `mne_denoise.zapline`.
 """
 
 # Core
-from .linear import compute_dss, DSS
-from .nonlinear import iterative_dss, iterative_dss_one, IterativeDSS
-
-# Variants (Modules)
-from .variants import tsr, ssvep, narrowband
-
-# Variants (Direct Access)
-from .variants.tsr import time_shift_dss, smooth_dss
-from .variants.ssvep import ssvep_dss
-from .variants.narrowband import narrowband_scan, narrowband_dss
-
 # Denoisers & Biases (Flat API)
-from .denoisers import *
+from .denoisers import (
+    BandpassBias,
+    CombFilterBias,
+    CycleAverageBias,
+    DCTDenoiser,
+    GaussDenoiser,
+    KurtosisDenoiser,
+    LinearDenoiser,
+    NonlinearDenoiser,
+    NotchBias,
+    PeakFilterBias,
+    QuasiPeriodicDenoiser,
+    RobustTanhDenoiser,
+    SkewDenoiser,
+    SmoothingBias,
+    SmoothTanhDenoiser,
+    SpectrogramBias,
+    SpectrogramDenoiser,
+    TanhMaskDenoiser,
+    TimeShiftBias,
+    TrialAverageBias,
+    WienerMaskDenoiser,
+    beta_gauss,
+    beta_pow3,
+    beta_tanh,
+)
+from .linear import DSS, compute_dss
+from .nonlinear import IterativeDSS, iterative_dss, iterative_dss_one
 
 # Utils (exposed for convenience if needed)
-from .utils import whitening, convergence
+from .utils import convergence, whitening
+
+# Variants (Modules)
+from .variants import narrowband, ssvep, tsr
+from .variants.narrowband import narrowband_dss, narrowband_scan
+from .variants.ssvep import ssvep_dss
+
+# Variants (Direct Access)
+from .variants.tsr import smooth_dss, time_shift_dss
 
 __all__ = [
     # Core

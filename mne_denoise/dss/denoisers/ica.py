@@ -10,22 +10,23 @@ Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
 References
 ----------
 .. [1] Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res., 6, 233-272.
-.. [2] Hyvärinen, A. (1999). Fast and robust fixed-point algorithms for independent 
+.. [2] Hyvärinen, A. (1999). Fast and robust fixed-point algorithms for independent
        component analysis. IEEE Trans. Neural Netw., 10(3), 626-634.
 """
 
 from __future__ import annotations
 
 import numpy as np
+
 from .base import NonlinearDenoiser
 
 
 class TanhMaskDenoiser(NonlinearDenoiser):
-    """Tanh mask denoiser (Standard FastICA nonlinearity).
+    r"""Tanh mask denoiser (Standard FastICA nonlinearity).
 
     Implements the hyperbolic tangent nonlinearity used widely in ICA for super-Gaussian
     source extraction. It is robust to outliers compared to kurtosis ($s^3$).
-    
+
     Formula:
         $s_{new} = \\tanh(\\alpha \\cdot s)$
 
@@ -68,13 +69,13 @@ class TanhMaskDenoiser(NonlinearDenoiser):
                 return denoised * std
             else:
                 return source
-        
+
         return np.tanh(self.alpha * source)
 
 
 class RobustTanhDenoiser(NonlinearDenoiser):
-    """Robust tanh denoiser (FastICA / RobustICA formulation).
-    
+    r"""Robust tanh denoiser (FastICA / RobustICA formulation).
+
     Implements:
         $s_{new} = s - \\tanh(\\alpha \\cdot s)$
 
@@ -107,7 +108,7 @@ class RobustTanhDenoiser(NonlinearDenoiser):
 
 
 class GaussDenoiser(NonlinearDenoiser):
-    """Gaussian nonlinearity (FastICA 'gauss').
+    r"""Gaussian nonlinearity (FastICA 'gauss').
 
     Implements:
         $s_{new} = s \\cdot \\exp(-a s^2 / 2)$
@@ -138,7 +139,7 @@ class GaussDenoiser(NonlinearDenoiser):
 
     def denoise(self, source: np.ndarray) -> np.ndarray:
         """Apply Gaussian nonlinearity."""
-        s2 = source ** 2
+        s2 = source**2
         return source * np.exp(-self.a * s2 / 2)
 
 
@@ -165,12 +166,12 @@ class SkewDenoiser(NonlinearDenoiser):
 
     def denoise(self, source: np.ndarray) -> np.ndarray:
         """Apply skewness ($s^2$)."""
-        return source ** 2
+        return source**2
 
 
 class KurtosisDenoiser(NonlinearDenoiser):
     """Kurtosis maximization denoiser.
-    
+
     Can wrap different nonlinearities ('tanh', 'cube', 'gauss') to maximize non-Gaussianity.
     Included for checking various ICA contrasts.
 
@@ -194,26 +195,26 @@ class KurtosisDenoiser(NonlinearDenoiser):
 
     def __init__(
         self,
-        nonlinearity: str = 'tanh',
+        nonlinearity: str = "tanh",
         alpha: float = 1.0,
     ) -> None:
-        if nonlinearity not in ('tanh', 'cube', 'gauss'):
+        if nonlinearity not in ("tanh", "cube", "gauss"):
             raise ValueError(f"Unknown nonlinearity: {nonlinearity}")
         self.nonlinearity = nonlinearity
         self.alpha = alpha
 
     def denoise(self, source: np.ndarray) -> np.ndarray:
         """Apply nonlinearity."""
-        if self.nonlinearity == 'tanh':
+        if self.nonlinearity == "tanh":
             return np.tanh(self.alpha * source)
-        elif self.nonlinearity == 'cube':
-            return source ** 3
+        elif self.nonlinearity == "cube":
+            return source**3
         else:  # self.nonlinearity == 'gauss' (validated in __init__)
             return source * np.exp(-0.5 * (self.alpha * source) ** 2)
 
 
 class SmoothTanhDenoiser(NonlinearDenoiser):
-    """Smoothed tanh denoiser.
+    r"""Smoothed tanh denoiser.
 
     Applies temporal smoothing before the tanh nonlinearity. This can help
     extract sources with both temporal structure and non-Gaussian statistics.
@@ -243,10 +244,10 @@ class SmoothTanhDenoiser(NonlinearDenoiser):
     def denoise(self, source: np.ndarray) -> np.ndarray:
         """Apply smoothed tanh nonlinearity."""
         from scipy.ndimage import uniform_filter1d
-        
+
         # Smooth the source
-        smoothed = uniform_filter1d(source, size=self.window, mode='reflect')
-        
+        smoothed = uniform_filter1d(source, size=self.window, mode="reflect")
+
         # Apply tanh to smoothed signal
         return np.tanh(self.alpha * smoothed)
 
@@ -255,8 +256,9 @@ class SmoothTanhDenoiser(NonlinearDenoiser):
 # Helper functions for beta (Newton step)
 # =============================================================================
 
+
 def beta_tanh(source: np.ndarray) -> float:
-    """Compute beta for Tanh denoiser (FastICA Newton step).
+    r"""Compute beta for Tanh denoiser (FastICA Newton step).
 
     Formula: $\\beta = -E[1 - \\tanh^2(s)]$
     Legacy: `beta_tanh.m`
@@ -270,7 +272,7 @@ def beta_tanh(source: np.ndarray) -> float:
 
 
 def beta_pow3(source: np.ndarray) -> float:
-    """Compute beta for Cubic ($s^3$) denoiser.
+    r"""Compute beta for Cubic ($s^3$) denoiser.
 
     Formula: $\\beta = -3$ (constant expectation for $g(s)=s^3$, $g'(s)=3s^2$, assuming unit var)
     Actually for $g(s)=s^3$, $g'(s)=3s^2$. $E[3s^2] = 3 E[s^2] = 3$ (if whitened).
@@ -281,10 +283,10 @@ def beta_pow3(source: np.ndarray) -> float:
 
 
 def beta_gauss(source: np.ndarray, a: float = 1.0) -> float:
-    """Compute beta for Gaussian denoiser.
+    r"""Compute beta for Gaussian denoiser.
 
     Formula: $\\beta = -E[(1 - a s^2) \\exp(-a s^2 / 2)]$
     Legacy: `beta_gauss.m`
     """
-    s2 = source ** 2
+    s2 = source**2
     return -np.mean((1 - a * s2) * np.exp(-a * s2 / 2))

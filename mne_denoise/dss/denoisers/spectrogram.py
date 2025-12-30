@@ -19,47 +19,37 @@ from typing import Optional
 
 import numpy as np
 from scipy import signal
-
 from scipy.ndimage import zoom
 
 from .base import LinearDenoiser, NonlinearDenoiser
 
 
-
 def _apply_tf_mask(
-    data_1d: np.ndarray,
-    mask: np.ndarray,
-    nperseg: int,
-    noverlap: int
+    data_1d: np.ndarray, mask: np.ndarray, nperseg: int, noverlap: int
 ) -> np.ndarray:
     """Apply TF mask to 1D signal."""
     f, t, Zxx = signal.stft(data_1d, nperseg=nperseg, noverlap=noverlap)
-    
+
     # Resize mask if needed
-    if mask.shape != Zxx.shape:             
-        zoom_factors = (
-            Zxx.shape[0] / mask.shape[0],
-            Zxx.shape[1] / mask.shape[1]
-        )
-        mask_2d = zoom(mask, zoom_factors, order=0) # Nearest/Linear
+    if mask.shape != Zxx.shape:
+        zoom_factors = (Zxx.shape[0] / mask.shape[0], Zxx.shape[1] / mask.shape[1])
+        mask_2d = zoom(mask, zoom_factors, order=0)  # Nearest/Linear
     else:
         mask_2d = mask
 
     Zxx_masked = Zxx * mask_2d
-    
-    _, reconstructed = signal.istft(
-        Zxx_masked, nperseg=nperseg, noverlap=noverlap
-    )
-    
+
+    _, reconstructed = signal.istft(Zxx_masked, nperseg=nperseg, noverlap=noverlap)
+
     # Match length
     if len(reconstructed) > len(data_1d):
-        reconstructed = reconstructed[:len(data_1d)]
+        reconstructed = reconstructed[: len(data_1d)]
     elif len(reconstructed) < len(data_1d):
         # Pad with zeros
         padded = np.zeros(len(data_1d))
-        padded[:len(reconstructed)] = reconstructed
+        padded[: len(reconstructed)] = reconstructed
         reconstructed = padded
-        
+
     return reconstructed
 
 
@@ -68,7 +58,7 @@ class SpectrogramBias(LinearDenoiser):
 
     Applies a FIXED time-frequency mask to the data. This is a linear operation
     used to define the signal subspace in the initialization or linear DSS step.
-    
+
     Parameters
     ----------
     mask : ndarray, shape (n_freqs, n_times)
@@ -86,6 +76,10 @@ class SpectrogramBias(LinearDenoiser):
     >>> bias = SpectrogramBias(mask)
     >>> data = np.random.randn(128, 1000)
     >>> biased = bias.apply(data)
+
+    See Also
+    --------
+    SpectrogramDenoiser : Adaptive nonlinear version.
 
     References
     ----------
@@ -121,7 +115,7 @@ class SpectrogramBias(LinearDenoiser):
         # Apply strict mask to each channel
         n_ch, n_times = data.shape
         biased = np.zeros_like(data)
-        
+
         for ch in range(n_ch):
             biased[ch] = _apply_tf_mask(
                 data[ch], self.mask, self.nperseg, self.noverlap
@@ -136,10 +130,6 @@ class SpectrogramDenoiser(NonlinearDenoiser):
     calculating the mask from the source estimate itself at each iteration.
     This makes it distinct from the Linear SpectrogramBias.
 
-    References
-    ----------
-    Särelä & Valpola (2005). Section 4.1.3 "SPECTROGRAM DENOISING"
-
     Parameters
     ----------
     threshold_percentile : float
@@ -151,6 +141,22 @@ class SpectrogramDenoiser(NonlinearDenoiser):
         Overlap between segments. Default nperseg // 2.
     mask : ndarray, shape (n_freqs, n_times), optional
         Optional FIXED mask to use instead of adaptive (hybrid mode).
+
+    Examples
+    --------
+    >>> from mne_denoise.dss.denoisers import SpectrogramDenoiser
+    >>> # Retain only the strongest 10% of TF-bins (aggressive denoising)
+    >>> denoiser = SpectrogramDenoiser(threshold_percentile=90)
+    >>> denoised = denoiser.denoise(source)
+
+    See Also
+    --------
+    SpectrogramBias : Fixed linear version.
+
+    References
+    ----------
+    Särelä & Valpola (2005). Section 4.1.3 "SPECTROGRAM DENOISING"
+
     """
 
     def __init__(
@@ -191,8 +197,6 @@ class SpectrogramDenoiser(NonlinearDenoiser):
             computed_mask = (magnitude > threshold).astype(float)
         else:
             computed_mask = self.mask
-            
+
         # Apply mask using shared logic
-        return _apply_tf_mask(
-            source, computed_mask, self.nperseg, self.noverlap
-        )
+        return _apply_tf_mask(source, computed_mask, self.nperseg, self.noverlap)

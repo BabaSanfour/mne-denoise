@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from ..linear import DSS
 from ..denoisers.periodic import CombFilterBias
+from ..linear import DSS
 
 
 def ssvep_dss(
@@ -52,7 +52,7 @@ def ssvep_dss(
     >>> dss = ssvep_dss(sfreq=250, stim_freq=12)
     >>> dss.fit(epochs)
     >>> ssvep_sources = dss.transform(epochs)
-    
+
     >>> # Get denoised data back in sensor space
     >>> dss = ssvep_dss(sfreq=250, stim_freq=12, return_type='epochs')
     >>> dss.fit(epochs)

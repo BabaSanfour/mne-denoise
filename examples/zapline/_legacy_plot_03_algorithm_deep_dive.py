@@ -1,5 +1,5 @@
 """
-ZapLine: Algorithm Deep Dive
+ZapLine: Algorithm Deep Dive.
 =============================
 
 This example provides a detailed walkthrough of the ZapLine algorithm,
@@ -11,6 +11,9 @@ Algorithm Steps:
 3. DSS spatial filter removes line artifacts from other path
 4. Paths are combined for clean, full-rank output
 
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+
 Reference
 ---------
 de Cheveigné, A. (2020). ZapLine: A simple and effective method to remove
@@ -20,13 +23,14 @@ power line artifacts. NeuroImage, 207, 116356.
 # %%
 # Imports
 # -------
-import numpy as np
+import sys
+
 import matplotlib.pyplot as plt
+import numpy as np
 from scipy import signal
 from scipy.fft import fft, ifft
 
-import sys
-sys.path.insert(0, r'D:\PhD\mne-denoise')
+sys.path.insert(0, r"D:\PhD\mne-denoise")
 
 from mne_denoise import dss_zapline
 
@@ -44,6 +48,7 @@ line_freq = 50
 
 t = np.arange(n_times) / sfreq
 
+
 # Brain signal (pink noise - more realistic than white noise)
 def generate_pink_noise(n_channels, n_times):
     """Generate 1/f pink noise."""
@@ -56,6 +61,7 @@ def generate_pink_noise(n_channels, n_times):
     white_fft = fft(white, axis=1)
     pink = np.real(ifft(white_fft * pink_filter, axis=1))
     return pink
+
 
 brain_signal = generate_pink_noise(n_channels, n_times)
 
@@ -76,9 +82,9 @@ line_noise = line_noise / np.std(line_noise) * 50e-6  # 50 µV scale (strong art
 data = brain_signal + line_noise
 
 print(f"Data: {n_channels} channels x {n_times} samples")
-print(f"Brain signal RMS: {np.sqrt(np.mean(brain_signal**2))*1e6:.1f} µV")
-print(f"Line noise RMS: {np.sqrt(np.mean(line_noise**2))*1e6:.1f} µV")
-print(f"SNR: {10*np.log10(np.var(brain_signal)/np.var(line_noise)):.1f} dB")
+print(f"Brain signal RMS: {np.sqrt(np.mean(brain_signal**2)) * 1e6:.1f} µV")
+print(f"Line noise RMS: {np.sqrt(np.mean(line_noise**2)) * 1e6:.1f} µV")
+print(f"SNR: {10 * np.log10(np.var(brain_signal) / np.var(line_noise)):.1f} dB")
 
 # %%
 # Step 1: Perfect Reconstruction Filterbank
@@ -94,15 +100,14 @@ kernel = np.ones(period) / period
 
 # Apply smoothing (line-free path)
 data_smooth = np.apply_along_axis(
-    lambda x: np.convolve(x, kernel, mode='same'),
-    axis=1, arr=data
+    lambda x: np.convolve(x, kernel, mode="same"), axis=1, arr=data
 )
 
 # Residual (line-contaminated path)
 data_residual = data - data_smooth
 
-print(f"\nStep 1: Filterbank")
-print(f"  Period: {period} samples ({1000/line_freq:.1f} ms)")
+print("\nStep 1: Filterbank")
+print(f"  Period: {period} samples ({1000 / line_freq:.1f} ms)")
 print(f"  Smooth path variance: {np.var(data_smooth):.2e}")
 print(f"  Residual path variance: {np.var(data_residual):.2e}")
 
@@ -117,24 +122,24 @@ ch = 0
 time_slice = slice(1000, 1500)
 t_plot = t[time_slice]
 
-axes[0].plot(t_plot, data[ch, time_slice] * 1e6, 'k-', linewidth=1)
-axes[0].set_ylabel('Original (µV)')
-axes[0].set_title('Step 1: Perfect Reconstruction Filterbank')
+axes[0].plot(t_plot, data[ch, time_slice] * 1e6, "k-", linewidth=1)
+axes[0].set_ylabel("Original (µV)")
+axes[0].set_title("Step 1: Perfect Reconstruction Filterbank")
 axes[0].grid(True, alpha=0.3)
 
-axes[1].plot(t_plot, data_smooth[ch, time_slice] * 1e6, 'b-', linewidth=1)
-axes[1].set_ylabel('Smooth Path (µV)')
-axes[1].set_title('After smoothing filter (line-free)')
+axes[1].plot(t_plot, data_smooth[ch, time_slice] * 1e6, "b-", linewidth=1)
+axes[1].set_ylabel("Smooth Path (µV)")
+axes[1].set_title("After smoothing filter (line-free)")
 axes[1].grid(True, alpha=0.3)
 
-axes[2].plot(t_plot, data_residual[ch, time_slice] * 1e6, 'r-', linewidth=1)
-axes[2].set_ylabel('Residual Path (µV)')
-axes[2].set_xlabel('Time (s)')
-axes[2].set_title('Residual (contains line noise)')
+axes[2].plot(t_plot, data_residual[ch, time_slice] * 1e6, "r-", linewidth=1)
+axes[2].set_ylabel("Residual Path (µV)")
+axes[2].set_xlabel("Time (s)")
+axes[2].set_title("Residual (contains line noise)")
 axes[2].grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig('zapline_step1_filterbank.png', dpi=150, bbox_inches='tight')
+plt.savefig("zapline_step1_filterbank.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 # Verify perfect reconstruction
@@ -149,14 +154,15 @@ print(f"Perfect reconstruction error: {reconstruction_error:.2e}")
 
 nfft = 1024
 
+
 def compute_bias_covariance(data_2d, freqs_hz, sfreq, nfft=1024):
     """Compute covariance matrices with bias at specific frequencies."""
     n_ch, n_t = data_2d.shape
     nfft = min(nfft, n_t)
     n_seg = n_t // nfft
-    
-    freq_bins = np.fft.fftfreq(nfft, 1/sfreq)
-    
+
+    freq_bins = np.fft.fftfreq(nfft, 1 / sfreq)
+
     # Find frequency bins for line and harmonics
     target_bins = []
     for f in freqs_hz:
@@ -164,33 +170,34 @@ def compute_bias_covariance(data_2d, freqs_hz, sfreq, nfft=1024):
         target_bins.append(idx)
         idx_neg = np.argmin(np.abs(freq_bins + f))
         target_bins.append(idx_neg)
-    
+
     c0 = np.zeros((n_ch, n_ch))  # Baseline
     c1 = np.zeros((n_ch, n_ch))  # Biased
-    
+
     for seg in range(n_seg):
-        segment = data_2d[:, seg*nfft:(seg+1)*nfft]
+        segment = data_2d[:, seg * nfft : (seg + 1) * nfft]
         X = fft(segment, axis=1)
-        
+
         # Baseline: all frequencies
         c0 += np.real(X @ X.conj().T) / nfft
-        
+
         # Biased: only target frequencies
         X_bias = np.zeros_like(X)
         for idx in target_bins:
             X_bias[:, idx] = X[:, idx]
         c1 += np.real(X_bias @ X_bias.conj().T) / nfft
-    
+
     c0 /= n_seg
     c1 /= n_seg
-    
+
     return c0, c1
 
+
 # Compute bias covariances
-harmonic_freqs = [line_freq * h for h in range(1, 5) if line_freq * h < sfreq/2]
+harmonic_freqs = [line_freq * h for h in range(1, 5) if line_freq * h < sfreq / 2]
 c0, c1 = compute_bias_covariance(data_residual, harmonic_freqs, sfreq, nfft)
 
-print(f"\nStep 2: Bias Covariance")
+print("\nStep 2: Bias Covariance")
 print(f"  Target frequencies: {harmonic_freqs} Hz")
 print(f"  C0 (baseline) shape: {c0.shape}")
 print(f"  C1 (biased) shape: {c1.shape}")
@@ -203,20 +210,20 @@ print(f"  C1 trace: {np.trace(c1):.2e}")
 
 fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-im0 = axes[0].imshow(c0, aspect='auto', cmap='RdBu_r')
-axes[0].set_title('C0: Baseline Covariance')
-axes[0].set_xlabel('Channel')
-axes[0].set_ylabel('Channel')
+im0 = axes[0].imshow(c0, aspect="auto", cmap="RdBu_r")
+axes[0].set_title("C0: Baseline Covariance")
+axes[0].set_xlabel("Channel")
+axes[0].set_ylabel("Channel")
 plt.colorbar(im0, ax=axes[0])
 
-im1 = axes[1].imshow(c1, aspect='auto', cmap='RdBu_r')
-axes[1].set_title('C1: Biased Covariance (line frequencies)')
-axes[1].set_xlabel('Channel')
-axes[1].set_ylabel('Channel')
+im1 = axes[1].imshow(c1, aspect="auto", cmap="RdBu_r")
+axes[1].set_title("C1: Biased Covariance (line frequencies)")
+axes[1].set_xlabel("Channel")
+axes[1].set_ylabel("Channel")
 plt.colorbar(im1, ax=axes[1])
 
 plt.tight_layout()
-plt.savefig('zapline_step2_covariance.png', dpi=150, bbox_inches='tight')
+plt.savefig("zapline_step2_covariance.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 # %%
@@ -242,7 +249,7 @@ eigvecs = eigvecs[:, idx]
 # Eigenvalues = scores (ratio of biased to baseline variance)
 scores = np.abs(eigvals)
 
-print(f"\nStep 3: DSS Decomposition")
+print("\nStep 3: DSS Decomposition")
 print(f"  Eigenvalues (top 8): {scores[:8]}")
 
 # %%
@@ -253,28 +260,28 @@ fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
 # Scores
 ax = axes[0]
-ax.bar(np.arange(1, len(scores)+1), scores)
-ax.axvline(4.5, color='r', linestyle='--', label='d=4 cutoff')
-ax.set_xlabel('Component')
-ax.set_ylabel('Score (Line Noise Power Ratio)')
-ax.set_title('DSS Component Scores')
-ax.set_xlim([0, n_channels+1])
+ax.bar(np.arange(1, len(scores) + 1), scores)
+ax.axvline(4.5, color="r", linestyle="--", label="d=4 cutoff")
+ax.set_xlabel("Component")
+ax.set_ylabel("Score (Line Noise Power Ratio)")
+ax.set_title("DSS Component Scores")
+ax.set_xlim([0, n_channels + 1])
 ax.legend()
 ax.grid(True, alpha=0.3)
 
 # Log scale for better visualization
 ax = axes[1]
-ax.semilogy(np.arange(1, len(scores)+1), scores, 'b.-', markersize=10)
-ax.axvline(4.5, color='r', linestyle='--', label='d=4 cutoff')
-ax.set_xlabel('Component')
-ax.set_ylabel('Score (log scale)')
-ax.set_title('DSS Component Scores (Log Scale)')
-ax.set_xlim([0, n_channels+1])
+ax.semilogy(np.arange(1, len(scores) + 1), scores, "b.-", markersize=10)
+ax.axvline(4.5, color="r", linestyle="--", label="d=4 cutoff")
+ax.set_xlabel("Component")
+ax.set_ylabel("Score (log scale)")
+ax.set_title("DSS Component Scores (Log Scale)")
+ax.set_xlim([0, n_channels + 1])
 ax.legend()
 ax.grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.savefig('zapline_step3_scores.png', dpi=150, bbox_inches='tight')
+plt.savefig("zapline_step3_scores.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 # %%
@@ -299,7 +306,7 @@ noise_estimate = patterns_noise @ sources_noise
 # Clean residual
 residual_clean = data_residual - noise_estimate
 
-print(f"\nStep 4: Projection")
+print("\nStep 4: Projection")
 print(f"  Components removed: {d}")
 print(f"  Noise estimate variance: {np.var(noise_estimate):.2e}")
 print(f"  Clean residual variance: {np.var(residual_clean):.2e}")
@@ -308,24 +315,31 @@ print(f"  Clean residual variance: {np.var(residual_clean):.2e}")
 # Visualize Noise Components
 # --------------------------
 
-fig, axes = plt.subplots(d, 1, figsize=(14, 2*d), sharex=True)
+fig, axes = plt.subplots(d, 1, figsize=(14, 2 * d), sharex=True)
 
 for i in range(d):
-    axes[i].plot(t[:1000], sources_noise[i, :1000] * 1e6, 'r-', linewidth=0.5)
-    axes[i].set_ylabel(f'Comp {i+1}')
+    axes[i].plot(t[:1000], sources_noise[i, :1000] * 1e6, "r-", linewidth=0.5)
+    axes[i].set_ylabel(f"Comp {i + 1}")
     axes[i].grid(True, alpha=0.3)
-    
+
     # Compute and display dominant frequency
     freqs_fft, psd = signal.welch(sources_noise[i], sfreq, nperseg=512)
     peak_freq = freqs_fft[np.argmax(psd)]
-    axes[i].text(0.98, 0.95, f'Peak: {peak_freq:.0f} Hz', 
-                 transform=axes[i].transAxes, ha='right', va='top',
-                 fontsize=10, bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    axes[i].text(
+        0.98,
+        0.95,
+        f"Peak: {peak_freq:.0f} Hz",
+        transform=axes[i].transAxes,
+        ha="right",
+        va="top",
+        fontsize=10,
+        bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+    )
 
-axes[-1].set_xlabel('Time (s)')
-axes[0].set_title(f'Top {d} Line Noise Components')
+axes[-1].set_xlabel("Time (s)")
+axes[0].set_title(f"Top {d} Line Noise Components")
 plt.tight_layout()
-plt.savefig('zapline_step4_components.png', dpi=150, bbox_inches='tight')
+plt.savefig("zapline_step4_components.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 # %%
@@ -336,7 +350,7 @@ plt.show()
 data_clean = data_smooth + residual_clean
 data_removed = data - data_clean
 
-print(f"\nStep 5: Final Output")
+print("\nStep 5: Final Output")
 print(f"  Clean data variance: {np.var(data_clean):.2e}")
 print(f"  Removed variance: {np.var(data_removed):.2e}")
 
@@ -361,28 +375,28 @@ psd_removed_norm = psd_removed_mean / np.sum(psd_removed_mean)
 fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
 ax = axes[0]
-ax.semilogy(freqs, psd_orig_norm, 'k-', linewidth=1.5, label='Original')
-ax.set_xlabel('Frequency (Hz)')
-ax.set_ylabel('Normalized PSD')
-ax.set_title('Original Data')
+ax.semilogy(freqs, psd_orig_norm, "k-", linewidth=1.5, label="Original")
+ax.set_xlabel("Frequency (Hz)")
+ax.set_ylabel("Normalized PSD")
+ax.set_title("Original Data")
 ax.grid(True, alpha=0.3)
 ax.legend()
 for f in harmonic_freqs:
-    ax.axvline(f, color='r', alpha=0.3, linestyle='--')
+    ax.axvline(f, color="r", alpha=0.3, linestyle="--")
 
 ax = axes[1]
-ax.semilogy(freqs, psd_clean_norm, 'g-', linewidth=1.5, label='Cleaned')
-ax.semilogy(freqs, psd_removed_norm, 'r-', linewidth=1.5, alpha=0.7, label='Removed')
-ax.set_xlabel('Frequency (Hz)')
-ax.set_ylabel('Normalized PSD')
-ax.set_title(f'After ZapLine (d={d})')
+ax.semilogy(freqs, psd_clean_norm, "g-", linewidth=1.5, label="Cleaned")
+ax.semilogy(freqs, psd_removed_norm, "r-", linewidth=1.5, alpha=0.7, label="Removed")
+ax.set_xlabel("Frequency (Hz)")
+ax.set_ylabel("Normalized PSD")
+ax.set_title(f"After ZapLine (d={d})")
 ax.grid(True, alpha=0.3)
 ax.legend()
 for f in harmonic_freqs:
-    ax.axvline(f, color='r', alpha=0.3, linestyle='--')
+    ax.axvline(f, color="r", alpha=0.3, linestyle="--")
 
 plt.tight_layout()
-plt.savefig('zapline_step5_final.png', dpi=150, bbox_inches='tight')
+plt.savefig("zapline_step5_final.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 # %%
@@ -403,9 +417,9 @@ print(f"  Correlation with manual implementation: {correlation:.6f}")
 # Summary
 # -------
 
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("ZapLine Algorithm Deep Dive Complete!")
-print("="*60)
+print("=" * 60)
 print("""
 Algorithm Steps:
   1. Filterbank: Split into smooth (line-free) and residual (line-noise) paths
@@ -416,7 +430,7 @@ Algorithm Steps:
 
 Key Properties:
   - Full-rank output (unlike ICA)
-  - Full-bandwidth (unlike lowpass filtering)  
+  - Full-bandwidth (unlike lowpass filtering)
   - Minimal distortion at non-artifact frequencies
   - Only d dimensions are spectrally filtered
   - Only line-dominated part is spatially filtered

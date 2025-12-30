@@ -1,6 +1,6 @@
 """
 =============================================================================
-09. Custom DSS: Defining Your Own Bias
+09. Custom DSS: Defining Your Own Bias.
 =============================================================================
 
 This example demonstrates how to extend DSS by defining **custom bias criteria**.
@@ -14,10 +14,12 @@ We cover two ways to define custom biases:
 Here, we implement a **Gradient Trigger Bias** that finds sources with sharp
 transients (high temporal gradient) by weighting time points where the gradient magnitude is high.
 
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from scipy import signal
 
 from mne_denoise.dss import DSS, LinearDenoiser
@@ -29,31 +31,33 @@ from mne_denoise.dss import DSS, LinearDenoiser
 # We must implement the `compute_bias(data)` method, which returns the
 # covariance matrix of the "biased" (filtered/weighted) data.
 
+
 class GradientTriggerBias(LinearDenoiser):
     """
     Custom IDSS Bias that emphasizes signals with sharp gradients.
-    
-    It weights the covariance matrix based on the magnitude of the 
+
+    It weights the covariance matrix based on the magnitude of the
     temporal gradient of the data.
-    
+
     Parameters
     ----------
     threshold : float
-        Percentile (0-100) of gradient magnitude to keep. 
+        Percentile (0-100) of gradient magnitude to keep.
         Only time points with gradient > percentile are used.
     """
+
     def __init__(self, threshold_percentile=90):
         self.threshold_percentile = threshold_percentile
 
     def apply(self, data):
         """
         Apply bias transformation to data.
-        
+
         Parameters
         ----------
         data : ndarray, shape (n_channels, n_times)
             The input data (usually whitened).
-            
+
         Returns
         -------
         biased_data : ndarray, shape (n_channels, n_times)
@@ -62,20 +66,22 @@ class GradientTriggerBias(LinearDenoiser):
         # 1. Compute temporal gradient (approximate derivative)
         # diff(data, axis=1) gives (n_ch, n_times-1)
         grad = np.diff(data, axis=1, prepend=data[:, :1])
-        
+
         # 2. Compute gradient magnitude (energy across channels) at each time point
         # sum of squares across channels
         grad_energy = np.sum(grad**2, axis=0)
-        
+
         # 3. Determine threshold
         thresh = np.percentile(grad_energy, self.threshold_percentile)
-        
+
         # 4. Create a mask (float for multiplication)
         # We keep time points where gradient energy is high
         mask = (grad_energy > thresh).astype(float)
-        
-        print(f"  GradientTriggerBias: Weighting {np.sum(mask)} / {len(mask)} samples ({mask.mean()*100:.1f}%)")
-        
+
+        print(
+            f"  GradientTriggerBias: Weighting {np.sum(mask)} / {len(mask)} samples ({mask.mean() * 100:.1f}%)"
+        )
+
         # 5. Return weighted data
         # Covariance C_bias will later be computed as (biased_data @ biased_data.T) / N
         return data * mask
@@ -100,7 +106,7 @@ spike_indices = rng.choice(n_samples, 20, replace=False)
 s1[spike_indices] = 5.0  # Impulses
 # Convolve with a sharp kernel to make them "transients" but not single-sample
 kernel = signal.windows.exponential(20, tau=3.0)
-s1 = np.convolve(s1, kernel, mode='same')
+s1 = np.convolve(s1, kernel, mode="same")
 s1 /= s1.std()
 
 # Source 2: Smooth Background (Distractor)
@@ -125,11 +131,11 @@ print(f"Synthesized Data: {X.shape} (5 channels, 2000 samples)")
 
 # Plot Input
 fig, axes = plt.subplots(3, 1, figsize=(10, 6), sharex=True)
-axes[0].plot(time, s1, 'r')
+axes[0].plot(time, s1, "r")
 axes[0].set_title("Target Source (Transients)")
-axes[1].plot(time, s2, 'k')
+axes[1].plot(time, s2, "k")
 axes[1].set_title("Distractor Source (Smooth 10Hz)")
-axes[2].plot(time, X[0], 'gray')
+axes[2].plot(time, X[0], "gray")
 axes[2].set_title("Mixed Sensor Signal (Ch 0)")
 plt.tight_layout()
 plt.show(block=False)
@@ -151,11 +157,11 @@ S_est = dss.transform(X)
 
 # Plot Results
 fig, axes = plt.subplots(3, 1, figsize=(10, 6), sharex=True)
-axes[0].plot(time, S_est[0], 'r')
+axes[0].plot(time, S_est[0], "r")
 axes[0].set_title("DSS Component 0 (Biased to Gradients)")
-axes[1].plot(time, S_est[1], 'k')
+axes[1].plot(time, S_est[1], "k")
 axes[1].set_title("DSS Component 1")
-axes[2].plot(time, S_est[2], 'b')
+axes[2].plot(time, S_est[2], "b")
 axes[2].set_title("DSS Component 2")
 axes[-1].set_xlabel("Time (s)")
 plt.suptitle("Custom Bias Results")
@@ -184,23 +190,25 @@ print("\n--- Using Functional Approach (Simple Wrapper) ---")
 # In reality, this would be your aux channel.
 aux_trigger = np.abs(s1)  # We cheat and use the envelope of s1 as our 'weight'
 
+
 # Define a function wrapper class (since we removed function_bias helper)
 class FunctionalBias(LinearDenoiser):
     def __init__(self, weights):
         self.weights = weights
-        
+
     def apply(self, data):
         # Weight the data (sqrt(weights) because Cov = X @ X.T)
         # But for simpler Power weighting, we just multiply
         # Ensure weights align
         return data * self.weights
 
+
 dss_func = DSS(bias=FunctionalBias(aux_trigger), n_components=3)
 dss_func.fit(X)
 S_func = dss_func.transform(X)
 
 fig, ax = plt.subplots(figsize=(10, 3))
-ax.plot(time, S_func[0], 'g')
+ax.plot(time, S_func[0], "g")
 ax.set_title("Functional Bias Result (Weighted by Envelope)")
 plt.tight_layout()
 print("\nExample 9 Complete!")
