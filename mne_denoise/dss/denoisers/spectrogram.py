@@ -193,7 +193,7 @@ class SpectrogramDenoiser(NonlinearDenoiser):
             )
             # Adaptive magnitude-based mask
             magnitude = np.abs(Zxx)
-            threshold = np.percentile(magnitude, self.threshold_percentile)
+            threshold: float = np.percentile(magnitude, self.threshold_percentile)
             computed_mask = (magnitude > threshold).astype(float)
         else:
             computed_mask = self.mask

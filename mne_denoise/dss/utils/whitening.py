@@ -69,7 +69,7 @@ def compute_whitener(
     eigenvectors = eigenvectors[:, idx]
 
     # Use MNE-like logic for rank
-    max_ev = np.max(np.abs(eigenvalues))
+    max_ev: float = np.max(np.abs(eigenvalues))
     if max_ev < 1e-30:
         raise ValueError("Covariance matrix has no significant variance")
 

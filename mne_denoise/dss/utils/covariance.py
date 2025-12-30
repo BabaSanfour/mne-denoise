@@ -66,7 +66,7 @@ def compute_covariance(
                 f"Weights length {weights.shape[0]} does not match "
                 f"data samples {data.shape[1]}"
             )
-        total_weight = np.sum(weights)
+        total_weight: float = np.sum(weights)
         if total_weight == 0:
             raise ValueError("Sum of weights is zero")
 
@@ -140,7 +140,7 @@ def _ledoit_wolf_shrinkage(data: np.ndarray) -> float:
     delta = ((S - mu * np.eye(n_channels)) ** 2).sum() / n_channels
 
     # Estimate beta
-    X2 = data**2
+    X2: np.ndarray = data**2
     beta = np.sum(X2 @ X2.T / n_times - S**2) / (n_channels * n_times)
 
     # Shrinkage

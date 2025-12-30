@@ -60,9 +60,7 @@ def generate_test_data(
 def run_python_dss(data: np.ndarray, biased_data: np.ndarray) -> dict:
     """Run Python DSS and return results."""
     start = time.perf_counter()
-    filters, patterns, eigenvalues, explained_var = compute_dss(
-        data, biased_data, n_components=None
-    )
+    filters, patterns, eigenvalues = compute_dss(data, biased_data, n_components=None)
     elapsed = time.perf_counter() - start
 
     return {
@@ -244,7 +242,7 @@ def run_synthetic_validation() -> None:
     bias = BandpassBias(freq_band=(8, 12), sfreq=sfreq)
     biased = bias.apply(data)
 
-    filters, patterns, eigenvalues, _ = compute_dss(data, biased)
+    filters, patterns, eigenvalues = compute_dss(data, biased)
 
     # Top component should correlate with first source (10 Hz)
     top_source_recovered = filters[0] @ data

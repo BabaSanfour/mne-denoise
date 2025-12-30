@@ -14,7 +14,7 @@ References
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Tuple, Union
 
 import numpy as np
 
@@ -635,7 +635,7 @@ def _iterative_dss_symmetric(
         # 5. Check convergence (max change across components)
         # Dot product of rows: diag(W @ W_old.T)
         correlations = np.abs(np.sum(W * W_old, axis=1))
-        max_change = np.max(1 - correlations)
+        max_change: float = np.max(1 - correlations)
 
         if max_change < tol:
             if verbose:
@@ -781,7 +781,7 @@ class IterativeDSS:
         self.patterns_: Optional[np.ndarray] = None
         self.sources_: Optional[np.ndarray] = None
         self.convergence_info_: Optional[np.ndarray] = None
-        self._mne_info = None
+        self._mne_info: Optional[Any] = None
 
     def fit(self, X) -> "IterativeDSS":
         """Compute Iterative DSS spatial filters.

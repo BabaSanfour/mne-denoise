@@ -420,7 +420,8 @@ print(f"  Correlation with manual implementation: {correlation:.6f}")
 print("\n" + "=" * 60)
 print("ZapLine Algorithm Deep Dive Complete!")
 print("=" * 60)
-print("""
+print(
+    """
 Algorithm Steps:
   1. Filterbank: Split into smooth (line-free) and residual (line-noise) paths
   2. Bias Filter: Compute covariance at line frequencies
@@ -440,5 +441,6 @@ Parameter d:
   - d=4-8 may be needed for MEG
   - Too small → residual artifacts
   - Too large → more dimensions affected (usually harmless)
-""")
+"""
+)
 print("\n[OK] Deep dive complete!")

@@ -274,7 +274,8 @@ print("ZapLine MNE Integration Demo Complete!")
 print("=" * 60)
 
 if HAS_MNE:
-    print(f"""
+    print(
+        f"""
 Key Results:
   - MEG gradiometers: {result.n_removed} components removed
   - EEG channels: {result_eeg.n_removed if "result_eeg" in dir() else "N/A"} components removed
@@ -285,7 +286,8 @@ Integration with MNE:
   - Apply to raw.get_data() array
   - Replace raw._data with cleaned result
   - Full compatibility with MNE pipelines
-    """)
+    """
+    )
 else:
     print("\nInstall MNE-Python to run this example:")
     print("  pip install mne")

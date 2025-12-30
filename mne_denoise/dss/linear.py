@@ -140,7 +140,7 @@ def compute_dss(
     eigenvalues_white = np.abs(eigenvalues_white)
 
     # Apply threshold
-    max_ev = np.max(eigenvalues_white)
+    max_ev: float = np.max(eigenvalues_white)
     if max_ev < 1e-15:
         raise ValueError("Covariance matrix has no significant variance")
 
@@ -149,7 +149,7 @@ def compute_dss(
     if rank is not None:
         keep_mask[rank:] = False
 
-    n_keep = np.sum(keep_mask)
+    n_keep: int = np.sum(keep_mask)
     if n_keep == 0:
         raise ValueError("No components above regularization threshold")
 
@@ -307,13 +307,13 @@ class DSS(BaseEstimator, TransformerMixin):
         self.return_type = return_type
 
         # Fit attributes
-        self.filters_ = None
-        self.patterns_ = None
-        self.mixing_ = None
-        self.eigenvalues_ = None
-        self.explained_variance_ = None
+        self.filters_: Optional[np.ndarray] = None
+        self.patterns_: Optional[np.ndarray] = None
+        self.mixing_: Optional[np.ndarray] = None
+        self.eigenvalues_: Optional[np.ndarray] = None
+        self.explained_variance_: Optional[np.ndarray] = None
         self.info_ = None
-        self.channel_norms_ = None
+        self.channel_norms_: Optional[np.ndarray] = None
 
     def fit(
         self,
@@ -386,14 +386,19 @@ class DSS(BaseEstimator, TransformerMixin):
 
         if fit:
             # unique norms per channel
-            self.channel_norms_ = np.linalg.norm(data_2d, axis=1)
+            channel_norms = np.linalg.norm(data_2d, axis=1)
             # Avoid division by zero
-            self.channel_norms_ = np.where(
-                self.channel_norms_ > 0, self.channel_norms_, 1.0
-            )
+            channel_norms = np.where(channel_norms > 0, channel_norms, 1.0)
+            self.channel_norms_ = channel_norms
 
         # Apply normalization
-        data_norm = data_2d / self.channel_norms_[:, np.newaxis]
+        if self.channel_norms_ is not None:
+            # Use local variable for type narrowing
+            norms = self.channel_norms_
+            scaling = np.where(norms > 0, norms, 1.0)
+            data_norm = data_2d / scaling[:, np.newaxis]
+        else:
+            data_norm = data_2d
 
         # Reshape back
         if len(orig_shape) == 3:
@@ -406,8 +411,10 @@ class DSS(BaseEstimator, TransformerMixin):
                 # Transpose back to MNE format: (n_ch, n_times, n_epochs) -> (n_epochs, n_ch, n_times)
                 data_norm = np.transpose(data_norm, (2, 0, 1))
                 return mne.EpochsArray(data_norm, X.info, verbose=False)
-            else:  # Evoked
+            elif isinstance(X, Evoked):
                 return mne.EvokedArray(data_norm, X.info, verbose=False)
+            else:
+                return data_norm
         else:
             return data_norm
 
@@ -524,7 +531,7 @@ class DSS(BaseEstimator, TransformerMixin):
             If return_type='raw'/'epochs'/'evoked', returns the reconstructed data (denoised)
             projected back to sensor space (keeping n_components).
         """
-        if self.filters_ is None:
+        if self.filters_ is None or self.mixing_ is None:
             raise RuntimeError("DSS not fitted. Call fit() first.")
 
         if self.normalize_input:
@@ -578,11 +585,13 @@ class DSS(BaseEstimator, TransformerMixin):
             rec = rec.reshape(orig_shape)  # (n_ch, n_times, n_epochs)
 
         # De-normalization
-        if self.normalize_input:
+        if self.normalize_input and self.channel_norms_ is not None:
+            # Local variable for type safety
+            norms = self.channel_norms_
             if len(orig_shape) == 3:  # (n_ch, n_times, n_epochs)
-                rec = rec * self.channel_norms_[:, np.newaxis, np.newaxis]
+                rec = rec * norms[:, np.newaxis, np.newaxis]
             else:  # (n_ch, n_times)
-                rec = rec * self.channel_norms_[:, np.newaxis]
+                rec = rec * norms[:, np.newaxis]
 
         if is_mne:
             out = X.copy()
@@ -611,7 +620,7 @@ class DSS(BaseEstimator, TransformerMixin):
         reconstructed : array, shape (n_channels, n_times)
             The reconstructed sensor space data.
         """
-        if self.filters_ is None:
+        if self.filters_ is None or self.mixing_ is None:
             raise RuntimeError("DSS not fitted. Call fit() first.")
         is_epochs_mne = False
 
@@ -661,13 +670,14 @@ class DSS(BaseEstimator, TransformerMixin):
         else:
             rec = rec_internal
 
-        if self.normalize_input:
+        if self.normalize_input and self.channel_norms_ is not None:
+            norms = self.channel_norms_
             # rec is (n_epochs, n_ch, n_times) OR (n_ch, n_times, n_epochs) OR (n_ch, n_times)
             if is_epochs_mne:
-                rec = rec * self.channel_norms_[np.newaxis, :, np.newaxis]
+                rec = rec * norms[np.newaxis, :, np.newaxis]
             elif rec.ndim == 3:  # (n_ch, n_times, n_epochs)
-                rec = rec * self.channel_norms_[:, np.newaxis, np.newaxis]
+                rec = rec * norms[:, np.newaxis, np.newaxis]
             else:  # (n_ch, n_times)
-                rec = rec * self.channel_norms_[:, np.newaxis]
+                rec = rec * norms[:, np.newaxis]
 
         return rec

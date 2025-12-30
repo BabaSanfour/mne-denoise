@@ -57,9 +57,9 @@ def test_cycle_average_bias():
 
     # Correlation should be high
     corr = np.corrcoef(biased_epoch.ravel(), clean_epoch.ravel())[0, 1]
-    assert corr > 0.95, (
-        f"Biased data should correlate with clean artifact (got {corr:.3f})"
-    )
+    assert (
+        corr > 0.95
+    ), f"Biased data should correlate with clean artifact (got {corr:.3f})"
 
     # Check shape preservation
     assert biased_data.shape == data.shape

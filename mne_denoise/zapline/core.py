@@ -211,7 +211,7 @@ def dss_zapline(
     sfreq: float,
     *,
     n_remove: Union[int, str] = "auto",
-    n_harmonics: int = None,
+    n_harmonics: Optional[int] = None,
     nfft: int = 1024,
     nkeep: Optional[int] = None,
     rank: Optional[int] = None,
@@ -596,7 +596,8 @@ def zapline_plus(
         if verbose:
             print(f"  Detected noise frequencies: {noisefreqs}")
     else:
-        noisefreqs = list(noisefreqs)
+        # We know it's a list/tuple of floats here, not "line"
+        noisefreqs = list(noisefreqs)  # type: ignore
 
     if not noisefreqs:
         if verbose:
@@ -646,15 +647,15 @@ def zapline_plus(
 
                 # Apply ZapLine to chunk
                 if adaptive_nremove:
-                    n_remove = "auto"
+                    n_remove_arg: Union[int, str] = "auto"
                 else:
-                    n_remove = current_fixed
+                    n_remove_arg = int(current_fixed)
 
                 result = dss_zapline(
                     chunk_data,
                     chunk_freq,
                     sfreq,
-                    n_remove=n_remove,
+                    n_remove=n_remove_arg,
                     threshold=current_sigma,
                     nkeep=nkeep,
                 )
@@ -777,7 +778,7 @@ def _detect_line_frequency(
 
         mask = (freqs >= freq - 1) & (freqs <= freq + 1)
         if np.any(mask):
-            powers.append(np.mean(mean_psd[mask]))
+            powers.append(float(np.mean(mean_psd[mask])))
         else:
             powers.append(-np.inf)
 
@@ -984,11 +985,11 @@ def _assess_cleaning(
 
     if np.any(freq_mask):
         above = np.mean(mean_psd[freq_mask] > upper_thresh)
-        too_weak = above > 0.005
+        too_weak = bool(above > 0.005)
 
     if np.any(below_mask):
         below = np.mean(mean_psd[below_mask] < lower_thresh)
-        too_strong = below > 0.005
+        too_strong = bool(below > 0.005)
 
     return {"too_weak": too_weak, "too_strong": too_strong}
 
@@ -1052,7 +1053,7 @@ def dss_zapline_adaptive(
     line_freq: Optional[float] = None,
     min_freq: float = 47.0,
     max_freq: float = 63.0,
-    n_harmonics: int = None,
+    n_harmonics: Optional[int] = None,
     bandwidth: float = 2.0,
     threshold: float = 3.0,
     max_iter: int = 5,

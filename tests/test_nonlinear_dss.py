@@ -118,6 +118,7 @@ def test_iterative_dss_one_convergence():
 
     def denoiser(s):
         return np.tanh(s)  # Simple nonlinearity
+
     w, source, n_iter, converged = iterative_dss_one(
         X_whitened, denoiser, max_iter=100, tol=1e-6
     )
@@ -473,6 +474,7 @@ def test_iterative_dss_extracts_known_source():
 
     def denoiser(s):
         return np.tanh(s)  # Tanh targets super-Gaussian
+
     filters, extracted, patterns, conv = iterative_dss(
         data, denoiser, n_components=1, max_iter=50, random_state=42
     )
@@ -734,6 +736,7 @@ def test_iterative_dss_class_equivalence():
     """IterativeDSS class and iterative_dss function should yield same results."""
     rng = np.random.default_rng(42)
     data = rng.standard_normal((5, 100))
+
     def denoiser(x):
         return np.tanh(x)
 

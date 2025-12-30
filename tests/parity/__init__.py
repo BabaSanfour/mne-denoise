@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -75,9 +75,9 @@ class ParityMetrics:
 
     def __init__(self, name: str):
         self.name = name
-        self.correlations = []
-        self.rmse_values = []
-        self.max_abs_diffs = []
+        self.correlations: List[float] = []
+        self.rmse_values: List[float] = []
+        self.max_abs_diffs: List[float] = []
 
     def add_comparison(
         self,
@@ -98,7 +98,9 @@ class ParityMetrics:
         rmse_neg = np.sqrt(np.mean((p_norm + m_norm) ** 2))
         rmse = min(rmse_pos, rmse_neg)
 
-        max_diff = min(np.max(np.abs(p_norm - m_norm)), np.max(np.abs(p_norm + m_norm)))
+        max_diff: float = min(
+            np.max(np.abs(p_norm - m_norm)), np.max(np.abs(p_norm + m_norm))
+        )
 
         self.correlations.append(corr)
         self.rmse_values.append(rmse)
@@ -114,11 +116,11 @@ class ParityMetrics:
     def summary(self) -> Dict[str, float]:
         """Get summary statistics."""
         return {
-            "mean_correlation": np.mean(self.correlations),
-            "min_correlation": np.min(self.correlations),
-            "mean_rmse": np.mean(self.rmse_values),
-            "max_rmse": np.max(self.rmse_values),
-            "mean_max_diff": np.mean(self.max_abs_diffs),
+            "mean_correlation": float(np.mean(self.correlations)),
+            "min_correlation": float(np.min(self.correlations)),
+            "mean_rmse": float(np.mean(self.rmse_values)),
+            "max_rmse": float(np.max(self.rmse_values)),
+            "mean_max_diff": float(np.mean(self.max_abs_diffs)),
         }
 
     def __repr__(self) -> str:
@@ -136,7 +138,7 @@ def generate_test_data(
     n_epochs: int = 50,
     sfreq: float = 250.0,
     seed: int = 42,
-) -> Dict[str, np.ndarray]:
+) -> Dict[str, Union[np.ndarray, float]]:
     """Generate synthetic test data for parity testing.
 
     Creates data with:

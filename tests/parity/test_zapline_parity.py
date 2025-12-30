@@ -6,25 +6,34 @@ to ensure numerical equivalence for line noise removal.
 
 from __future__ import annotations
 
+import importlib.util
+
 import numpy as np
 import pytest
 
 from mne_denoise.zapline import compute_psd_reduction, dss_zapline
 
 try:
-    import matlab.engine
-    from . import (
-        ParityMetrics,
-        close_matlab_engine,
-        from_matlab,
-        generate_test_data,
-        get_matlab_engine,
-        to_matlab,
-    )
+    if importlib.util.find_spec("matlab") and importlib.util.find_spec("matlab.engine"):
+        import matlab.engine  # noqa: F401
 
-    HAS_MATLAB = True
+        HAS_MATLAB = True
+    else:
+        HAS_MATLAB = False
+        ParityMetrics = None
+        close_matlab_engine = None
+        from_matlab = None
+        generate_test_data = None
+        get_matlab_engine = None
+        to_matlab = None
 except ImportError:
     HAS_MATLAB = False
+    ParityMetrics = None
+    close_matlab_engine = None
+    from_matlab = None
+    generate_test_data = None
+    get_matlab_engine = None
+    to_matlab = None
 
 
 @pytest.fixture(scope="module")

@@ -33,42 +33,49 @@ Thank you for your interest in contributing to `mne-denoise`! We generally follo
 Before submitting a Pull Request (PR), please ensure the following:
 
 ### 1. Style & Linting
+
 We use **Ruff** for linting and formatting.
--   Check for errors:
-    ```bash
-    ruff check .
-    ```
--   Auto-fix issues:
-    ```bash
-    ruff check . --fix
-    ```
--   Format code:
-    ```bash
-    ruff format .
-    ```
+
+- Check for errors:
+  ```bash
+  ruff check .
+  ```
+- Auto-fix issues:
+  ```bash
+  ruff check . --fix
+  ```
+- Format code:
+  ```bash
+  ruff format .
+  ```
 
 ### 2. Testing
+
 Run the test suite to ensure no regressions.
--   Run all tests:
-    ```bash
-    pytest
-    ```
--   Check coverage (aim for 100% on new code):
-    ```bash
-    pytest --cov=mne_denoise --cov-report=html
-    # Open htmlcov/index.html to view report
-    ```
+
+- Run all tests:
+  ```bash
+  pytest
+  ```
+- Check coverage (aim for 100% on new code):
+  ```bash
+  pytest --cov=mne_denoise --cov-report=html
+  # Open htmlcov/index.html to view report
+  ```
 
 ### 3. Documentation
+
 If you added new features or changed APIs, update the documentation.
--   We use **NumPy style docstrings**.
--   Build the docs locally to verify:
-    ```bash
-    make -C docs html
-    ```
-    The output will be in `docs/_build/html/index.html`.
+
+- We use **NumPy style docstrings**.
+- Build the docs locally to verify:
+  ```bash
+  make -C docs html
+  ```
+  The output will be in `docs/_build/html/index.html`.
 
 ### 4. Dependencies
+
 If you added new dependencies, update `pyproject.toml` under `dependencies` or `optional-dependencies`.
 
 ## Submitting changes

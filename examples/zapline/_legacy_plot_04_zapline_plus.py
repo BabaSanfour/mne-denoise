@@ -320,7 +320,8 @@ plt.show()
 print("\n" + "=" * 60)
 print("ZapLine-Plus Demo Complete!")
 print("=" * 60)
-print(f"""
+print(
+    f"""
 Results:
   Standard ZapLine (50 Hz only):
     - Removed {result_basic.n_removed} components
@@ -350,5 +351,6 @@ Key Features of ZapLine-Plus:
   5. Quality assessment
      - Checks for over/under cleaning
      - Automatically adjusts parameters
-""")
+"""
+)
 print("\n[OK] Demo complete!")

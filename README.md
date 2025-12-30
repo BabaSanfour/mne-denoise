@@ -10,11 +10,11 @@
 
 ## Features
 
--   **Linear DSS**: Isolate components based on reproducibility across trials (evoked response) or characteristic frequencies.
--   **Nonlinear / Iterative DSS**: Powerful separation for complex non-Gaussian sources.
--   **Spectrogram & Temporal DSS**: Specialized denoisers for time-frequency targets.
--   **MNE Integration**: Fit and transform directly on `mne.Raw`, `mne.Epochs`, and `mne.Evoked` objects.
--   **Scikit-Learn API**: Fully compatible `Estimator` interface (`fit`, `transform`, `inverse_transform`).
+- **Linear DSS**: Isolate components based on reproducibility across trials (evoked response) or characteristic frequencies.
+- **Nonlinear / Iterative DSS**: Powerful separation for complex non-Gaussian sources.
+- **Spectrogram & Temporal DSS**: Specialized denoisers for time-frequency targets.
+- **MNE Integration**: Fit and transform directly on `mne.Raw`, `mne.Epochs`, and `mne.Evoked` objects.
+- **Scikit-Learn API**: Fully compatible `Estimator` interface (`fit`, `transform`, `inverse_transform`).
 
 ## Installation
 
@@ -86,9 +86,10 @@ We welcome contributions! Please check [CONTRIBUTING.md](CONTRIBUTING.md) for gu
 ## References
 
 **DSS (Linear/Nonlinear):**
-> Särelä, J., & Valpola, H. (2005). Denoising source separation. *Journal of Machine Learning Research*, 6, 233-272.
+
+> Särelä, J., & Valpola, H. (2005). Denoising source separation. _Journal of Machine Learning Research_, 6, 233-272.
 >
-> de Cheveigné, A., & Simon, J. Z. (2008). Denoising based on spatial filtering. *Journal of Neuroscience Methods*, 171(2), 331-339.
+> de Cheveigné, A., & Simon, J. Z. (2008). Denoising based on spatial filtering. _Journal of Neuroscience Methods_, 171(2), 331-339.
 
 ## License
 
