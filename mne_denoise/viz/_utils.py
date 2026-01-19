@@ -37,12 +37,22 @@ def _get_filters(estimator):
 
 
 def _get_scores(estimator):
-    """Extract scores (eigenvalues or similar) from estimator."""
-    if hasattr(estimator, "eigenvalues_"):
-        return estimator.eigenvalues_
+    """Extract scores (eigenvalues or similar) from estimator.
+    
+    Checks for both eigenvalues_ (DSS) and scores_ (ZapLine).
+    """
+    # Check for eigenvalues_ (LinearDSS)
+    if hasattr(estimator, "eigenvalues_") and estimator.eigenvalues_ is not None:
+        ev = estimator.eigenvalues_
+        if isinstance(ev, np.ndarray) and ev.size > 0:
+            return ev
+    # Check for scores_ (ZapLine)
+    if hasattr(estimator, "scores_") and estimator.scores_ is not None:
+        sc = estimator.scores_
+        if isinstance(sc, np.ndarray) and sc.size > 0:
+            return sc
+    # For iterative DSS, we might not have a simple "score"
     if hasattr(estimator, "convergence_info_"):
-        # For iterative DSS, we might not have a simple "score"
-        # Return None or handle differently downstream
         return None
     return None
 
@@ -89,9 +99,21 @@ def _get_components(estimator, data=None):
 
 
 def _handle_picks(info, picks=None):
-    """Wrap mne.pick_types/pick_channels."""
+    """Wrap mne.pick_types/pick_channels using public API."""
     if picks is None:
         return mne.pick_types(
             info, meg=True, eeg=True, seeg=True, ecog=True, fnirs=True, exclude="bads"
         )
-    return mne.io.pick._picks_to_idx(info, picks)
+    # Use public API for picking
+    if isinstance(picks, str):
+        if picks == "all":
+            return np.arange(len(info["ch_names"]))
+        # Use pick_types for string type specifiers
+        return mne.pick_types(info, **{picks: True}, exclude="bads")
+    elif isinstance(picks, (list, np.ndarray)):
+        # Could be channel names or indices
+        if len(picks) > 0 and isinstance(picks[0], str):
+            return mne.pick_channels(info["ch_names"], include=picks)
+        else:
+            return np.asarray(picks)
+    return np.asarray(picks)

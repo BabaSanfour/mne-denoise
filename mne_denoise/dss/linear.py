@@ -366,12 +366,18 @@ class DSS(BaseEstimator, TransformerMixin):
         """
         # Helper to get numpy data
         is_mne = False
+        mne_type = None
         if mne is not None and isinstance(X, (BaseRaw, BaseEpochs, Evoked)):
             data = X.get_data()
             is_mne = True
             if isinstance(X, BaseEpochs):
+                mne_type = "epochs"
                 # MNE Epochs: (n_epochs, n_channels, n_times) -> (n_channels, n_times, n_epochs)
                 data = np.transpose(data, (1, 2, 0))
+            elif isinstance(X, Evoked):
+                mne_type = "evoked"
+            else:
+                mne_type = "raw"
         else:
             data = X
 
@@ -400,14 +406,37 @@ class DSS(BaseEstimator, TransformerMixin):
             data_norm = data_norm.reshape(orig_shape)
 
         if is_mne:
-            if isinstance(X, BaseRaw):
-                return mne.io.RawArray(data_norm, X.info, verbose=False)
-            elif isinstance(X, BaseEpochs):
+            if mne_type == "raw":
+                out = mne.io.RawArray(data_norm, X.info.copy(), verbose=False)
+                # Preserve annotations
+                if hasattr(X, "annotations") and X.annotations is not None:
+                    out.set_annotations(X.annotations)
+                return out
+            elif mne_type == "epochs":
                 # Transpose back to MNE format: (n_ch, n_times, n_epochs) -> (n_epochs, n_ch, n_times)
                 data_norm = np.transpose(data_norm, (2, 0, 1))
-                return mne.EpochsArray(data_norm, X.info, verbose=False)
+                out = mne.EpochsArray(
+                    data_norm,
+                    X.info.copy(),
+                    events=getattr(X, "events", None),
+                    tmin=getattr(X, "tmin", 0),
+                    event_id=getattr(X, "event_id", None),
+                    verbose=False,
+                )
+                # Preserve metadata
+                if hasattr(X, "metadata") and X.metadata is not None:
+                    out.metadata = X.metadata.copy()
+                return out
             else:  # Evoked
-                return mne.EvokedArray(data_norm, X.info, verbose=False)
+                out = mne.EvokedArray(
+                    data_norm,
+                    X.info.copy(),
+                    tmin=getattr(X, "tmin", 0),
+                    comment=getattr(X, "comment", ""),
+                    nave=getattr(X, "nave", 1),
+                    verbose=False,
+                )
+                return out
         else:
             return data_norm
 
@@ -480,14 +509,6 @@ class DSS(BaseEstimator, TransformerMixin):
 
     def _fit_numpy(self, X: np.ndarray, weights: Optional[np.ndarray] = None) -> None:
         """Fit using numpy arrays."""
-        if self.rank is not None:
-            import warnings
-
-            warnings.warn(
-                "Rank parameter is currently ignored for NumPy inputs. "
-                "It is only used when fitting with MNE objects (Raw/Epochs/Evoked)."
-            )
-
         biased_X = self._apply_bias(X)
 
         method = self.cov_method
@@ -496,10 +517,18 @@ class DSS(BaseEstimator, TransformerMixin):
         baseline_cov = compute_covariance(X, method=method, weights=weights, **kws)
         biased_cov = compute_covariance(biased_X, method=method, weights=weights, **kws)
 
+        # Use rank if provided (compute from covariance if not)
+        rank = None
+        if self.rank is not None:
+            if isinstance(self.rank, int):
+                rank = self.rank
+            # If rank is a dict (MNE style), ignore for numpy
+
         self.filters_, self.patterns_, self.eigenvalues_ = compute_dss(
             covariance_baseline=baseline_cov,
             covariance_biased=biased_cov,
             n_components=self.n_components,
+            rank=rank,
             reg=self.reg,
         )
 

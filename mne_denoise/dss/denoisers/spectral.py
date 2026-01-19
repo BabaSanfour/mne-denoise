@@ -15,10 +15,11 @@ References
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import numpy as np
 from scipy import signal
+from scipy.fft import fft, ifft
 
 from .base import LinearDenoiser
 
@@ -149,6 +150,7 @@ class NotchBias(LinearDenoiser):
     See Also
     --------
     BandpassBias : Band-pass filter bias.
+    HarmonicFFTBias : FFT-based harmonic bias (preferred for line noise).
 
     References
     ----------
@@ -190,3 +192,239 @@ class NotchBias(LinearDenoiser):
             Data filtered to isolate the target frequency.
         """
         return self._bandpass.apply(data)
+
+
+class HarmonicFFTBias(LinearDenoiser):
+    """FFT-based harmonic bias for precise line noise isolation.
+
+    Uses FFT to isolate exact frequency bins at a fundamental frequency
+    and its harmonics. This is the preferred bias for line noise removal
+    as used in the ZapLine algorithm (de Cheveigné, 2020).
+
+    Compared to filter-based approaches (NotchBias), this method:
+    - Uses exact frequency bins (no filter roll-off)
+    - Handles multiple harmonics naturally
+    - Supports Welch-style averaging over blocks
+
+    Parameters
+    ----------
+    line_freq : float
+        Fundamental frequency in Hz (e.g., 50 or 60 for line noise).
+    sfreq : float
+        Sampling frequency in Hz.
+    n_harmonics : int or None
+        Number of harmonics to include. If None, include all up to Nyquist.
+    nfft : int
+        FFT size (window length). Default 1024.
+    overlap : float
+        Overlap fraction between blocks (0 to 1). Default 0.5.
+
+    Examples
+    --------
+    >>> from mne_denoise.dss.denoisers import HarmonicFFTBias
+    >>> bias = HarmonicFFTBias(line_freq=50, sfreq=1000, n_harmonics=5)
+    >>> biased_data = bias.apply(data)
+
+    >>> # For ZapLine-style direct covariance computation:
+    >>> c0, c1 = bias.compute_covariances(data)
+
+    See Also
+    --------
+    NotchBias : Filter-based single frequency bias.
+    BandpassBias : General bandpass filter bias.
+
+    References
+    ----------
+    de Cheveigné (2020). ZapLine: A simple and effective method to remove
+        power line artifacts. NeuroImage, 207, 116356.
+    """
+
+    def __init__(
+        self,
+        line_freq: float,
+        sfreq: float,
+        *,
+        n_harmonics: Optional[int] = None,
+        nfft: int = 1024,
+        overlap: float = 0.5,
+    ) -> None:
+        if line_freq <= 0:
+            raise ValueError(f"line_freq must be positive, got {line_freq}")
+        
+        self.line_freq = line_freq
+        self.sfreq = sfreq
+        self.nfft = nfft
+        self.overlap = overlap
+        
+        # Compute number of harmonics
+        nyquist = sfreq / 2
+        if n_harmonics is None:
+            self.n_harmonics = int(np.floor(nyquist / line_freq))
+        else:
+            max_harmonics = int(np.floor(nyquist / line_freq))
+            self.n_harmonics = min(n_harmonics, max_harmonics)
+        
+        # Pre-compute harmonic frequencies
+        self._harmonic_freqs = np.array(
+            [line_freq * (h + 1) for h in range(self.n_harmonics)]
+        )
+        self._harmonic_freqs = self._harmonic_freqs[self._harmonic_freqs < nyquist]
+
+    def _get_target_indices(self, nfft: int) -> list:
+        """Get FFT bin indices for target frequencies."""
+        freq_bins = np.fft.fftfreq(nfft, 1 / self.sfreq)
+        target_indices = []
+        
+        for f in self._harmonic_freqs:
+            # Positive frequency
+            idx = np.argmin(np.abs(freq_bins - f))
+            if idx not in target_indices:
+                target_indices.append(idx)
+            # Negative frequency (for real signal symmetry)
+            idx_neg = np.argmin(np.abs(freq_bins + f))
+            if idx_neg not in target_indices:
+                target_indices.append(idx_neg)
+        
+        return target_indices
+
+    def apply(self, data: np.ndarray) -> np.ndarray:
+        """Apply FFT-based harmonic bias.
+
+        Isolates power at harmonic frequencies by zeroing out all
+        non-target FFT bins.
+
+        Parameters
+        ----------
+        data : ndarray, shape (n_channels, n_times) or (n_channels, n_times, n_epochs)
+            Input data.
+
+        Returns
+        -------
+        biased : ndarray, same shape as input
+            Data with only harmonic frequencies retained.
+        """
+        if data.ndim == 3:
+            # Handle 3D epoched data
+            n_channels, n_times, n_epochs = data.shape
+            biased = np.zeros_like(data)
+            for ep in range(n_epochs):
+                biased[:, :, ep] = self._apply_2d(data[:, :, ep])
+            return biased
+        elif data.ndim == 2:
+            return self._apply_2d(data)
+        else:
+            raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
+
+    def _apply_2d(self, data: np.ndarray) -> np.ndarray:
+        """Apply bias to 2D data."""
+        n_channels, n_times = data.shape
+        
+        # Use data length or nfft, whichever is smaller
+        actual_nfft = min(self.nfft, n_times)
+        target_indices = self._get_target_indices(actual_nfft)
+        
+        # If data is shorter than nfft, process as single block
+        if n_times <= actual_nfft:
+            X = fft(data, n=actual_nfft, axis=1)
+            X_bias = np.zeros_like(X)
+            for idx in target_indices:
+                X_bias[:, idx] = X[:, idx]
+            biased = np.real(ifft(X_bias, axis=1))[:, :n_times]
+            return biased
+        
+        # Welch-style block processing with averaging
+        step = int(actual_nfft * (1 - self.overlap))
+        step = max(step, 1)
+        
+        biased = np.zeros_like(data)
+        counts = np.zeros(n_times)
+        
+        for start in range(0, n_times - actual_nfft + 1, step):
+            end = start + actual_nfft
+            segment = data[:, start:end]
+            
+            X = fft(segment, axis=1)
+            X_bias = np.zeros_like(X)
+            for idx in target_indices:
+                X_bias[:, idx] = X[:, idx]
+            
+            segment_biased = np.real(ifft(X_bias, axis=1))
+            biased[:, start:end] += segment_biased
+            counts[start:end] += 1
+        
+        # Normalize by overlap counts
+        counts = np.maximum(counts, 1)
+        biased /= counts
+        
+        return biased
+
+    def compute_covariances(
+        self, data: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Compute baseline and biased covariance matrices.
+
+        This is the ZapLine-style direct covariance computation that
+        avoids computing biased data explicitly. More efficient for
+        the ZapLine algorithm.
+
+        Parameters
+        ----------
+        data : ndarray, shape (n_channels, n_times)
+            Input data (2D only).
+
+        Returns
+        -------
+        c0 : ndarray, shape (n_channels, n_channels)
+            Baseline covariance (all frequencies).
+        c1 : ndarray, shape (n_channels, n_channels)
+            Biased covariance (target frequencies only).
+        """
+        if data.ndim != 2:
+            raise ValueError(
+                f"compute_covariances requires 2D data, got {data.ndim}D. "
+                "For 3D data, concatenate epochs first."
+            )
+        
+        n_channels, n_times = data.shape
+        actual_nfft = min(self.nfft, n_times)
+        
+        # Handle short data
+        if n_times < actual_nfft:
+            actual_nfft = n_times
+            step = actual_nfft
+        else:
+            step = int(actual_nfft * (1 - self.overlap))
+            step = max(step, 1)
+        
+        target_indices = self._get_target_indices(actual_nfft)
+        
+        c0 = np.zeros((n_channels, n_channels))
+        c1 = np.zeros((n_channels, n_channels))
+        n_blocks = 0
+        
+        # Accumulate over blocks
+        for start in range(0, n_times - actual_nfft + 1, step):
+            end = start + actual_nfft
+            segment = data[:, start:end]
+            
+            X = fft(segment, axis=1)
+            
+            # Baseline: covariance of all frequencies
+            c0 += np.real(X @ X.conj().T)
+            
+            # Biased: covariance of target frequencies only
+            X_bias = np.zeros_like(X)
+            for idx in target_indices:
+                X_bias[:, idx] = X[:, idx]
+            
+            c1 += np.real(X_bias @ X_bias.conj().T)
+            n_blocks += 1
+        
+        if n_blocks > 0:
+            c0 /= n_blocks
+            c1 /= n_blocks
+            # Normalize by nfft
+            c0 /= actual_nfft
+            c1 /= actual_nfft
+        
+        return c0, c1

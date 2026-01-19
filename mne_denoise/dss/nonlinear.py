@@ -151,8 +151,11 @@ def iterative_dss_one(
     """
     n_components, n_times = X_whitened.shape
 
-    # Initialize RNG
-    rng = np.random.default_rng(random_state)
+    # Initialize RNG (handle both int and Generator)
+    if isinstance(random_state, np.random.Generator):
+        rng = random_state
+    else:
+        rng = np.random.default_rng(random_state)
 
     # Initialize weight vector
     if w_init is not None:
@@ -464,8 +467,11 @@ def _iterative_dss_deflation(
     """
     n_whitened, n_times = X_whitened.shape
 
-    # Initialize RNG
-    rng = np.random.default_rng(random_state)
+    # Initialize RNG (handle both int and Generator)
+    if isinstance(random_state, np.random.Generator):
+        rng = random_state
+    else:
+        rng = np.random.default_rng(random_state)
 
     # Storage
     W = np.zeros((n_components, n_whitened))
