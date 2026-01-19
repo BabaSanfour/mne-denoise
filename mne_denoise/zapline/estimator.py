@@ -7,7 +7,7 @@ from typing import Optional, Union
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 
-from .linear import apply_zapline, dss_zapline
+from .core import apply_zapline, dss_zapline
 
 
 def _extract_data_and_info(X):
