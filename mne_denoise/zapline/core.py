@@ -36,6 +36,11 @@ class ZapLineResult:
         Target line frequency.
     n_harmonics : int
         Number of harmonics processed.
+    removed_topographies : list of ndarray, optional
+        Per-chunk topographies of removed components.
+        Each array has shape (n_channels, n_removed_this_chunk).
+    chunk_info : list of dict, optional
+        Per-chunk metadata (start, end, freq, n_removed).
     """
 
     cleaned: np.ndarray
@@ -46,6 +51,8 @@ class ZapLineResult:
     dss_eigenvalues: np.ndarray
     line_freq: float
     n_harmonics: int = 1
+    removed_topographies: Optional[list] = None
+    chunk_info: Optional[list] = None
 
 
 def dss_zapline(

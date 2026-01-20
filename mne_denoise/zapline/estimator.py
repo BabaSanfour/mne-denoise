@@ -141,7 +141,7 @@ class ZapLine(BaseEstimator, TransformerMixin):
 
     def __init__(
         self,
-        line_freq: float = 60.0,
+        line_freq: Optional[float] = 60.0,
         sfreq: Optional[float] = None,
         n_remove: Union[int, str] = "auto",
         n_harmonics: Optional[int] = None,
@@ -150,6 +150,8 @@ class ZapLine(BaseEstimator, TransformerMixin):
         rank: Optional[int] = None,
         reg: float = 1e-9,
         threshold: float = 3.0,
+        adaptive: bool = False,
+        adaptive_params: Optional[dict] = None,
     ):
         self.line_freq = line_freq
         self.sfreq = sfreq
@@ -160,6 +162,8 @@ class ZapLine(BaseEstimator, TransformerMixin):
         self.rank = rank
         self.reg = reg
         self.threshold = threshold
+        self.adaptive = adaptive
+        self.adaptive_params = adaptive_params if adaptive_params is not None else {}
 
         # Attributes (set during fit)
         self.filters_ = None
@@ -182,6 +186,14 @@ class ZapLine(BaseEstimator, TransformerMixin):
         self : ZapLine
             Fitted transformer.
         """
+        if self.adaptive:
+            # In adaptive mode, fitting is done per-chunk during transform.
+            # We performs a dummy check but do not compute global filters.
+            _, _, _ = _extract_data_and_info(X)
+            # Mark as fitted
+            self.filters_ = [] 
+            return self
+
         # Extract data and validate type
         data, mne_sfreq, input_type = _extract_data_and_info(X)
 
@@ -192,6 +204,10 @@ class ZapLine(BaseEstimator, TransformerMixin):
                 sfreq = mne_sfreq
             else:
                 raise ValueError("sfreq must be provided if X is not an MNE object.")
+        
+        # Check line_freq
+        if self.line_freq is None:
+             raise ValueError("line_freq must be provided in non-adaptive mode.")
 
         # Handle 3D data (epochs) by concatenation for fit
         if data.ndim == 3:
@@ -250,7 +266,51 @@ class ZapLine(BaseEstimator, TransformerMixin):
                 raise ValueError("sfreq must be provided if X is not an MNE object.")
 
         is_mne = input_type in ("raw", "epochs")
+        
+        if self.adaptive:
+            from .plus import dss_zapline_plus
+            
+            # Use adaptive pipeline
+            # Note: dss_zapline_plus expects indices as 2D array typically
+            # If 3D, we should probably reshape? 
+            # Segments logic works on 2D continuous.
+            # If Epochs, ideally concatenate?
+            # Or run per epoch? 
+            # Stationarity assumption applies to continuous data.
+            # If epochs are short, maybe treat as one continuous stream (with boundary artifacts handled?)
+            # Or run per epoch (if epochs are long enough > 30s).
+            # Usually Zapline-plus is for continuous raw data.
+            
+            if data.ndim == 3:
+                 # Flatten, process, reshape
+                 # WARNING: Discontinuities at epoch boundaries might affect stationarity checks.
+                 n_epochs, n_ch, n_times = data.shape
+                 data_cont = np.transpose(data, (1, 0, 2)).reshape(n_ch, -1)
+                 
+                 res = dss_zapline_plus(
+                     data_cont,
+                     sfreq=sfreq,
+                     line_freqs=self.line_freq,
+                     **self.adaptive_params
+                 )
+                 cleaned_cont = res.cleaned
+                 cleaned_epochs = cleaned_cont.reshape(n_ch, n_epochs, n_times).transpose(1, 0, 2)
+                 
+                 if is_mne:
+                    return _apply_to_mne_object(X, cleaned_epochs, input_type)
+                 return cleaned_epochs
+            else:
+                res = dss_zapline_plus(
+                     data,
+                     sfreq=sfreq,
+                     line_freqs=self.line_freq,
+                     **self.adaptive_params
+                )
+                if is_mne:
+                    return _apply_to_mne_object(X, res.cleaned, input_type)
+                return res.cleaned
 
+        # Standard Transform
         # Clean using apply_zapline
         if data.ndim == 3:
             # 3D epochs: (n_epochs, n_ch, n_times)
