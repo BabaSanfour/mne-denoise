@@ -23,11 +23,13 @@ from .masking import (
 from .periodic import CombFilterBias, PeakFilterBias, QuasiPeriodicDenoiser
 from .spectral import (
     BandpassBias,
+    HarmonicFFTBias,
     NotchBias,
 )
 from .spectrogram import SpectrogramBias, SpectrogramDenoiser
 from .temporal import (
     DCTDenoiser,
+    PeriodSmoothingBias,
     SmoothingBias,
     TemporalSmoothnessDenoiser,
     TimeShiftBias,
@@ -41,6 +43,7 @@ __all__ = [
     "TrialAverageBias",
     "BandpassBias",
     "NotchBias",
+    "HarmonicFFTBias",
     "PeakFilterBias",
     "CombFilterBias",
     "CycleAverageBias",
@@ -66,4 +69,5 @@ __all__ = [
     # Temporal biases
     "TimeShiftBias",
     "SmoothingBias",
+    "PeriodSmoothingBias",
 ]

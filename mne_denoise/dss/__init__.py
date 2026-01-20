@@ -36,6 +36,7 @@ from .denoisers import (
     beta_tanh,
 )
 from .linear import DSS, compute_dss
+from .jdss import JDSS, compute_jdss
 from .nonlinear import IterativeDSS, iterative_dss, iterative_dss_one
 
 # Utils (exposed for convenience if needed)
@@ -53,6 +54,8 @@ __all__ = [
     # Core
     "compute_dss",
     "DSS",
+    "compute_jdss",
+    "JDSS",
     "iterative_dss",
     "iterative_dss_one",
     "IterativeDSS",

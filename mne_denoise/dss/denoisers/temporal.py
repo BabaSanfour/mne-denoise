@@ -202,6 +202,91 @@ class SmoothingBias(LinearDenoiser):
         return smoothed
 
 
+class PeriodSmoothingBias(LinearDenoiser):
+    """Period-based smoothing bias for canceling periodic signals.
+
+    Applies a moving average filter with window size equal to the period
+    of a target frequency. This perfectly cancels the target frequency
+    and all its harmonics (integer multiples).
+
+    This is equivalent to MATLAB's `nt_smooth` from NoiseTools, and is
+    the core operation used in ZapLine for separating line noise from
+    the smooth baseline.
+
+    Parameters
+    ----------
+    period : int
+        Smoothing window size in samples. Should be `int(sfreq / line_freq)`
+        to cancel the line frequency.
+    n_iterations : int
+        Number of smoothing iterations. More iterations = sharper cutoff.
+        Default 1.
+
+    Examples
+    --------
+    >>> # For 50Hz line noise at 1000Hz sampling rate
+    >>> period = int(1000 / 50)  # = 20 samples
+    >>> bias = PeriodSmoothingBias(period=period)
+    >>> smooth = bias.apply(data)
+    >>> residual = data - smooth  # Contains 50Hz + harmonics
+
+    See Also
+    --------
+    SmoothingBias : General smoothing bias.
+    HarmonicFFTBias : FFT-based harmonic isolation.
+
+    References
+    ----------
+    de Cheveigné (2020). ZapLine: A simple and effective method to remove
+        power line artifacts. NeuroImage, 207, 116356.
+    """
+
+    def __init__(self, period: int, n_iterations: int = 1) -> None:
+        if period < 1:
+            raise ValueError(f"period must be >= 1, got {period}")
+        self.period = period
+        self.n_iterations = n_iterations
+
+    def apply(self, data: np.ndarray) -> np.ndarray:
+        """Apply period-based smoothing.
+
+        Parameters
+        ----------
+        data : ndarray, shape (n_channels, n_times) or (n_channels, n_times, n_epochs)
+            Input data.
+
+        Returns
+        -------
+        smoothed : ndarray, same shape as input
+            Smoothed data with target frequency and harmonics removed.
+        """
+        if self.period < 1:
+            return data.copy()
+
+        kernel = np.ones(self.period) / self.period
+        
+        # Handle 3D data
+        orig_shape = data.shape
+        if data.ndim == 3:
+            n_ch, n_times, n_epochs = data.shape
+            data_2d = data.reshape(n_ch, -1)
+        elif data.ndim == 2:
+            data_2d = data
+        else:
+            raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
+
+        smoothed = data_2d.copy()
+        for _ in range(self.n_iterations):
+            # Apply moving average along time axis
+            smoothed = np.apply_along_axis(
+                lambda x: np.convolve(x, kernel, mode="same"), axis=1, arr=smoothed
+            )
+
+        if data.ndim == 3:
+            return smoothed.reshape(orig_shape)
+        return smoothed
+
+
 class DCTDenoiser(NonlinearDenoiser):
     """DCT domain denoiser (MATLAB denoise_dct.m).
 
