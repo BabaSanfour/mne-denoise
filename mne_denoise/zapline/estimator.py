@@ -205,6 +205,9 @@ class ZapLine(BaseEstimator, TransformerMixin):
             else:
                 raise ValueError("sfreq must be provided if X is not an MNE object.")
         
+        self.sfreq_ = sfreq
+
+        
         # Check line_freq
         if self.line_freq is None:
              raise ValueError("line_freq must be provided in non-adaptive mode.")
@@ -323,8 +326,9 @@ class ZapLine(BaseEstimator, TransformerMixin):
                 n_remove=self.n_removed_,
                 line_freq=self.line_freq,
                 sfreq=sfreq,
-                patterns=self.patterns_,
             )
+
+
             cleaned_cont = res.cleaned
             cleaned_epochs = cleaned_cont.reshape(n_ch, n_epochs, n_times).transpose(
                 1, 0, 2
@@ -341,8 +345,9 @@ class ZapLine(BaseEstimator, TransformerMixin):
             n_remove=self.n_removed_,
             line_freq=self.line_freq,
             sfreq=sfreq,
-            patterns=self.patterns_,
         )
+
+
 
         if is_mne:
             return _apply_to_mne_object(X, res.cleaned, input_type)

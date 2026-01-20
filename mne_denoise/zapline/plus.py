@@ -36,6 +36,7 @@ def dss_zapline_plus(
     process_harmonics: bool = False,
     max_harmonics: Optional[int] = None,
     hybrid_fallback: bool = False,
+    min_chunk_len: float = 30.0,
 ) -> ZapLineResult:
     """Apply Zapline-plus to data.
     
@@ -59,6 +60,8 @@ def dss_zapline_plus(
         Maximum number of harmonics to process.
     hybrid_fallback : bool
         If True, apply hybrid notch cleanup when QA fails.
+    min_chunk_len : float
+        Minimum length of adaptive segments in seconds (default 30.0).
         
     Returns
     -------
@@ -119,7 +122,8 @@ def dss_zapline_plus(
         logger.info(f"Processing frequency {freq_i+1}/{len(all_freqs_to_process)}: {target_freq:.2f} Hz")
         
         # Adaptive segmentation
-        segments = segment_data(current_data, sfreq, target_freq=target_freq)
+        segments = segment_data(current_data, sfreq, target_freq=target_freq, min_chunk_len=min_chunk_len)
+
         logger.info(f"  Segments: {len(segments)}")
         
         cleaned_chunks = []

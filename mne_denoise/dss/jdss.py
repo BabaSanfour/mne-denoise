@@ -128,7 +128,9 @@ class JDSS(BaseEstimator, TransformerMixin):
         
         self.filters_ = None
         self.patterns_ = None
+        self.mixing_ = None
         self.eigenvalues_ = None
+
 
     def fit(self, X: Union[List, np.ndarray], y=None) -> "JDSS":
         """Compute JDSS filters from multiple datasets.
@@ -147,6 +149,11 @@ class JDSS(BaseEstimator, TransformerMixin):
         self.filters_, self.patterns_, self.eigenvalues_ = compute_jdss(
             datasets, n_components=self.n_components, reg=self.reg
         )
+        
+        # Compute mixing matrix for reconstruction
+        # (Patterns from compute_dss are normalized for visualization)
+        self.mixing_ = np.linalg.pinv(self.filters_)
+
         
         return self
 
@@ -177,8 +184,9 @@ class JDSS(BaseEstimator, TransformerMixin):
             elif X.ndim == 3:
                 # (n_datasets, n_channels, n_times) -> (n_datasets, n_components, n_times)
                 # filters is (n_comp, n_ch)
-                # Contract over axis 1 of X
-                return np.tensordot(X, self.filters_.T, axes=(1, 1)).transpose(0, 2, 1)
+                # Contract over axis 1 of X (n_ch) with axis 1 of filters_ (n_ch)
+                return np.tensordot(X, self.filters_, axes=(1, 1)).transpose(0, 2, 1)
+
         
         raise TypeError("Unsupported input type.")
 
@@ -198,17 +206,22 @@ class JDSS(BaseEstimator, TransformerMixin):
         reconstructed : array or list
             Reconstructed data in sensor space.
         """
-        if self.patterns_ is None:
+        if self.mixing_ is None:
             raise RuntimeError("JDSS not fitted.")
+
         
         if isinstance(sources, list):
-            return [self.patterns_ @ s for s in sources]
+            return [self.mixing_ @ s for s in sources]
         elif isinstance(sources, np.ndarray):
             if sources.ndim == 2:
-                return self.patterns_ @ sources
+                return self.mixing_ @ sources
             elif sources.ndim == 3:
                 # (n_datasets, n_components, n_times) -> (n_datasets, n_channels, n_times)
-                return np.tensordot(sources, self.patterns_.T, axes=(1, 1)).transpose(0, 2, 1)
+                # mixing_ is (n_ch, n_comp)
+                # Contract over axis 1 of sources (n_comp) with axis 1 of mixing_ (n_comp)
+                return np.tensordot(sources, self.mixing_, axes=(1, 1)).transpose(0, 2, 1)
+
+
         
         raise TypeError("Unsupported input type.")
 
