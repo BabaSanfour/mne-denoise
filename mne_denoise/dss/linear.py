@@ -326,8 +326,12 @@ class DSS(BaseEstimator, TransformerMixin):
         Parameters
         ----------
         X : Raw | Epochs | Evoked | array
-            The data to fit. If array, shape must be (n_channels, n_times) or
-            (n_channels, n_times, n_epochs).
+            The data to fit.
+            - If array, shape must be:
+              - `(n_channels, n_times)` for continuous data.
+              - `(n_channels, n_times, n_epochs)` for epoch data (evoked DSS).
+              - `(n_datasets, n_channels, n_times)` for group data (Joint DSS).
+            Note: For group DSS, you must reshape your list of datasets into a 3D array before fitting.
         y : None
             Ignored.
         weights : array, shape (n_times,), optional
@@ -545,6 +549,7 @@ class DSS(BaseEstimator, TransformerMixin):
         ----------
         X : Raw | Epochs | Evoked | array
             Data to transform.
+            - If array, must match the shape convention used in fit (see fit docstring).
 
         Returns
         -------

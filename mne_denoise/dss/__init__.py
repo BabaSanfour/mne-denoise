@@ -18,7 +18,6 @@ from .denoisers import (
     KurtosisDenoiser,
     LinearDenoiser,
     NonlinearDenoiser,
-    NotchBias,
     PeakFilterBias,
     QuasiPeriodicDenoiser,
     RobustTanhDenoiser,
@@ -30,13 +29,13 @@ from .denoisers import (
     TanhMaskDenoiser,
     TimeShiftBias,
     TrialAverageBias,
+    AverageBias,
     WienerMaskDenoiser,
     beta_gauss,
     beta_pow3,
     beta_tanh,
 )
 from .linear import DSS, compute_dss
-from .jdss import JDSS, compute_jdss
 from .nonlinear import IterativeDSS, iterative_dss, iterative_dss_one
 
 # Utils (exposed for convenience if needed)
@@ -54,8 +53,6 @@ __all__ = [
     # Core
     "compute_dss",
     "DSS",
-    "compute_jdss",
-    "JDSS",
     "iterative_dss",
     "iterative_dss_one",
     "IterativeDSS",
@@ -75,9 +72,9 @@ __all__ = [
     # Denoisers (from .denoisers)
     "LinearDenoiser",
     "NonlinearDenoiser",
-    "TrialAverageBias",
+    "AverageBias",
     "BandpassBias",
-    "NotchBias",
+    "LineNoiseBias",
     "PeakFilterBias",
     "CombFilterBias",
     "CycleAverageBias",

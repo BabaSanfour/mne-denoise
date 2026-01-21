@@ -36,7 +36,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import signal as sig
 
-from mne_denoise.dss import JDSS, compute_jdss
+from mne_denoise.dss import DSS
+from mne_denoise.dss.denoisers import AverageBias
 
 # %%
 # Simulate Multi-Subject Data
@@ -105,8 +106,8 @@ print(f"Signal amplitude: 1.0, Noise amplitude: 3.0 (SNR ~ 0.33)")
 # JDSS finds the spatial filter that maximizes the ratio of
 # "grand average variance" to "mean of individual variances".
 
-print("\nApplying JDSS...")
-jdss = JDSS(n_components=3)
+print("\nApplying JDSS (via DSS with group averaging)...")
+jdss = DSS(bias=AverageBias(axis="datasets"), n_components=3)
 jdss.fit(list(datasets))
 
 print(f"Eigenvalues (repeatability scores): {jdss.eigenvalues_}")

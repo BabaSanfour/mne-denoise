@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .artifact import CycleAverageBias
 from .base import LinearDenoiser, NonlinearDenoiser
-from .evoked import TrialAverageBias
+from .averaging import AverageBias
 from .ica import (
     GaussDenoiser,
     KurtosisDenoiser,
@@ -23,15 +23,13 @@ from .masking import (
 from .periodic import CombFilterBias, PeakFilterBias, QuasiPeriodicDenoiser
 from .spectral import (
     BandpassBias,
-    HarmonicFFTBias,
-    NotchBias,
+    BandpassBias,
+    LineNoiseBias,
 )
 from .spectrogram import SpectrogramBias, SpectrogramDenoiser
 from .temporal import (
     DCTDenoiser,
-    PeriodSmoothingBias,
     SmoothingBias,
-    TemporalSmoothnessDenoiser,
     TimeShiftBias,
 )
 
@@ -40,10 +38,10 @@ __all__ = [
     "LinearDenoiser",
     "NonlinearDenoiser",
     # Linear biases
-    "TrialAverageBias",
+    "AverageBias",
     "BandpassBias",
-    "NotchBias",
-    "HarmonicFFTBias",
+    "BandpassBias",
+    "LineNoiseBias",
     "PeakFilterBias",
     "CombFilterBias",
     "CycleAverageBias",
@@ -64,10 +62,6 @@ __all__ = [
     "beta_pow3",
     "beta_gauss",
     # Deprecated
-    "VarianceMaskDenoiser",
-    "TemporalSmoothnessDenoiser",
-    # Temporal biases
     "TimeShiftBias",
     "SmoothingBias",
-    "PeriodSmoothingBias",
 ]
