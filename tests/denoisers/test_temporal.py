@@ -6,7 +6,6 @@ import pytest
 from mne_denoise.dss.denoisers.temporal import (
     DCTDenoiser,
     SmoothingBias,
-    TemporalSmoothnessDenoiser,
     TimeShiftBias,
 )
 
@@ -221,29 +220,6 @@ def test_dct_denoiser():
     residual_rms = np.std(denoised - signal_low)
     assert residual_rms < noise_rms * 0.1
 
-
-def test_temporal_smoothness_denoiser():
-    """Test TemporalSmoothnessDenoiser."""
-    # Promotes smooth signals.
-    n = 100
-    times = np.linspace(0, 2 * np.pi, n)
-    smooth = np.sin(times)
-    rough = np.random.randn(n) * 0.5
-
-    data = smooth + rough
-
-    denoiser = TemporalSmoothnessDenoiser(smoothing_factor=0.5)
-    denoised = denoiser.denoise(data)
-
-    # Smooth component should dominate
-    corr = np.corrcoef(denoised, smooth)[0, 1]
-    assert corr > 0.85
-
-    # Original data correlation with smooth
-    corr_orig = np.corrcoef(data, smooth)[0, 1]
-    assert corr > corr_orig, "Denoised signal should be smoother/closer to ground truth"
-
-
 def test_dct_denoiser_2d_data():
     """Test DCTDenoiser with 2D epoched data."""
     rng = np.random.default_rng(42)
@@ -307,27 +283,6 @@ def test_dct_denoiser_cached_mask():
 def test_dct_denoiser_invalid_ndim():
     """Test DCTDenoiser raises error for 3D data."""
     denoiser = DCTDenoiser()
-    data = np.zeros((10, 10, 10))
-
-    with pytest.raises(ValueError, match="must be 1D or 2D"):
-        denoiser.denoise(data)
-
-
-def test_temporal_smoothness_2d_data():
-    """Test TemporalSmoothnessDenoiser with 2D data."""
-    rng = np.random.default_rng(42)
-    n_times, n_epochs = 100, 4
-    data = rng.normal(0, 1, (n_times, n_epochs))
-
-    denoiser = TemporalSmoothnessDenoiser(smoothing_factor=0.3)
-    denoised = denoiser.denoise(data)
-
-    assert denoised.shape == data.shape
-
-
-def test_temporal_smoothness_invalid_ndim():
-    """Test TemporalSmoothnessDenoiser raises error for 3D data."""
-    denoiser = TemporalSmoothnessDenoiser()
     data = np.zeros((10, 10, 10))
 
     with pytest.raises(ValueError, match="must be 1D or 2D"):

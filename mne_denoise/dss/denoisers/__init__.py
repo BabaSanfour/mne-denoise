@@ -45,6 +45,7 @@ __all__ = [
     "CombFilterBias",
     "CycleAverageBias",
     # Nonlinear denoisers (paper-faithful)
+    "VarianceMaskDenoiser",
     "WienerMaskDenoiser",
     "TanhMaskDenoiser",
     "RobustTanhDenoiser",
