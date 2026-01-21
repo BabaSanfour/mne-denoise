@@ -21,7 +21,7 @@ import mne
 import numpy as np
 from mne.datasets import sample
 
-from mne_denoise.dss import DSS, LinearDenoiser, TrialAverageBias
+from mne_denoise.dss import DSS, LinearDenoiser, AverageBias
 from mne_denoise.viz import (
     plot_component_summary,
     plot_component_time_series,
@@ -73,7 +73,7 @@ epochs_sim = mne.EpochsArray(
 )
 
 # 2. Fit DSS
-dss_sim = DSS(n_components=5, bias=TrialAverageBias())
+dss_sim = DSS(n_components=5, bias=AverageBias(axis="epochs"))
 dss_sim.fit(epochs_sim)
 
 # 3. Visualize Results
@@ -156,10 +156,10 @@ print(f"Epochs: {len(epochs_meg)} trials, {len(epochs_meg.ch_names)} channels")
 print("\n--- Part 1: Standard Trial Average Bias ---")
 
 # 1. Fit DSS
-# We use TrialAverageBias, which replaces every trial with the mean of all trials.
+# We use AverageBias(axis='epochs'), which replaces every trial with the mean of all trials.
 dss_std = DSS(
     n_components=10,
-    bias=TrialAverageBias(),
+    bias=AverageBias(axis="epochs"),
     cov_method="empirical",
     cov_kws={"n_jobs": 1},
 )

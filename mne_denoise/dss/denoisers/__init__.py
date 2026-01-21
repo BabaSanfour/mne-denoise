@@ -23,7 +23,6 @@ from .masking import (
 from .periodic import CombFilterBias, PeakFilterBias, QuasiPeriodicDenoiser
 from .spectral import (
     BandpassBias,
-    BandpassBias,
     LineNoiseBias,
 )
 from .spectrogram import SpectrogramBias, SpectrogramDenoiser

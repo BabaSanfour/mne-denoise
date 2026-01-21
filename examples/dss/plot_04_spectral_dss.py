@@ -25,7 +25,7 @@ import numpy as np
 from mne.datasets import sample
 from scipy import signal
 
-from mne_denoise.dss import DSS, BandpassBias, NotchBias
+from mne_denoise.dss import DSS, BandpassBias, LineNoiseBias
 from mne_denoise.dss.variants import narrowband_dss, narrowband_scan
 from mne_denoise.viz import (
     plot_component_summary,
@@ -187,10 +187,10 @@ plt.show(block=False)
 
 
 # %%
-# Part 3: Line Noise Removal (NotchBias)
-# =======================================
-# NotchBias isolates narrow frequency bands for removal (e.g., 60 Hz line noise).
-# It's the inverse of BandpassBias - we find and remove specific frequencies.
+# Part 3: Line Noise Removal (LineNoiseBias)
+# ===========================================
+# LineNoiseBias isolates narrow frequency bands for removal (e.g., 60 Hz line noise).
+# It supports both 'iir' (notch) and 'fft' (harmonic) methods.
 
 print("\n--- Part 2: Line Noise (NotchBias) ---")
 
@@ -209,10 +209,11 @@ raw_noisy = mne.io.RawArray(data_noisy, info_sim)
 print(f"Added {line_freq} Hz line noise + harmonics")
 
 # %%
-# Apply DSS with NotchBias to Remove 60 Hz
-# -----------------------------------------
+# Apply DSS with LineNoiseBias to Remove 60 Hz
+# ---------------------------------------------
 
-notch_bias_60 = NotchBias(freq=60, sfreq=sfreq, bandwidth=2)
+# We use method='iir' to replicate a traditional Notch filter approach
+notch_bias_60 = LineNoiseBias(freq=60, sfreq=sfreq, method='iir', bandwidth=2)
 dss_notch = DSS(n_components=3, bias=notch_bias_60)
 dss_notch.fit(raw_noisy)
 
@@ -262,7 +263,7 @@ plt.axvline(60, color="k", linestyle="--", alpha=0.5, label="60 Hz")
 plt.axvline(120, color="gray", linestyle="--", alpha=0.5)
 plt.xlabel("Frequency (Hz)")
 plt.ylabel("Power")
-plt.title("Line Noise Removal with NotchBias")
+plt.title("Line Noise Removal with LineNoiseBias")
 plt.legend()
 plt.xlim(0, 200)
 plt.grid(True, alpha=0.3)

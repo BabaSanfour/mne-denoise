@@ -27,7 +27,7 @@ import numpy as np
 from mne.datasets import sample
 from mne.preprocessing import create_ecg_epochs, create_eog_epochs
 
-from mne_denoise.dss import DSS, CycleAverageBias, TrialAverageBias
+from mne_denoise.dss import DSS, CycleAverageBias, AverageBias
 from mne_denoise.viz import (
     plot_component_summary,
     plot_component_time_series,
@@ -80,10 +80,10 @@ print(
 )
 
 # 2. Fit DSS with Trial Average Bias
-# We use TrialAverageBias (from evoked.py) which works on pre-epoched data.
+# We use AverageBias(axis='epochs') which works on pre-epoched data.
 # Note: We'll compare with CycleAverageBias later (artifact-specific approach).
 
-dss_eog = DSS(n_components=10, bias=TrialAverageBias(), return_type="sources")
+dss_eog = DSS(n_components=10, bias=AverageBias(axis="epochs"), return_type="sources")
 dss_eog.fit(eog_epochs)
 
 # %%
@@ -301,7 +301,7 @@ print(
 )
 
 # 2. Fit DSS
-dss_ecg = DSS(n_components=8, bias=TrialAverageBias())
+dss_ecg = DSS(n_components=8, bias=AverageBias(axis="epochs"))
 dss_ecg.fit(ecg_epochs)
 
 # %%
@@ -354,7 +354,7 @@ plot_psd_comparison(ecg_epochs, ecg_epochs_clean, fmax=40, show=True)
 # %%
 # Conclusion
 # ----------
-# We used DSS with **TrialAverageBias** to find and remove stereotypic artifacts.
+# We used DSS with **AverageBias** to find and remove stereotypic artifacts.
 # *   By epoching on the artifact events (blinks, heartbeats), we made the artifact "the signal of interest".
 # *   DSS isolated perfectly.
 # *   We removed it by zeroing the component.

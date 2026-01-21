@@ -462,9 +462,9 @@ def test_dss_evoked_workflow():
 
     data = noise + signal
 
-    from mne_denoise.dss.denoisers import TrialAverageBias
+    from mne_denoise.dss.denoisers import AverageBias
 
-    bias = TrialAverageBias()
+    bias = AverageBias(axis="epochs")
     dss = DSS(bias=bias, n_components=3)
     sources = dss.fit_transform(data)
 
@@ -514,9 +514,9 @@ def test_dss_with_mne_epochs():
     )
     epochs = mne.EpochsArray(data, info, verbose=False)
 
-    from mne_denoise.dss.denoisers import TrialAverageBias
+    from mne_denoise.dss.denoisers import AverageBias
 
-    dss = DSS(bias=TrialAverageBias(), n_components=3)
+    dss = DSS(bias=AverageBias(axis="epochs"), n_components=3)
     sources = dss.fit_transform(epochs)
 
     # Sources should be (n_epochs, n_components, n_times)
@@ -688,9 +688,9 @@ def test_dss_array_evoked_extracts_known_erp():
     signal = np.outer(mixing_weights, erp)[:, :, np.newaxis]  # (n_ch, n_times, 1)
     data = noise + signal  # Signal replicated across epochs
 
-    from mne_denoise.dss.denoisers import TrialAverageBias
+    from mne_denoise.dss.denoisers import AverageBias
 
-    bias = TrialAverageBias()
+    bias = AverageBias(axis="epochs")
 
     dss = DSS(bias=bias, n_components=1, normalize_input=False)
     sources = dss.fit_transform(data)  # (1, n_times, n_epochs)
@@ -764,9 +764,9 @@ def test_dss_mne_epochs_extracts_known_erp():
     )
     epochs = mne.EpochsArray(data, info, verbose=False)
 
-    from mne_denoise.dss.denoisers import TrialAverageBias
+    from mne_denoise.dss.denoisers import AverageBias
 
-    bias = TrialAverageBias()
+    bias = AverageBias(axis="epochs")
 
     dss = DSS(bias=bias, n_components=1, normalize_input=False)
     sources = dss.fit_transform(epochs)  # (n_epochs, 1, n_times)
@@ -852,9 +852,9 @@ def test_dss_mne_epochs_inverse_transform_with_normalization():
     )
     epochs = mne.EpochsArray(data, info, verbose=False)
 
-    from mne_denoise.dss.denoisers import TrialAverageBias
+    from mne_denoise.dss.denoisers import AverageBias
 
-    dss = DSS(bias=TrialAverageBias(), n_components=3, normalize_input=True)
+    dss = DSS(bias=AverageBias(axis="epochs"), n_components=3, normalize_input=True)
 
     # Fit and transform - sources will be (n_epochs, n_components, n_times)
     sources = dss.fit_transform(epochs)
