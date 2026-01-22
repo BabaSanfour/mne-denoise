@@ -31,6 +31,7 @@ except ImportError:
 
 from .denoisers import LinearDenoiser
 from .utils import compute_covariance
+from ..utils import extract_data_from_mne, reconstruct_mne_object
 
 # -----------------------------------------------------------------------------
 # 1. Core Algorithm
@@ -464,19 +465,17 @@ class DSS(BaseEstimator, TransformerMixin):
             data = inst.get_data()
             self._fit_numpy(data, weights=weights)
             return
+
         method = self.cov_method
         kws = self.cov_kws.copy() if self.cov_kws else {}
         # Set defaults if not in kws
         kws.setdefault("rank", self.rank)
         kws.setdefault("verbose", False)
 
-        if isinstance(inst, BaseEpochs):
-            data = inst.get_data()
-            data = np.transpose(data, (1, 2, 0))
-        elif isinstance(inst, Evoked):
-            data = inst.data
-        else:  # Raw
-            data = inst.get_data()
+        data, _, mne_type, _ = extract_data_from_mne(inst)
+        if mne_type == "epochs":
+             # DSS transpose preference
+             data = np.transpose(data, (1, 2, 0))
 
         biased_data = self._apply_bias(data)
 
@@ -568,14 +567,11 @@ class DSS(BaseEstimator, TransformerMixin):
             X_in = X
 
         # Helper to extract data
-        is_mne = False
-        if mne is not None and isinstance(X_in, (BaseRaw, BaseEpochs, Evoked)):
-            is_mne = True
-            data = X_in.get_data()
-            if isinstance(X_in, BaseEpochs):
-                data = np.transpose(data, (1, 2, 0))
-        else:
-            data = X_in
+        data, _, mne_type, orig_inst = extract_data_from_mne(X_in)
+
+        # DSS internal convention for Epochs: (n_channels, n_times, n_epochs)
+        if mne_type == "epochs":
+             data = np.transpose(data, (1, 2, 0))
 
         orig_shape = data.shape
         if data.ndim == 3:
@@ -597,8 +593,9 @@ class DSS(BaseEstimator, TransformerMixin):
                 sources = sources.reshape(
                     self.n_components or sources.shape[0], n_times, n_epochs
                 )
-                if is_mne and isinstance(X_in, BaseEpochs):
-                    sources = np.transpose(sources, (2, 0, 1))
+                if mne_type == "epochs":
+                    # Return as (n_epochs, n_components, n_times)
+                    return sources.transpose(2, 0, 1)
             return sources
 
         # Use only kept components
@@ -617,16 +614,12 @@ class DSS(BaseEstimator, TransformerMixin):
                 rec = rec * self.channel_norms_[:, np.newaxis, np.newaxis]
             else:  # (n_ch, n_times)
                 rec = rec * self.channel_norms_[:, np.newaxis]
+        
+        # Prepare for reconstruction (transpose back if needed)
+        if mne_type == "epochs":
+             rec = np.transpose(rec, (2, 0, 1))
 
-        if is_mne:
-            out = X.copy()
-            if isinstance(X, BaseEpochs):
-                out._data = np.transpose(rec, (2, 0, 1))
-            else:
-                out._data = rec
-            return out
-
-        return rec
+        return reconstruct_mne_object(rec, orig_inst, mne_type, verbose=False)
 
     def inverse_transform(
         self, sources: np.ndarray, component_indices: Optional[np.ndarray] = None

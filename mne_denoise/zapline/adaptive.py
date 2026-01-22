@@ -1,63 +1,225 @@
-"""Adaptive algorithms for Zapline-plus.
+"""Adaptive ZapLine-plus utilities for automatic noise removal.
 
-This module implements the adaptive components described in Klug & Kloosterman (2022):
-1. Automatic noise frequency detection (coarse).
-2. Adaptive data segmentation based on covariance stationarity.
-3. Fine-grained frequency peak detection per segment.
-4. Artifact presence testing.
+This module implements the adaptive components of ZapLine-plus [1]_ for automatic
+and adaptive removal of frequency-specific noise artifacts in M/EEG recordings.
+
+Key components:
+
+1. **Noise frequency detection**: Automatic detection of line noise frequencies
+   using Welch PSD and outlier detection.
+
+2. **Adaptive segmentation**: Data segmentation based on covariance stationarity
+   to handle non-stationary noise characteristics.
+
+3. **Fine-grained peak detection**: Per-segment frequency refinement for
+   accurate noise targeting.
+
+4. **Artifact presence testing**: Statistical detection of whether line noise
+   is present in a given segment.
+
+5. **QA-based parameter adaptation**: Iterative adjustment of cleaning strength
+   based on spectral quality assessment.
+
+6. **Fallback cleaning**: Notch filter fallback for cases where DSS-based
+   cleaning is insufficient.
+
+Authors
+-------
+Sina Esmaeili (sina.esmaeili@umontreal.ca)
+Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 
 References
 ----------
-Klug, M., & Kloosterman, N. A. (2022). Zapline-plus: A Zapline extension for
-automatic and adaptive removal of frequency-specific noise artifacts in M/EEG.
-NeuroImage, 258, 119370.
+.. [1] Klug, M., & Kloosterman, N. A. (2022). Zapline-plus: A Zapline extension for
+       automatic and adaptive removal of frequency-specific noise artifacts in M/EEG.
+       Human Brain Mapping, 43(9), 2743-2758.
+       https://doi.org/10.1002/hbm.25832
+
+.. [2] de Cheveigné, A. (2020). ZapLine: A simple and effective method to remove
+       power line artifacts. NeuroImage, 207, 116356.
 """
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple, Union
+import logging
+from typing import List, Optional, Tuple
 
 import numpy as np
 from scipy import signal
-from scipy.signal import welch, find_peaks
+from scipy.signal import find_peaks, welch
+
 from ..dss.utils.covariance import compute_covariance
 
+logger = logging.getLogger(__name__)
+
+
+# -----------------------------------------------------------------------------
+# 1. CleanLine Utilities (Fallback cleanup)
+# -----------------------------------------------------------------------------
+
+def apply_cleanline_notch(
+    data: np.ndarray,
+    sfreq: float,
+    freq: float,
+    bandwidth: float = 0.5,
+    order: int = 4,
+) -> np.ndarray:
+    """Apply a narrow notch filter to remove residual line noise.
+
+    This is a fallback for cases where ZapLine cannot fully remove noise
+    without over-cleaning. Uses a Butterworth bandstop (notch) filter.
+
+    Parameters
+    ----------
+    data : ndarray, shape (n_channels, n_times)
+        Input data to filter.
+    sfreq : float
+        Sampling frequency in Hz.
+    freq : float
+        Center frequency of the notch in Hz.
+    bandwidth : float, default=0.5
+        Width of the notch filter in Hz.
+    order : int, default=4
+        Order of the Butterworth filter.
+
+    Returns
+    -------
+    filtered : ndarray, shape (n_channels, n_times)
+        Notch-filtered data. Returns input unchanged if filter is invalid.
+
+    Examples
+    --------
+    >>> filtered = apply_cleanline_notch(data, sfreq=1000, freq=50.0)
+    """
+    # Design notch filter
+    nyquist = sfreq / 2
+    low = (freq - bandwidth / 2) / nyquist
+    high = (freq + bandwidth / 2) / nyquist
+    
+    # Ensure within valid range
+    low = max(0.001, min(low, 0.999))
+    high = max(0.001, min(high, 0.999))
+    
+    if low >= high:
+        return data  # Cannot filter, return unchanged
+    
+    # Use bandstop (notch) filter
+    sos = signal.butter(order, [low, high], btype='bandstop', output='sos')
+    filtered = signal.sosfiltfilt(sos, data, axis=1)
+    
+    return filtered
+
+
+def apply_hybrid_cleanup(
+    data: np.ndarray,
+    sfreq: float,
+    freq: float,
+    bandwidth: float = 0.5,
+    max_power_reduction_db: float = 3.0,
+) -> np.ndarray:
+    """Apply hybrid cleanup with spectral impact protection.
+
+    Applies a notch filter only if it doesn't cause excessive power loss
+    in surrounding frequencies. This prevents over-aggressive cleaning
+    that could damage neural signals.
+
+    Parameters
+    ----------
+    data : ndarray, shape (n_channels, n_times)
+        Input data to filter.
+    sfreq : float
+        Sampling frequency in Hz.
+    freq : float
+        Center frequency to filter in Hz.
+    bandwidth : float, default=0.5
+        Width of the notch filter in Hz.
+    max_power_reduction_db : float, default=3.0
+        Maximum allowed power reduction (in dB) in surrounding frequencies.
+        If cleaning would cause greater reduction, the original data is returned.
+
+    Returns
+    -------
+    cleaned : ndarray, shape (n_channels, n_times)
+        Cleaned data, or original data if cleaning would cause excessive
+        signal loss.
+    """
+    
+    # Apply notch
+    filtered = apply_cleanline_notch(data, sfreq, freq, bandwidth)
+    
+    # Check spectral impact
+    n_times = data.shape[1]
+    n_fft = min(n_times, int(sfreq * 4))
+    
+    freqs, psd_orig = welch(data, fs=sfreq, nperseg=n_fft, axis=-1)
+    # Recompute only necessary parts if optimization needed, but welch is fast
+    _, psd_filt = welch(filtered, fs=sfreq, nperseg=n_fft, axis=-1)
+    
+    # Check power in surrounding frequencies (excluding notch region)
+    surr_low = (freqs > freq - 3) & (freqs < freq - bandwidth)
+    surr_high = (freqs > freq + bandwidth) & (freqs < freq + 3)
+    surr_mask = surr_low | surr_high
+    
+    if not np.any(surr_mask):
+        return filtered  # Can't check, apply anyway
+    
+    mean_orig = np.mean(psd_orig[:, surr_mask])
+    mean_filt = np.mean(psd_filt[:, surr_mask])
+    
+    # Power reduction in dB
+    reduction_db = 10 * np.log10(mean_orig / max(mean_filt, 1e-20))
+    
+    if reduction_db > max_power_reduction_db:
+        # Cleanup would cause too much collateral damage
+        return data
+    
+    return filtered
+
+# -----------------------------------------------------------------------------
+# 2. Detection & Segmentation Components
+# -----------------------------------------------------------------------------
 
 def find_noise_freqs(
     data: np.ndarray,
     sfreq: float,
     fmin: float = 17.0,
     fmax: float = 99.0,
-    window_length: float = 6.0,  # Hz for moving window
-    threshold_factor: float = 4.0,  # "exceeds center by factor of 4 in 10*log10" ?? 
-    # Wait, paper says "exceeds center by > 4 (in 10*log10 units)" which is additive in log space.
+    window_length: float = 6.0,
+    threshold_factor: float = 4.0,
 ) -> List[float]:
     """Detect noise frequencies using Welch PSD and outlier detection.
-    
+
+    Analyzes the power spectral density to find frequencies with abnormally
+    high power, indicative of line noise artifacts.
+
     Parameters
     ----------
     data : ndarray, shape (n_channels, n_times)
-        Input data.
+        Input data to analyze.
     sfreq : float
-        Sampling frequency.
-    fmin : float
-        Minimum frequency to search.
-    fmax : float
-        Maximum frequency to search.
-    window_length : float
-        Length of the moving average window in Hz (default 6 Hz).
-    threshold_factor : float
-        Threshold for peak detection in dB (default 4.0, approx 2.5x power).
-        
+        Sampling frequency in Hz.
+    fmin : float, default=17.0
+        Minimum frequency to search (Hz).
+    fmax : float, default=99.0
+        Maximum frequency to search (Hz).
+    window_length : float, default=6.0
+        Width of the spectral window for baseline estimation (Hz).
+    threshold_factor : float, default=4.0
+        Number of dB above local baseline to consider a peak as noise.
+
     Returns
     -------
-    noise_freqs : list of float
-        Detected noise frequencies.
+    detected_freqs : list of float
+        List of detected noise frequencies in Hz.
+
+    Examples
+    --------
+    >>> freqs = find_noise_freqs(data, sfreq=1000)
+    >>> print(f"Detected: {freqs}")  # e.g., [50.0, 60.0]
     """
     n_channels, n_times = data.shape
     
-    # Paper uses Hanning window (hann)
-    n_fft = min(n_times, int(sfreq * 4))  # Reasonable resolution
+    n_fft = min(n_times, int(sfreq * 4))
     if n_fft < 1024:
         n_fft = 1024
         
@@ -70,12 +232,10 @@ def find_noise_freqs(
         average='mean'
     )
     
-    # "Convert PSD to 10*log10, then take mean over channels in log space"
-    # Note: paper says geometric mean (mean in log space)
     psd_log = 10 * np.log10(np.clip(psd, 1e-20, None))
-    mean_log_psd = np.mean(psd_log, axis=0)  # Average over channels
+    # Geometric mean over channels (mean in log space)
+    mean_log_psd = np.mean(psd_log, axis=0)
     
-    # Limit to search range
     mask = (freqs >= fmin) & (freqs <= fmax)
     search_freqs = freqs[mask]
     search_psd = mean_log_psd[mask]
@@ -84,32 +244,22 @@ def find_noise_freqs(
         return []
 
     # Moving window outlier detection
-    # Search for outlier peaks using a 6 Hz moving window.
-    # A frequency is flagged if it exceeds the "center" (mean of left 
-    # and right thirds of the 6 Hz window) by > 4 (in 10*log10 units).
-    
     detected_freqs = []
     
-    # Convert window length from Hz to indices
     freq_res = freqs[1] - freqs[0]
     win_samples = int(window_length / freq_res)
     half_win = win_samples // 2
     
-    # We need to iterate over indices identifying local peaks
-    # First find local maxima to reduce search
     peak_indices, _ = find_peaks(search_psd)
     
     for idx_rel in peak_indices:
         idx_full = np.where(freqs == search_freqs[idx_rel])[0][0]
         
-        # Define window indices
         start_idx = max(0, idx_full - half_win)
         end_idx = min(len(freqs), idx_full + half_win)
         
-        # Extract window
         window_psd = mean_log_psd[start_idx:end_idx]
         
-        # Split into thirds
         n_win = len(window_psd)
         if n_win < 3:
             continue
@@ -118,17 +268,12 @@ def find_noise_freqs(
         left_third = window_psd[:n_third]
         right_third = window_psd[-n_third:]
         
-        # "Center" is mean of left and right thirds
         center_level = np.mean(np.concatenate([left_third, right_third]))
-        
-        # Check peak value (the value at idx_full)
         peak_val = mean_log_psd[idx_full]
         
         if peak_val > center_level + threshold_factor:
             detected_freqs.append(freqs[idx_full])
             
-    # Mere duplicates if peaks are close? For now return all.
-    # Maybe cluster them? The function returns list of floats.
     return detected_freqs
 
 
@@ -137,40 +282,45 @@ def segment_data(
     sfreq: float,
     target_freq: float,
     min_chunk_len: float = 30.0,
-    cov_win_len: float = 1.0,  # 1s covariance matrices
+    cov_win_len: float = 1.0,
 ) -> List[Tuple[int, int]]:
     """Segment data into chunks based on covariance stationarity.
-    
+
+    Identifies boundaries where the noise characteristics change significantly
+    by tracking changes in the spatial covariance matrix over time.
+
     Parameters
     ----------
-    data : ndarray
-        Input data.
+    data : ndarray, shape (n_channels, n_times)
+        Input data to segment.
     sfreq : float
-        Sampling frequency.
+        Sampling frequency in Hz.
     target_freq : float
-        Target line noise frequency.
-    min_chunk_len : float
-        Minimum chunk length in seconds (default 30s).
-    cov_win_len : float
-        Window length for covariance computation in seconds (default 1s).
-        
+        Target noise frequency for bandpass filtering before analysis.
+    min_chunk_len : float, default=30.0
+        Minimum segment length in seconds.
+    cov_win_len : float, default=1.0
+        Window length for covariance computation in seconds.
+
     Returns
     -------
-    segments : list of (start_idx, end_idx)
-        List of segment indices.
+    segments : list of tuple
+        List of ``(start_sample, end_sample)`` tuples defining segment boundaries.
     """
     n_channels, n_times = data.shape
     
-    # 1. Narrowband filter around target freq +/- 3Hz
-    # Paper uses +/- 3Hz
+    # 1. Filter around target freq
     f_low = target_freq - 3
     f_high = target_freq + 3
     
     sos = signal.butter(4, [f_low, f_high], btype='bandpass', fs=sfreq, output='sos')
     data_filt = signal.sosfiltfilt(sos, data, axis=1)
     
-    # 2. Compute 1s covariance matrices
+    # 2. Compute covariance series
     n_win = int(cov_win_len * sfreq)
+    if n_win > n_times:
+        return [(0, n_times)]
+        
     n_steps = n_times // n_win
     
     covs = []
@@ -179,51 +329,29 @@ def segment_data(
         end = start + n_win
         chunk = data_filt[:, start:end]
         cov = compute_covariance(chunk)
-        # Normalize covariance to focus on topography, not power scale?
-        # Paper says "proxy for changing noise topography".
-        # Usually implies normalization. Let's trace closely or assume raw cov.
-        # "Compute a distance between successive covariance matrices"
-        # Riemannian distance is standard, but frobenius might be used.
-        # Let's use correlation distance or Riemannian. 
-        # For simplicity and speed in Python without pyriemann:
-        # Log-Euclidean distance is good, or just Frobenius on normalized covs.
-        
-        # Normalize by trace to remove power fluctuation info, keeping spatial info?
         tr = np.trace(cov)
         if tr > 1e-20:
             cov = cov / tr
         covs.append(cov)
         
-    covs = np.array(covs)  # (n_steps, n_ch, n_ch)
+    covs = np.array(covs)
     
-    # 3. Compute distance between successive matrices
-    # dist[i] = dist(cov[i], cov[i+1])
+    # 3. Successive distances
     dists = []
     for i in range(len(covs) - 1):
-        # Riemannian distance d(A,B) = ||log(A^-1/2 * B * A^-1/2)||_F
-        # But that's heavy.
-        # Klug paper doesn't specify metric explicitly in the quick summary.
-        # "Distance between successive covariance matrices"
-        # Let's use simple Frobenius distance between normalized matrices for now.
         d = np.linalg.norm(covs[i] - covs[i+1], ord='fro')
         dists.append(d)
         
     dists = np.array(dists)
     
-    # 4. Detect peaks in stationarity signal
     if len(dists) == 0:
         return [(0, n_times)]
         
-    # Smooth a bit?
-    # "Detect peaks"
-    peak_indices, _ = find_peaks(dists, prominence=np.std(dists)*0.5) # Heuristic prominence
-    
-    # Convert peak indices (which are window indices) to sample indices
-    # boundaries are at the "interface" between i and i+1
+    # 4. Detect peaks (boundaries)
+    peak_indices, _ = find_peaks(dists, prominence=np.std(dists)*0.5)
     boundary_indices = (peak_indices + 1) * n_win
     
-    # 5. Enforce minimum chunk length
-    # Recursively merge or filter boundaries
+    # 5. Enforce min length
     valid_boundaries = [0]
     last_boundary = 0
     min_samples = int(min_chunk_len * sfreq)
@@ -233,15 +361,12 @@ def segment_data(
             valid_boundaries.append(b)
             last_boundary = b
             
-    # Check last segment
     if (n_times - last_boundary) < min_samples:
-        # Merge with previous if possible
         if len(valid_boundaries) > 1:
-            valid_boundaries.pop() # Remove last start, so previous segment extends to end
+            valid_boundaries.pop()
             
     valid_boundaries.append(n_times)
     
-    # Construct segments
     segments = []
     for i in range(len(valid_boundaries) - 1):
         segments.append((valid_boundaries[i], valid_boundaries[i+1]))
@@ -255,31 +380,35 @@ def find_fine_peak(
     coarse_freq: float,
     search_width: float = 0.05
 ) -> float:
-    """Find peak frequency within a narrow band.
-    
+    """Find the exact peak frequency within a narrow band.
+
+    Refines a coarse frequency estimate by finding the spectral peak
+    within a small search window.
+
     Parameters
     ----------
-    data : ndarray
+    data : ndarray, shape (n_channels, n_times)
+        Input data to analyze.
     sfreq : float
+        Sampling frequency in Hz.
     coarse_freq : float
-    search_width : float
-        Search range +/- Hz (default 0.05).
-        
+        Initial frequency estimate (Hz).
+    search_width : float, default=0.05
+        Half-width of search window around ``coarse_freq`` (Hz).
+
     Returns
     -------
     fine_freq : float
+        Refined frequency estimate (Hz). Returns ``coarse_freq`` if
+        no peak is found in the search window.
     """
     f_low = coarse_freq - search_width
     f_high = coarse_freq + search_width
     n_times = data.shape[1]
-    
-    # High resolution PSD needed
-    # Zero-padding for better frequency interpolation
-    n_fft = max(n_times, int(sfreq / 0.01)) # Res 0.01 Hz
+    n_fft = max(n_times, int(sfreq / 0.01))
     
     freqs, psd = welch(data, fs=sfreq, nperseg=min(n_times, 4*int(sfreq)), nfft=n_fft, axis=-1)
     
-    # Log mean
     psd_log = 10 * np.log10(np.clip(psd, 1e-20, None))
     mean_log_psd = np.mean(psd_log, axis=0)
     
@@ -298,125 +427,57 @@ def check_artifact_presence(
     data: np.ndarray,
     sfreq: float,
     target_freq: float,
-    window_length: float = 6.0
 ) -> bool:
-    """Check if artifact is present using spectral thresholding.
-    
-    "In a 6 Hz region around the target, take the two lower 5% log-PSD quantiles 
-    from the first and last third of the window. 
-    Compare to 'center power' (mean of left/right thirds) and build a deviation measure
-    Threshold = center power + 2 * deviation"
-    
-    Wait, the paper description is a bit dense. 
-    "threshold = center power + 2 * deviation"
-    
-    Let's interpret:
-    1. PSD in 6Hz window centered on target_freq.
-    2. Split into left/right thirds (flanks) and center third (peak region).
-    3. Center power = Mean of Flanks (?? This contradicts "Compare to center power"). 
-    
-    Re-reading prompt:
-    "Compare to 'center power' (mean of left/right thirds)" -> This likely means Baseline Power.
-    Let's call it Baseline.
-    
-    "take the two lower 5% log-PSD quantiles from the first and last third"
-    -> Deviation = measure of noise floor variance?
-    
-    Let's assume:
-    Baseline = Mean(Left Third + Right Third)
-    Deviation = Something derived from 5% quantiles? 
-    Maybe Deviation = Baseline - Quantile(5%)? Or MAD?
-    
-    Paper (Klug 2022): 
-    "We estimated the noise floor... by taking the 5% quantile of the power spectrum values in the outer thirds..."
-    "We defined the noise floor as the mean of these two 5% quantiles."
-    "The standard deviation of the noise floor was estimated as the difference between the mean noise floor and the 5% quantile..." ??
-    
-    Let's follow the prompt specifically:
-    "two lower 5% log-PSD quantiles from the first and last third"
-    "Compare to 'center power' (mean of left/right thirds)"
-    "Threshold = center power + 2 * deviation"
-    
-    Hypothesis:
-    CenterPower (Baseline) = Mean(LeftThird concat RightThird)
-    QuantileLeft = 5% quantile of LeftThird
-    QuantileRight = 5% quantile of RightThird
-    Deviation ?
-    
-    Actually, let's implement a robust peak check.
-    If Peak > Baseline + 2 * Deviation.
-    
-    Let's try to infer deviation.
-    If Deviation is approx std.
-    Maybe Deviation = Baseline - Mean(QuantileLeft, QuantileRight)?
-    
-    Let's stick to a robust detection:
-    1. Calculate PSD in window.
-    2. Baseline = median or mean of flanks.
-    3. Peak = value at target_freq.
-    4. Threshold = Baseline + X dB. (Prompt says corresponds to 2.5x power -> 4dB).
-    
-    But prompt gives specific formula "Threshold = center power + 2 x deviation".
-    And "explicitly say SD / MAD didn't work".
-    
-    Let's look at "deviation measure":
-    Maybe Deviation = (Mean(Left+Right) - Mean(Lower5%Quantiles)) ?
-    This measures the "spread" of the noise floor.
-    
-    Let's proceed with this interpretation.
+    """Check if line noise artifact is present.
+
+    Uses spectral thresholding to determine if there is significant
+    power at the target frequency relative to surrounding frequencies.
+
+    Parameters
+    ----------
+    data : ndarray, shape (n_channels, n_times)
+        Input data to analyze.
+    sfreq : float
+        Sampling frequency in Hz.
+    target_freq : float
+        Frequency to check for artifact presence (Hz).
+
+    Returns
+    -------
+    present : bool
+        ``True`` if artifact is detected, ``False`` otherwise.
     """
     n_times = data.shape[1]
     n_fft = min(n_times, int(sfreq * 4))
     freqs, psd = welch(data, fs=sfreq, nperseg=n_fft, axis=-1)
     
     psd_log = 10 * np.log10(np.clip(psd, 1e-20, None))
-    mean_log_psd = np.mean(psd_log, axis=0) # Channel mean
+    mean_log_psd = np.mean(psd_log, axis=0)
     
-    # 6 Hz window
     f_low = target_freq - 3
     f_high = target_freq + 3
     
-    # Indices
     idx_start = np.argmax(freqs >= f_low)
     idx_end = np.argmax(freqs > f_high)
     if idx_end == 0: idx_end = len(freqs)
     
     window_psd = mean_log_psd[idx_start:idx_end]
-    n_win = len(window_psd)
-    
-    if n_win < 3:
+    if len(window_psd) < 3:
         return False
         
-    n_third = n_win // 3
+    n_third = len(window_psd) // 3
     left_third = window_psd[:n_third]
     right_third = window_psd[-n_third:]
     
-    # "Center power" (Baseline)
     flanks = np.concatenate([left_third, right_third])
-    center_power = np.mean(flanks) # Mean of flanks
+    center_power = np.mean(flanks)
     
-    # Deviation
-    # "two lower 5% log-PSD quantiles from the first and last third"
     q_left = np.percentile(left_third, 5)
     q_right = np.percentile(right_third, 5)
     
-    # If standard deviation is problematic, maybe deviation is simply distance from mean to bottom?
-    # Or maybe range?
-    # Let's assume deviation ~ (center_power - mean(q_left, q_right))
-    # This represents half-width of noise floor distribution??
-    
     deviation = center_power - np.mean([q_left, q_right])
-    
     threshold = center_power + 2 * deviation
     
-    # Peak power
-    # Target freq index relative to window
-    # Actually just max in the middle third?
-    # Or value at target_freq explicitly?
-    # "If peak log-PSD > threshold -> artifact present"
-    # Usually peak is search in the center.
-    
-    # Get value at target freq
     idx_target = np.argmin(np.abs(freqs - target_freq))
     peak_val = mean_log_psd[idx_target]
     
@@ -431,40 +492,39 @@ def detect_harmonics(
     threshold_factor: float = 4.0,
     window_length: float = 6.0,
 ) -> List[float]:
-    """Detect present harmonics of a fundamental frequency.
-    
-    Checks each harmonic (2f, 3f, ...) up to Nyquist and returns only those
-    that are detected as peaks above threshold.
-    
+    """Detect harmonics of a fundamental frequency.
+
+    Searches for spectral peaks at integer multiples of the fundamental
+    frequency up to the Nyquist limit.
+
     Parameters
     ----------
-    data : ndarray
-        Input data (n_channels, n_times).
+    data : ndarray, shape (n_channels, n_times)
+        Input data to analyze.
     sfreq : float
-        Sampling frequency.
+        Sampling frequency in Hz.
     fundamental : float
-        Fundamental frequency (e.g., 50 Hz).
-    max_harmonics : int, optional
-        Maximum number of harmonics to check. If None, checks all up to Nyquist.
-    threshold_factor : float
-        Threshold for peak detection in dB (default 4.0).
-    window_length : float
-        Window size in Hz for detection (default 6.0).
-        
+        Fundamental frequency in Hz.
+    max_harmonics : int | None, default=None
+        Maximum number of harmonics to search for.
+        If ``None``, searches up to Nyquist frequency.
+    threshold_factor : float, default=4.0
+        Number of dB above local baseline to consider a peak as harmonic.
+    window_length : float, default=6.0
+        Width of spectral window for baseline estimation (Hz).
+
     Returns
     -------
-    detected_harmonics : list of float
-        List of detected harmonic frequencies (not including fundamental).
+    harmonics : list of float
+        List of detected harmonic frequencies in Hz.
     """
     nyquist = sfreq / 2
     
-    # Determine max harmonics
     if max_harmonics is None:
-        max_harmonics = int(np.floor(nyquist / fundamental)) - 1  # Exclude fundamental
+        max_harmonics = int(np.floor(nyquist / fundamental)) - 1
     
     detected = []
     
-    # Calculate PSD once
     n_times = data.shape[1]
     n_fft = min(n_times, int(sfreq * 4))
     if n_fft < 1024:
@@ -474,30 +534,24 @@ def detect_harmonics(
     psd_log = 10 * np.log10(np.clip(psd, 1e-20, None))
     mean_log_psd = np.mean(psd_log, axis=0)
     
-    # Check each harmonic
-    for h in range(2, max_harmonics + 2):  # 2f, 3f, ... up to max+1
+    freq_res = freqs[1] - freqs[0]
+    win_samples = int(window_length / freq_res)
+    half_win = win_samples // 2
+    
+    for h in range(2, max_harmonics + 2):
         harmonic_freq = fundamental * h
-        
         if harmonic_freq >= nyquist:
             break
             
-        # Check if this harmonic is a significant peak
-        # Use similar logic to find_noise_freqs
-        freq_res = freqs[1] - freqs[0]
-        win_samples = int(window_length / freq_res)
-        half_win = win_samples // 2
-        
         idx_center = np.argmin(np.abs(freqs - harmonic_freq))
         start_idx = max(0, idx_center - half_win)
         end_idx = min(len(freqs), idx_center + half_win)
         
         window_psd = mean_log_psd[start_idx:end_idx]
-        n_win = len(window_psd)
-        
-        if n_win < 3:
+        if len(window_psd) < 3:
             continue
             
-        n_third = n_win // 3
+        n_third = len(window_psd) // 3
         left_third = window_psd[:n_third]
         right_third = window_psd[-n_third:]
         
@@ -508,3 +562,75 @@ def detect_harmonics(
             detected.append(harmonic_freq)
             
     return detected
+
+
+def check_spectral_qa(data: np.ndarray, sfreq: float, target_freq: float) -> str:
+    """Assess quality of noise cleaning using spectral analysis.
+
+    Analyzes the power spectrum around the target frequency to determine
+    if cleaning was appropriate, too weak (residual noise), or too strong
+    (over-cleaning causing spectral notch).
+
+    Parameters
+    ----------
+    data : ndarray, shape (n_channels, n_times)
+        Cleaned data to assess.
+    sfreq : float
+        Sampling frequency in Hz.
+    target_freq : float
+        Target noise frequency (Hz).
+
+    Returns
+    -------
+    status : {'ok', 'weak', 'strong'}
+        Quality assessment:
+
+        - ``'ok'``: Cleaning was appropriate
+        - ``'weak'``: Residual noise detected, consider stronger cleaning
+        - ``'strong'``: Over-cleaning detected (spectral notch), reduce strength
+    """
+    n_times = data.shape[1]
+    n_fft = min(n_times, int(sfreq * 4))
+    freqs, psd = welch(data, fs=sfreq, nperseg=n_fft, axis=-1)
+    
+    psd_log = 10 * np.log10(np.clip(psd, 1e-20, None))
+    mean_log_psd = np.mean(psd_log, axis=0)
+    
+    f_win_low = target_freq - 3
+    f_win_high = target_freq + 3
+    
+    mask_win = (freqs >= f_win_low) & (freqs <= f_win_high)
+    win_psd = mean_log_psd[mask_win]
+    if len(win_psd) < 3:
+        return "ok"
+    
+    n_third = len(win_psd) // 3
+    left = win_psd[:n_third]
+    right = win_psd[-n_third:]
+    center_power = np.mean(np.concatenate([left, right]))
+    
+    q_left = np.percentile(left, 5)
+    q_right = np.percentile(right, 5)
+    deviation = center_power - np.mean([q_left, q_right])
+    
+    # Weak check
+    f_tight_low = target_freq - 0.05
+    f_tight_high = target_freq + 0.05
+    mask_tight = (freqs >= f_tight_low) & (freqs <= f_tight_high)
+    tight_psd = mean_log_psd[mask_tight]
+    thresh_weak = center_power + 2 * deviation
+    
+    if np.any(tight_psd > thresh_weak):
+        return "weak"
+    
+    # Strong check
+    f_notch_low = target_freq - 0.4
+    f_notch_high = target_freq + 0.1
+    mask_notch = (freqs >= f_notch_low) & (freqs <= f_notch_high)
+    notch_psd = mean_log_psd[mask_notch]
+    thresh_strong = center_power - 2 * deviation
+    
+    if np.any(notch_psd < thresh_strong):
+        return "strong"
+    
+    return "ok"

@@ -19,46 +19,7 @@ from typing import Callable, Optional, Tuple, Union
 import numpy as np
 
 from .utils.whitening import whiten_data
-
-
-def _validate_dss_input(X) -> Tuple[np.ndarray, Tuple, Optional[object]]:
-    """Validate and normalize DSS input data.
-
-    Returns
-    -------
-    data_2d : ndarray (n_channels, n_samples)
-    orig_shape : tuple
-    mne_info : mne.Info or None
-    """
-    mne_info = None
-
-    # Handle MNE objects
-    try:
-        import mne
-
-        if isinstance(X, (mne.io.BaseRaw, mne.BaseEpochs)):
-            mne_info = X.info
-            data = X.get_data()
-        else:
-            data = X
-    except ImportError:
-        data = X
-
-    orig_shape = data.shape
-
-    # Handle 3D epoched data
-    if data.ndim == 3:
-        # Assume standard MNE structure: (n_epochs, n_channels, n_times)
-        n_epochs, n_channels, n_times = data.shape
-        # Flatten to (n_channels, n_samples) for processing
-        # Move channels to front -> (n_channels, n_epochs, n_times)
-        data_2d = data.transpose(1, 0, 2).reshape(n_channels, -1)
-    elif data.ndim == 2:
-        data_2d = data
-    else:
-        raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
-
-    return data_2d, orig_shape, mne_info
+from ..utils import extract_data_from_mne
 
 
 def _resolve_callable(param, x, default=None):
@@ -351,9 +312,19 @@ def iterative_dss(
     ----------
     .. [1] Särelä & Valpola (2005). Denoising Source Separation. JMLR, 6, 233-272.
     """
-    # Use helper for validation (though here we assume numpy input if called directly,
-    # but good to support robust input handling)
-    data_2d, _, _ = _validate_dss_input(data)
+    # Use helper for validation/extraction
+    data, _, mne_type, _ = extract_data_from_mne(data)
+    
+    # Flatten if 3D (assume n_epochs, n_channels, n_times)
+    if data.ndim == 3:
+        n_epochs, n_channels, n_times = data.shape
+        data_2d = data.transpose(1, 0, 2).reshape(n_channels, -1)
+    else:
+        data_2d = data
+
+    if data_2d.ndim != 2:
+        raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
+
     n_channels, n_samples = data_2d.shape
 
     # Center data
@@ -806,15 +777,17 @@ class IterativeDSS:
         self : IterativeDSS
             The fitted transformer.
         """
+
         # Validate and extract data using shared helper
-        data_2d, _, mne_info = _validate_dss_input(X)
+        data, _, mne_type, mne_info = extract_data_from_mne(X)
 
         # Store MNE info for later use if available
-        if mne_info is not None:
-            self._mne_info = mne_info
+        if mne_type in ("raw", "epochs") and mne_info is not None:
+             if hasattr(mne_info, "info"):
+                 self._mne_info = mne_info.info
 
         filters, sources, patterns, conv_info = iterative_dss(
-            data_2d,
+            data,
             self.denoiser,
             self.n_components,
             method=self.method,
@@ -853,7 +826,15 @@ class IterativeDSS:
             raise RuntimeError("IterativeDSS not fitted. Call fit() first.")
 
         # Validate and extract data
-        data_2d, original_shape, _ = _validate_dss_input(X)
+        data, _, mne_type, _ = extract_data_from_mne(X)
+        
+        original_shape = data.shape
+        
+        if data.ndim == 3:
+            n_epochs, n_channels, n_times = data.shape
+            data_2d = data.transpose(1, 0, 2).reshape(n_channels, -1)
+        else:
+            data_2d = data
 
         n_times = data_2d.shape[1]
 
