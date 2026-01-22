@@ -19,6 +19,7 @@ from matplotlib.gridspec import GridSpec
 
 from mne_denoise.zapline import dss_zapline_plus
 from mne_denoise.zapline.adaptive import detect_harmonics
+from mne_denoise.viz.zapline import plot_psd_comparison
 
 ###############################################################################
 # Simulate Data with Harmonics
@@ -87,10 +88,10 @@ result = dss_zapline_plus(
     hybrid_fallback=True,
 )
 
-data_clean = result.cleaned
+data_clean = result['cleaned']
 print(f"Cleaning complete!")
-print(f"Chunk info entries: {len(result.chunk_info)}")
-print(f"Topography entries: {len(result.removed_topographies)}")
+print(f"Chunk info entries: {len(result['chunk_info'])}")
+print(f"Topography entries: {len(result['removed_topographies'])}")
 
 ###############################################################################
 # Step 3: Examine Per-Chunk Metadata
@@ -98,7 +99,7 @@ print(f"Topography entries: {len(result.removed_topographies)}")
 # The `chunk_info` contains detailed information for each segment processed.
 
 print("\n--- Step 3: Chunk Metadata ---")
-for i, info in enumerate(result.chunk_info):
+for i, info in enumerate(result['chunk_info']):
     print(f"Chunk {i+1}:")
     print(f"  Frequency: {info['fine_freq']:.2f} Hz")
     print(f"  Time range: {info['start']/sfreq:.1f}s - {info['end']/sfreq:.1f}s")
@@ -113,7 +114,7 @@ for i, info in enumerate(result.chunk_info):
 print("\n--- Step 4: Topography Outputs ---")
 fig, axes = plt.subplots(1, 3, figsize=(12, 4))
 
-for i, (topo, info) in enumerate(zip(result.removed_topographies[:3], result.chunk_info[:3])):
+for i, (topo, info) in enumerate(zip(result['removed_topographies'][:3], result['chunk_info'][:3])):
     ax = axes[i]
     if topo is not None and topo.shape[1] > 0:
         # Plot the first removed component pattern
@@ -136,6 +137,11 @@ plt.show()
 # Visualize noise reduction at fundamental and harmonics.
 
 print("\n--- Step 5: Spectral Comparison ---")
+
+# Use our reusable viz function for a quick overview
+plot_psd_comparison(data, data_clean, sfreq, line_freq=fundamental, fmax=180, show=True)
+
+# Detailed per-frequency comparison
 fig, axes = plt.subplots(1, 3, figsize=(14, 4))
 
 for i, (freq, ax) in enumerate(zip(freqs, axes)):

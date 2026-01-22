@@ -22,7 +22,13 @@ import numpy as np
 from scipy import signal
 from scipy.io import loadmat
 
-from mne_denoise.zapline import ZapLine, dss_zapline
+from mne_denoise.zapline import ZapLine
+from mne_denoise.viz.zapline import (
+    plot_psd_comparison,
+    plot_component_scores,
+    plot_spatial_patterns,
+    plot_cleaning_summary,
+)
 
 # %%
 # Part 1: n_remove Parameter
@@ -80,16 +86,18 @@ for idx, n_remove in enumerate(n_remove_values):
     row, col = idx // 3, idx % 3
     ax = axes[row, col]
     
-    result = dss_zapline(data, line_freq=50, sfreq=sfreq, n_remove=n_remove)
+    est = ZapLine(line_freq=50, sfreq=sfreq, n_remove=n_remove)
+    est.fit(data)
+    cleaned = est.transform(data)
     
     freqs, psd_orig = signal.welch(data, sfreq, nperseg=sfreq)
-    freqs, psd_clean = signal.welch(result.cleaned, sfreq, nperseg=sfreq)
+    freqs, psd_clean = signal.welch(cleaned, sfreq, nperseg=sfreq)
     
     ax.semilogy(freqs, np.mean(psd_orig, axis=0), "b-", alpha=0.3, label="Original")
     ax.semilogy(freqs, np.mean(psd_clean, axis=0), "g-", label="Cleaned")
     ax.axvline(50, color="r", linestyle="--", alpha=0.5)
     ax.set_xlim(0, 100)
-    ax.set_title(f"n_remove={n_remove} (actual: {result.n_removed})")
+    ax.set_title(f"n_remove={n_remove} (actual: {est.n_removed_})")
     ax.set_xlabel("Frequency (Hz)")
     
     if col == 0:
@@ -141,12 +149,14 @@ nkeep_values = [None, 64, 32, 16]
 for idx, nkeep in enumerate(nkeep_values):
     ax = axes[idx]
     
-    result = dss_zapline(
-        data_high, line_freq=50, sfreq=sfreq, n_remove=2, nkeep=nkeep
+    est_high = ZapLine(
+        line_freq=50, sfreq=sfreq, n_remove=2, nkeep=nkeep
     )
+    est_high.fit(data_high)
+    cleaned_high = est_high.transform(data_high)
     
     freqs, psd_orig = signal.welch(data_high, sfreq, nperseg=sfreq)
-    freqs, psd_clean = signal.welch(result.cleaned, sfreq, nperseg=sfreq)
+    freqs, psd_clean = signal.welch(cleaned_high, sfreq, nperseg=sfreq)
     
     ax.semilogy(freqs, np.mean(psd_orig, axis=0), "b-", alpha=0.3, label="Original")
     ax.semilogy(freqs, np.mean(psd_clean, axis=0), "g-", label="Cleaned")
@@ -171,34 +181,13 @@ plt.show()
 
 print("\nPart 3: Understanding component scores")
 
-result = dss_zapline(data, line_freq=50, sfreq=sfreq, n_remove="auto")
+est_scores = ZapLine(line_freq=50, sfreq=sfreq, n_remove="auto")
+est_scores.fit(data)
 
+# Use the reusable viz functions
 fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-
-# Bar chart of scores
-ax = axes[0]
-scores = result.dss_eigenvalues
-ax.bar(range(len(scores)), scores, color="steelblue")
-ax.axhline(np.mean(scores), color="red", linestyle="--", label="Mean")
-if result.n_removed > 0:
-    ax.axvline(result.n_removed - 0.5, color="green", linestyle="--", 
-               label=f"Removed: {result.n_removed}")
-ax.set_xlabel("Component")
-ax.set_ylabel("Score (eigenvalue)")
-ax.set_title("Component Scores")
-ax.legend()
-
-# Spatial patterns of top components
-ax = axes[1]
-patterns = result.dss_patterns
-n_show = min(3, patterns.shape[1])
-for i in range(n_show):
-    ax.plot(patterns[:, i], label=f"Comp {i}", marker="o", alpha=0.7)
-ax.set_xlabel("Channel")
-ax.set_ylabel("Pattern weight")
-ax.set_title("Spatial Patterns (Top 3 Components)")
-ax.legend()
-
+plot_component_scores(est_scores, ax=axes[0], show=False)
+plot_spatial_patterns(est_scores, n_patterns=3, ax=axes[1], show=False)
 plt.tight_layout()
 plt.show()
 
@@ -237,48 +226,25 @@ else:
 
 if meg_data is not None:
     # Apply ZapLine (60 Hz for this dataset)
-    result_meg = dss_zapline(
-        meg_data, 
+    est_meg = ZapLine(
         line_freq=60, 
         sfreq=sfreq_meg, 
         n_remove=2,  # As in MATLAB example
     )
+    est_meg.fit(meg_data)
+    cleaned_meg = est_meg.transform(meg_data)
     
-    print(f"Components removed: {result_meg.n_removed}")
+    print(f"Components removed: {est_meg.n_removed_}")
 
     # %%
     # Compare Before/After for MEG
     # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-
-    # Original
-    ax = axes[0]
-    freqs, psd_orig = signal.welch(meg_data, sfreq_meg, nperseg=int(sfreq_meg))
-    ax.semilogy(freqs, np.mean(psd_orig, axis=0))
-    ax.axvline(60, color="r", linestyle="--", label="60 Hz")
-    ax.axvline(120, color="r", linestyle="--", alpha=0.5, label="120 Hz")
-    ax.set_xlabel("Frequency (Hz)")
-    ax.set_ylabel("PSD")
-    ax.set_title("Original MEG")
-    ax.legend()
-    ax.set_xlim(0, 150)
-
-    # Cleaned
-    ax = axes[1]
-    freqs, psd_clean = signal.welch(result_meg.cleaned, sfreq_meg, nperseg=int(sfreq_meg))
-    ax.semilogy(freqs, np.mean(psd_orig, axis=0), "b-", alpha=0.3, label="Original")
-    ax.semilogy(freqs, np.mean(psd_clean, axis=0), "g-", label="Cleaned")
-    ax.axvline(60, color="r", linestyle="--", alpha=0.5)
-    ax.axvline(120, color="r", linestyle="--", alpha=0.3)
-    ax.set_xlabel("Frequency (Hz)")
-    ax.set_ylabel("PSD")
-    ax.set_title("Cleaned MEG")
-    ax.legend()
-    ax.set_xlim(0, 150)
-
-    plt.tight_layout()
-    plt.show()
+    # Use reusable viz function for PSD comparison
+    plot_psd_comparison(meg_data, cleaned_meg, sfreq_meg, line_freq=60, fmax=150, show=True)
+    
+    # Show comprehensive summary
+    plot_cleaning_summary(meg_data, cleaned_meg, est_meg, sfreq_meg, line_freq=60, show=True)
 
     # %%
     # Measure Reduction
@@ -291,7 +257,7 @@ if meg_data is not None:
 
     print(f"\n=== MEG Results ===")
     print(f"60 Hz power reduction: {reduction_db:.1f} dB")
-    print(f"Components removed: {result_meg.n_removed}")
+    print(f"Components removed: {est_meg.n_removed_}")
 
 # %%
 # Conclusion

@@ -29,8 +29,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal
 
-from mne_denoise.zapline import ZapLine, dss_zapline
-from mne_denoise.viz import plot_zapline_analytics
+from mne_denoise.zapline import ZapLine
+from mne_denoise.viz.zapline import (
+    plot_psd_comparison,
+    plot_component_scores,
+    plot_cleaning_summary,
+)
 
 # %%
 # Part 1: Synthetic Data
@@ -112,66 +116,45 @@ plt.show()
 # %%
 # Apply ZapLine
 # -------------
-# We use the `dss_zapline` function to remove 50 Hz and its harmonics.
+# We use the `ZapLine` class to remove 50 Hz and its harmonics.
+
 
 print("\nApplying ZapLine...")
-result = dss_zapline(
-    data,
+# Instantiate ZapLine
+est = ZapLine(
     line_freq=50,
     sfreq=sfreq,
     n_remove="auto",  # Automatically detect number of components
     threshold=2.5,  # Z-score threshold for auto-detection
 )
+est.fit(data)
+cleaned = est.transform(data)
 
-print(f"Components removed: {result.n_removed}")
-print(f"Component scores (eigenvalues): {result.dss_eigenvalues}")
-print(f"Harmonics processed: {result.n_harmonics}")
+print(f"Components removed: {est.n_removed_}")
+print(f"Component scores (eigenvalues): {est.eigenvalues_}")
+print(f"Harmonics processed: {est.n_harmonics_}")
 
 # %%
 # Compare Before/After
 # --------------------
-# Let's visualize the cleaning effect.
+# Let's visualize the cleaning effect using the reusable viz function.
 
-fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+# Use plot_psd_comparison for a clean comparison
+plot_psd_comparison(data, cleaned, sfreq, line_freq=50, show=True)
 
-# Time domain - Original
-ax = axes[0, 0]
-ax.plot(t[:500], data[0, :500], "b-", alpha=0.7)
-ax.set_xlabel("Time (s)")
-ax.set_ylabel("Amplitude")
-ax.set_title("Original - Time Domain")
+# %%
+# Component Scores
+# ----------------
+# View the DSS component scores to understand what was removed.
 
-# Time domain - Cleaned
-ax = axes[0, 1]
-ax.plot(t[:500], result.cleaned[0, :500], "g-", alpha=0.7)
-ax.set_xlabel("Time (s)")
-ax.set_ylabel("Amplitude")
-ax.set_title("Cleaned - Time Domain")
+plot_component_scores(est, show=True)
 
-# PSD - Original
-ax = axes[1, 0]
-freqs, psd_orig = signal.welch(data, sfreq, nperseg=sfreq)
-ax.semilogy(freqs, np.mean(psd_orig, axis=0), "b-", label="Original")
-ax.axvline(50, color="r", linestyle="--", alpha=0.5)
-ax.set_xlabel("Frequency (Hz)")
-ax.set_ylabel("PSD (mean)")
-ax.set_title("Original PSD")
-ax.set_xlim(0, 100)
+# %%
+# Cleaning Summary
+# ----------------
+# A comprehensive summary combining PSD, scores, and statistics.
 
-# PSD - Cleaned
-ax = axes[1, 1]
-freqs, psd_clean = signal.welch(result.cleaned, sfreq, nperseg=sfreq)
-ax.semilogy(freqs, np.mean(psd_orig, axis=0), "b-", alpha=0.3, label="Original")
-ax.semilogy(freqs, np.mean(psd_clean, axis=0), "g-", label="Cleaned")
-ax.axvline(50, color="r", linestyle="--", alpha=0.5)
-ax.set_xlabel("Frequency (Hz)")
-ax.set_ylabel("PSD (mean)")
-ax.set_title("Cleaned PSD (overlay)")
-ax.legend()
-ax.set_xlim(0, 100)
-
-plt.tight_layout()
-plt.show()
+plot_cleaning_summary(data, cleaned, est, sfreq, line_freq=50, show=True)
 
 # %%
 # Quantify Reduction
@@ -217,20 +200,22 @@ for i in range(n_channels):
     )
 
 # Apply ZapLine
-result_harmonics = dss_zapline(
-    data_harmonics,
+# Apply ZapLine
+est_harmonics = ZapLine(
     line_freq=50,
     sfreq=sfreq,
     n_remove=1,
     n_harmonics=3,  # Explicitly request 3 harmonics
 )
+est_harmonics.fit(data_harmonics)
+cleaned_harmonics = est_harmonics.transform(data_harmonics)
 
-print(f"Harmonics processed: {result_harmonics.n_harmonics}")
+print(f"Harmonics processed: {est_harmonics.n_harmonics_}")
 
 # Compare PSDs
 fig, ax = plt.subplots(figsize=(10, 5))
 freqs, psd_orig = signal.welch(data_harmonics, sfreq, nperseg=sfreq)
-freqs, psd_clean = signal.welch(result_harmonics.cleaned, sfreq, nperseg=sfreq)
+freqs, psd_clean = signal.welch(cleaned_harmonics, sfreq, nperseg=sfreq)
 
 ax.semilogy(freqs, np.mean(psd_orig, axis=0), "b-", label="Original", alpha=0.7)
 ax.semilogy(freqs, np.mean(psd_clean, axis=0), "g-", label="Cleaned")
@@ -245,28 +230,6 @@ ax.legend()
 ax.set_xlim(0, 200)
 plt.show()
 
-# %%
-# Part 3: Using the Transformer API
-# ----------------------------------
-# For scikit-learn style workflows, use the `ZapLine` transformer.
-
-print("\n\nPart 3: Transformer API")
-
-# Create transformer
-zl = ZapLine(line_freq=50, sfreq=sfreq, n_remove=1)
-
-# Fit (learn the spatial filters)
-zl.fit(data)
-print(f"Fitted! n_removed_: {zl.n_removed_}")
-print(f"scores_: {zl.scores_}")
-
-# Transform (apply to same or new data)
-cleaned = zl.transform(data)
-print(f"Cleaned shape: {cleaned.shape}")
-
-# Can also use fit_transform
-cleaned2 = zl.fit_transform(data)
-print(f"fit_transform result shape: {cleaned2.shape}")
 
 # %%
 # Conclusion

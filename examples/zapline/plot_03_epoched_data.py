@@ -21,7 +21,11 @@ import numpy as np
 from scipy import signal
 from scipy.io import loadmat
 
-from mne_denoise.zapline import ZapLine, dss_zapline
+from mne_denoise.zapline import ZapLine
+from mne_denoise.viz.zapline import (
+    plot_psd_comparison,
+    plot_cleaning_summary,
+)
 
 # %%
 # Part 1: Synthetic Epoched Data
@@ -78,93 +82,31 @@ data_concat = epochs_data.reshape(n_channels, -1)  # (channels, epochs*times)
 print(f"Concatenated shape: {data_concat.shape}")
 
 # Apply ZapLine
-result = dss_zapline(data_concat, line_freq=50, sfreq=sfreq, n_remove=1)
+est = ZapLine(line_freq=50, sfreq=sfreq, n_remove=1)
+est.fit(data_concat)
+cleaned = est.transform(data_concat)
 
 # Reshape back to epochs
-cleaned_epochs = result.cleaned.reshape(n_epochs, n_channels, n_times)
+cleaned_epochs = cleaned.reshape(n_epochs, n_channels, n_times)
 print(f"Cleaned epochs shape: {cleaned_epochs.shape}")
 
 # %%
 # Compare Before/After
 # ^^^^^^^^^^^^^^^^^^^^
 
-fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+# Use the reusable viz function for PSD comparison
+plot_psd_comparison(data_concat, cleaned, sfreq, line_freq=50, show=True)
 
-# Time domain - single trial
-ax = axes[0, 0]
-ax.plot(t * 1000, epochs_data[0, 0, :], "b-", label="Original")
-ax.plot(t * 1000, cleaned_epochs[0, 0, :], "g-", label="Cleaned")
-ax.set_xlabel("Time (ms)")
-ax.set_ylabel("Amplitude")
-ax.set_title("Single Trial, Channel 0")
-ax.legend()
-
-# Evoked (average across trials)
-ax = axes[0, 1]
-evoked_orig = np.mean(epochs_data, axis=0)
-evoked_clean = np.mean(cleaned_epochs, axis=0)
-ax.plot(t * 1000, evoked_orig[0, :], "b-", label="Original")
-ax.plot(t * 1000, evoked_clean[0, :], "g-", label="Cleaned")
-ax.set_xlabel("Time (ms)")
-ax.set_ylabel("Amplitude")
-ax.set_title("Evoked Response (Mean), Channel 0")
-ax.legend()
-
-# PSD - Original
-ax = axes[1, 0]
-freqs, psd_orig = signal.welch(data_concat, sfreq, nperseg=n_times)
-ax.semilogy(freqs, np.mean(psd_orig, axis=0), "b-")
-ax.axvline(50, color="r", linestyle="--")
-ax.set_xlabel("Frequency (Hz)")
-ax.set_ylabel("PSD")
-ax.set_title("Original PSD")
-ax.set_xlim(0, 100)
-
-# PSD - Cleaned
-ax = axes[1, 1]
-freqs, psd_clean = signal.welch(result.cleaned, sfreq, nperseg=n_times)
-ax.semilogy(freqs, np.mean(psd_orig, axis=0), "b-", alpha=0.3, label="Original")
-ax.semilogy(freqs, np.mean(psd_clean, axis=0), "g-", label="Cleaned")
-ax.axvline(50, color="r", linestyle="--", alpha=0.5)
-ax.set_xlabel("Frequency (Hz)")
-ax.set_ylabel("PSD")
-ax.set_title("Cleaned PSD")
-ax.set_xlim(0, 100)
-ax.legend()
-
-plt.tight_layout()
-plt.show()
+# Show comprehensive cleaning summary
+plot_cleaning_summary(data_concat, cleaned, est, sfreq, line_freq=50, show=True)
 
 # %%
-# Part 2: Using the Transformer API
-# ----------------------------------
-# The `ZapLine` class provides an sklearn-compatible interface.
-
-print("\nPart 2: Transformer API")
-
-# Create transformer
-zl = ZapLine(line_freq=50, sfreq=sfreq, n_remove=1)
-
-# Fit on concatenated data
-zl.fit(data_concat)
-print(f"Fitted! n_removed_: {zl.n_removed_}")
-print(f"scores_: {zl.scores_}")
-
-# Transform
-cleaned = zl.transform(data_concat)
-print(f"Cleaned shape: {cleaned.shape}")
-
-# fit_transform in one step
-cleaned2 = zl.fit_transform(data_concat)
-print(f"fit_transform result: {cleaned2.shape}")
-
-# %%
-# Part 3: Real MEG Epoched Data (NoiseTools data3.mat)
+# Part 2: Real MEG Epoched Data (NoiseTools data3.mat)
 # ----------------------------------------------------
 # MEG epoched data from NoiseTools.
 # Shape: (900 times, 151 channels, 30 epochs), sr=300 Hz
 
-print("\nPart 3: Real MEG Epoched Data")
+print("\nPart 2: Real MEG Epoched Data")
 
 script_dir = Path(__file__).parent
 data_dir = script_dir / "data"
@@ -195,34 +137,23 @@ if data3_path.exists():
     print(f"Sampling rate: {sfreq_meg} Hz")
     
     # Apply ZapLine (50 Hz)
-    result_meg = dss_zapline(
-        meg_concat,
+    est_meg = ZapLine(
         line_freq=50,
         sfreq=sfreq_meg,
         n_remove=2,  # As in MATLAB example
     )
+    est_meg.fit(meg_concat)
+    cleaned_meg = est_meg.transform(meg_concat)
     
-    print(f"Components removed: {result_meg.n_removed}")
+    print(f"Components removed: {est_meg.n_removed_}")
     
-    # Compare PSDs
-    fig, ax = plt.subplots(figsize=(10, 5))
-    
-    freqs, psd_orig = signal.welch(meg_concat, sfreq_meg, nperseg=int(sfreq_meg))
-    freqs, psd_clean = signal.welch(result_meg.cleaned, sfreq_meg, nperseg=int(sfreq_meg))
-    
-    ax.semilogy(freqs, np.mean(psd_orig, axis=0), "b-", alpha=0.7, label="Original")
-    ax.semilogy(freqs, np.mean(psd_clean, axis=0), "g-", label="Cleaned")
-    ax.axvline(50, color="r", linestyle="--", alpha=0.5, label="50 Hz")
-    ax.axvline(100, color="r", linestyle="--", alpha=0.3)
-    ax.set_xlabel("Frequency (Hz)")
-    ax.set_ylabel("PSD")
-    ax.set_title("MEG Epoched Data (data3.mat) - Before/After ZapLine")
-    ax.legend()
-    ax.set_xlim(0, 150)
-    
-    plt.show()
+    # Use the reusable viz functions
+    plot_psd_comparison(meg_concat, cleaned_meg, sfreq_meg, line_freq=50, fmax=150, show=True)
     
     # Measure reduction
+    nperseg = min(meg_concat.shape[1], int(sfreq_meg * 2))
+    freqs, psd_orig = signal.welch(meg_concat, sfreq_meg, nperseg=nperseg)
+    _, psd_clean = signal.welch(cleaned_meg, sfreq_meg, nperseg=nperseg)
     idx_50 = np.argmin(np.abs(freqs - 50))
     reduction_db = 10 * np.log10(
         np.mean(psd_orig[:, idx_50]) / np.mean(psd_clean[:, idx_50])
@@ -234,12 +165,12 @@ else:
     print("Download from: http://audition.ens.fr/adc/NoiseTools/DATA/data3.mat")
 
 # %%
-# Part 4: High-Channel MEG Data (NoiseTools example_data.mat)
+# Part 3: High-Channel MEG Data (NoiseTools example_data.mat)
 # -----------------------------------------------------------
 # MEG data with many channels (275), demonstrating nkeep parameter.
 # Shape: (3000 times, 275 channels, 30 epochs), sr=600 Hz
 
-print("\nPart 4: High-Channel MEG Data")
+print("\nPart 3: High-Channel MEG Data")
 
 example_data_path = data_dir / "example_data.mat"
 if example_data_path.exists():
@@ -260,46 +191,26 @@ if example_data_path.exists():
     print(f"Loaded example_data.mat: {meg_high.shape}")
     print(f"Sampling rate: {sfreq_high} Hz")
     
-    # Apply ZapLine with nkeep (as in MATLAB example)
-    result_high = dss_zapline(
-        meg_high,
+    # Apply ZapLine with nkeep
+    est_high = ZapLine(
         line_freq=50,
         sfreq=sfreq_high,
         n_remove=6,  # As in MATLAB example
         nkeep=50,    # Reduce dimensionality
     )
+    est_high.fit(meg_high)
+    cleaned_high = est_high.transform(meg_high)
     
-    print(f"Components removed: {result_high.n_removed}")
+    print(f"Components removed: {est_high.n_removed_}")
     
-    # Compare PSDs
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-    
-    freqs, psd_orig = signal.welch(meg_high, sfreq_high, nperseg=int(sfreq_high))
-    freqs, psd_clean = signal.welch(result_high.cleaned, sfreq_high, nperseg=int(sfreq_high))
-    
-    ax = axes[0]
-    ax.semilogy(freqs, np.mean(psd_orig, axis=0), "b-")
-    ax.axvline(50, color="r", linestyle="--", label="50 Hz")
-    ax.set_xlabel("Frequency (Hz)")
-    ax.set_ylabel("PSD")
-    ax.set_title("Original MEG (275 channels)")
-    ax.legend()
-    ax.set_xlim(0, 150)
-    
-    ax = axes[1]
-    ax.semilogy(freqs, np.mean(psd_orig, axis=0), "b-", alpha=0.3, label="Original")
-    ax.semilogy(freqs, np.mean(psd_clean, axis=0), "g-", label="Cleaned")
-    ax.axvline(50, color="r", linestyle="--", alpha=0.5)
-    ax.set_xlabel("Frequency (Hz)")
-    ax.set_ylabel("PSD")
-    ax.set_title("Cleaned MEG (nkeep=50, n_remove=6)")
-    ax.legend()
-    ax.set_xlim(0, 150)
-    
-    plt.tight_layout()
-    plt.show()
+    # Use the reusable viz functions
+    plot_psd_comparison(meg_high, cleaned_high, sfreq_high, line_freq=50, fmax=150, show=True)
+    plot_cleaning_summary(meg_high, cleaned_high, est_high, sfreq_high, line_freq=50, show=True)
     
     # Measure reduction
+    nperseg = min(meg_high.shape[1], int(sfreq_high * 2))
+    freqs, psd_orig = signal.welch(meg_high, sfreq_high, nperseg=nperseg)
+    _, psd_clean = signal.welch(cleaned_high, sfreq_high, nperseg=nperseg)
     idx_50 = np.argmin(np.abs(freqs - 50))
     reduction_db = 10 * np.log10(
         np.mean(psd_orig[:, idx_50]) / np.mean(psd_clean[:, idx_50])

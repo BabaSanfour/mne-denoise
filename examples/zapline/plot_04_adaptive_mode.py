@@ -24,13 +24,13 @@ from scipy import signal
 from matplotlib.gridspec import GridSpec
 import warnings
 
-from mne_denoise.zapline import dss_zapline_plus, dss_zapline
 from mne_denoise.zapline.adaptive import (
     find_noise_freqs,
     segment_data,
     find_fine_peak,
     check_artifact_presence,
 )
+from mne_denoise.viz.zapline import plot_psd_comparison, plot_cleaning_summary
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
@@ -241,28 +241,41 @@ for i, (start, end) in enumerate(segments):
 # Use the full pipeline with QA loop.
 
 print("\n--- Step 4: Apply Zapline-plus ---")
-result = dss_zapline_plus(
-    data, sfreq,
-    line_freqs=[target_freq],
-    fmin=PAPER_PARAMS['minfreq'],
-    fmax=PAPER_PARAMS['maxfreq'],
-    n_remove_params={
-        'sigma': PAPER_PARAMS['noiseCompDetectSigma'],
-        'min_remove': 1,
-        'max_prop': 0.2
-    },
-    qa_params={
-        'max_sigma': PAPER_PARAMS['maxSigma'],
-        'min_sigma': PAPER_PARAMS['minSigma']
+from mne_denoise.zapline import ZapLine
+
+# Configure adaptive ZapLine
+zl = ZapLine(
+    sfreq=sfreq,
+    line_freq=target_freq,  # Use detected frequency or None
+    adaptive=True,
+    adaptive_params={
+        'fmin': PAPER_PARAMS['minfreq'],
+        'fmax': PAPER_PARAMS['maxfreq'],
+        'n_remove_params': {
+            'sigma': PAPER_PARAMS['noiseCompDetectSigma'],
+            'min_remove': 1,
+            'max_prop': 0.2
+        },
+        'qa_params': {
+            'max_sigma': PAPER_PARAMS['maxSigma'],
+            'min_sigma': PAPER_PARAMS['minSigma']
+        }
     }
 )
-data_clean = result.cleaned
-print(f"Cleaning complete. Components removed: {result.n_removed}")
+
+# Run Fit+Transform
+data_clean = zl.fit_transform(data)
+result = zl.adaptive_results_
+
+print(f"Cleaning complete. Components removed: {result['n_removed']}")
 
 ###############################################################################
 # Paper-Style Results Visualization
 # ---------------------------------
-# Create a figure similar to the paper's output.
+# Use our reusable viz functions for quick overview, then custom plots.
+
+# Quick overview using our viz functions
+plot_psd_comparison(data, data_clean, sfreq, line_freq=target_freq, show=True)
 
 fig = plt.figure(figsize=(14, 10))
 gs = GridSpec(3, 3, figure=fig, hspace=0.3, wspace=0.3)
