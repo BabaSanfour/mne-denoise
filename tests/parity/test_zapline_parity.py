@@ -11,7 +11,8 @@ import importlib.util
 import numpy as np
 import pytest
 
-from mne_denoise.zapline import compute_psd_reduction, dss_zapline
+from mne_denoise.zapline import ZapLine
+from scipy import signal
 
 try:
     if importlib.util.find_spec("matlab") and importlib.util.find_spec("matlab.engine"):
@@ -59,6 +60,20 @@ def test_data():
     )
 
 
+def compute_psd_reduction(data, cleaned, sfreq, line_freq):
+    """Compute PSD reduction at line frequency."""
+    from scipy import signal
+    nperseg = int(sfreq)
+    f, psd_orig = signal.welch(data, fs=sfreq, nperseg=nperseg, axis=-1)
+    f, psd_clean = signal.welch(cleaned, fs=sfreq, nperseg=nperseg, axis=-1)
+    
+    idx = np.argmin(np.abs(f - line_freq))
+    power_orig = np.mean(psd_orig[:, idx])
+    power_clean = np.mean(psd_clean[:, idx])
+    
+    reduction = 10 * np.log10(power_orig / power_clean)
+    return {"reduction_db": reduction}
+
 class TestZapLineParity:
     """Test parity between Python dss_zapline and MATLAB nt_zapline."""
 
@@ -67,9 +82,10 @@ class TestZapLineParity:
         data = test_data["continuous"]
         sfreq = test_data["sfreq"]
 
-        # Python: dss_zapline
-        py_result = dss_zapline(data, line_freq=50, sfreq=sfreq, n_remove="auto")
-        py_cleaned = py_result.cleaned
+        # Python: ZapLine Class
+        est = ZapLine(line_freq=50, sfreq=sfreq, n_remove="auto")
+        est.fit(data)
+        py_cleaned = est.transform(data)
 
         # MATLAB: nt_zapline(data', 50/sfreq)
         # MATLAB expects fline as fraction of sfreq
@@ -108,8 +124,9 @@ class TestZapLineParity:
         sfreq = test_data["sfreq"]
 
         # Python
-        py_result = dss_zapline(data, line_freq=50, sfreq=sfreq, n_remove=2)
-        py_cleaned = py_result.cleaned
+        est = ZapLine(line_freq=50, sfreq=sfreq, n_remove=2)
+        est.fit(data)
+        py_cleaned = est.transform(data)
 
         # MATLAB
         data_mat = to_matlab(data.T)
@@ -148,13 +165,16 @@ class TestZapLineParity:
         data[:8] += harmonic
 
         # Python with harmonics
-        py_result = dss_zapline(
-            data, line_freq=50, sfreq=sfreq, n_remove="auto", n_harmonics=2
+        # Python with harmonics
+        est = ZapLine(
+            line_freq=50, sfreq=sfreq, n_remove="auto", n_harmonics=2
         )
+        est.fit(data)
+        py_cleaned = est.transform(data)
 
         # Check both 50 Hz and 100 Hz reduction
-        metrics_50 = compute_psd_reduction(data, py_result.cleaned, sfreq, 50)
-        metrics_100 = compute_psd_reduction(data, py_result.cleaned, sfreq, 100)
+        metrics_50 = compute_psd_reduction(data, py_cleaned, sfreq, 50)
+        metrics_100 = compute_psd_reduction(data, py_cleaned, sfreq, 100)
 
         print(f"50 Hz reduction: {metrics_50['reduction_db']:.1f} dB")
         print(f"100 Hz reduction: {metrics_100['reduction_db']:.1f} dB")
@@ -169,14 +189,16 @@ class TestZapLineParity:
         sfreq = test_data["sfreq"]
 
         # Python
-        py_result = dss_zapline(data, line_freq=50, sfreq=sfreq, n_remove=2)
+        est = ZapLine(line_freq=50, sfreq=sfreq, n_remove=2)
+        est.fit(data)
+        py_cleaned = est.transform(data)
 
         # Check that 10 Hz alpha is preserved
         from scipy import signal
 
         nperseg = int(4 * sfreq)
         freqs, psd_orig = signal.welch(data[0], sfreq, nperseg=nperseg)
-        freqs, psd_clean = signal.welch(py_result.cleaned[0], sfreq, nperseg=nperseg)
+        freqs, psd_clean = signal.welch(py_cleaned[0], sfreq, nperseg=nperseg)
 
         # Find 10 Hz power
         idx_10 = np.argmin(np.abs(freqs - 10))
@@ -198,14 +220,16 @@ class TestZapLineEdgeCases:
         rng = np.random.default_rng(42)
         data = rng.standard_normal((8, 5000))  # Pure noise
 
-        result = dss_zapline(data, line_freq=50, sfreq=500, n_remove="auto")
+        est = ZapLine(line_freq=50, sfreq=500, n_remove="auto")
+        est.fit(data)
+        cleaned = est.transform(data)
 
         # Should not remove significant power
-        metrics = compute_psd_reduction(data, result.cleaned, 500, 50)
+        metrics = compute_psd_reduction(data, cleaned, 500, 50)
         print(f"Reduction when no noise: {metrics['reduction_db']:.1f} dB")
 
         # Data should be largely unchanged
-        corr = np.corrcoef(data.ravel(), result.cleaned.ravel())[0, 1]
+        corr = np.corrcoef(data.ravel(), cleaned.ravel())[0, 1]
         print(f"Correlation with original: {corr:.4f}")
         assert corr > 0.95
 
@@ -219,8 +243,11 @@ class TestZapLineEdgeCases:
         line = np.sin(2 * np.pi * 60 * t)
         data[:4] += line * 2
 
-        result = dss_zapline(data, line_freq=60, sfreq=500, n_remove=2)
-        metrics = compute_psd_reduction(data, result.cleaned, 500, 60)
+        est = ZapLine(line_freq=60, sfreq=500, n_remove=2)
+        est.fit(data)
+        cleaned = est.transform(data)
+        
+        metrics = compute_psd_reduction(data, cleaned, 500, 60)
 
         print(f"60 Hz reduction: {metrics['reduction_db']:.1f} dB")
         assert metrics["reduction_db"] > 5

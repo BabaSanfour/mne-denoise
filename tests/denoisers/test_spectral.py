@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from scipy.signal import welch
 
-from mne_denoise.dss.denoisers.spectral import BandpassBias, NotchBias
+from mne_denoise.dss.denoisers.spectral import BandpassBias, LineNoiseBias
 
 
 def test_bandpass_bias():
@@ -34,7 +34,7 @@ def test_bandpass_bias():
 
 
 def test_notch_bias_isolation():
-    """Test NotchBias isolates the target frequency (for later removal)."""
+    """Test LineNoiseBias isolates the target frequency (for later removal)."""
     sfreq = 250
     times = np.arange(1000) / sfreq
 
@@ -46,15 +46,16 @@ def test_notch_bias_isolation():
     data = (slow + line)[np.newaxis, :]
 
     # Bias to FIND the line noise (so we isolate 50 Hz)
-    bias = NotchBias(freq=50, sfreq=sfreq, bandwidth=2.0)
+    # LineNoiseBias replaces NotchBias logic for DSS
+    bias = LineNoiseBias(freq=50, sfreq=sfreq, bandwidth=2.0)
     biased_data = bias.apply(data)
 
     # Output should correspond to the line noise, NOT the slow signal
     corr_line = np.corrcoef(biased_data[0], line)[0, 1]
     corr_slow = np.corrcoef(biased_data[0], slow)[0, 1]
 
-    assert abs(corr_line) > 0.95, "NotchBias should isolate the target frequency"
-    assert abs(corr_slow) < 0.1, "NotchBias should reject other frequencies"
+    assert abs(corr_line) > 0.95, "LineNoiseBias should isolate the target frequency"
+    assert abs(corr_slow) < 0.1, "LineNoiseBias should reject other frequencies"
 
 
 def test_bandpass_bias_low_freq_error():
