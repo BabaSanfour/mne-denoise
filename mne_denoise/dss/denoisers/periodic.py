@@ -13,8 +13,6 @@ References
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
-
 import numpy as np
 from scipy import ndimage, signal
 
@@ -154,8 +152,7 @@ class CombFilterBias(LinearDenoiser):
     >>> biased_data = bias.apply(data)
     >>> # Custom weighting (equal weight for all harmonics)
     >>> bias = CombFilterBias(
-    ...     fundamental_freq=12, sfreq=500, n_harmonics=4,
-    ...     weights=[1.0, 1.0, 1.0, 1.0]
+    ...     fundamental_freq=12, sfreq=500, n_harmonics=4, weights=[1.0, 1.0, 1.0, 1.0]
     ... )
 
     See Also
@@ -180,7 +177,7 @@ class CombFilterBias(LinearDenoiser):
         *,
         n_harmonics: int = 3,
         q_factor: float = 30.0,
-        weights: Optional[np.ndarray] = None,
+        weights: np.ndarray | None = None,
     ) -> None:
         self.fundamental_freq = fundamental_freq
         self.sfreq = sfreq
@@ -199,7 +196,7 @@ class CombFilterBias(LinearDenoiser):
                 )
 
         # Create peak filters for each valid harmonic
-        self._peak_filters: List[Tuple[np.ndarray, float]] = []
+        self._peak_filters: list[tuple[np.ndarray, float]] = []
         self._create_harmonic_filters()
 
     def _create_harmonic_filters(self) -> None:
@@ -252,7 +249,7 @@ class CombFilterBias(LinearDenoiser):
         return biased
 
     @property
-    def harmonic_frequencies(self) -> List[float]:
+    def harmonic_frequencies(self) -> list[float]:
         """Return list of harmonic frequencies being filtered."""
         nyq = self.sfreq / 2
         return [
@@ -300,7 +297,7 @@ class QuasiPeriodicDenoiser(NonlinearDenoiser):
         peak_distance: int = 100,
         peak_height_percentile: float = 75.0,
         *,
-        warp_length: Optional[int] = None,
+        warp_length: int | None = None,
         smooth_template: bool = True,
     ) -> None:
         self.peak_distance = max(10, peak_distance)

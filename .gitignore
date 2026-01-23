@@ -34,3 +34,8 @@ docs/generated/
 htmlcov/
 
 .DS_Store
+
+/data/
+/figures/
+/outputs/
+/scratch/

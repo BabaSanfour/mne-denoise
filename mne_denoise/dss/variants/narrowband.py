@@ -8,8 +8,6 @@ Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 import numpy as np
 
 from ..denoisers.spectral import BandpassBias
@@ -21,7 +19,7 @@ def narrowband_dss(
     freq: float,
     *,
     bandwidth: float = 2.0,
-    n_components: Optional[int] = None,
+    n_components: int | None = None,
     **dss_kws,
 ) -> DSS:
     """Create a DSS configured for a specific frequency band.
@@ -64,12 +62,12 @@ def narrowband_scan(
     data: np.ndarray,
     sfreq: float,
     *,
-    freq_range: Tuple[float, float] = (1, 40),
+    freq_range: tuple[float, float] = (1, 40),
     freq_step: float = 1.0,
     bandwidth: float = 2.0,
     n_components: int = 1,
     **dss_kws,
-) -> Tuple[DSS, np.ndarray, np.ndarray]:
+) -> tuple[DSS, np.ndarray, np.ndarray]:
     """Scan frequencies to find optimal narrowband DSS components.
 
     Sweeps through a frequency range, computing DSS at each frequency.
@@ -112,8 +110,8 @@ def narrowband_scan(
     >>> # Plot eigenvalue spectrum
     >>> import matplotlib.pyplot as plt
     >>> plt.plot(freqs, eigs)
-    >>> plt.xlabel('Frequency (Hz)')
-    >>> plt.ylabel('DSS Eigenvalue')
+    >>> plt.xlabel("Frequency (Hz)")
+    >>> plt.ylabel("DSS Eigenvalue")
     """
     data = np.asarray(data)
 

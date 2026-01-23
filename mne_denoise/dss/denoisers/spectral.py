@@ -1,7 +1,6 @@
 """Spectral bias functions for DSS.
 
-Implements bandpass and notch filters for narrow-band rhythm extraction
-and line noise isolation.
+Implements bandpass filters and unified line noise removal (Notch/FFT).
 
 Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
          Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
@@ -15,10 +14,9 @@ References
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 import numpy as np
 from scipy import signal
+from scipy.fft import fft, ifft
 
 from .base import LinearDenoiser
 
@@ -58,7 +56,7 @@ class BandpassBias(LinearDenoiser):
 
     def __init__(
         self,
-        freq_band: Tuple[float, float],
+        freq_band: tuple[float, float],
         sfreq: float,
         *,
         order: int = 4,
@@ -70,9 +68,9 @@ class BandpassBias(LinearDenoiser):
         self.method = method
 
         # Pre-compute filter coefficients
-        self._b: Optional[np.ndarray] = None
-        self._a: Optional[np.ndarray] = None
-        self._sos: Optional[np.ndarray] = None
+        self._b: np.ndarray | None = None
+        self._a: np.ndarray | None = None
+        self._sos: np.ndarray | None = None
         self._design_filter()
 
     def _design_filter(self) -> None:
@@ -124,36 +122,40 @@ class BandpassBias(LinearDenoiser):
         return biased
 
 
-class NotchBias(LinearDenoiser):
-    """Notch filter bias for isolating a specific frequency.
+class LineNoiseBias(LinearDenoiser):
+    """A bias LinearDenoiser for line noise isolation (Notch/IIR or FFT/Harmonic).
 
-    Applies a narrow notch (bandpass) filter to isolate power at a
-    specific frequency. This is the core bias operation used in the
-    ZapLine algorithm (de Cheveigné, 2020) to find and remove line noise.
+    Isolates power at a specific frequency (e.g., 50/60 Hz) and potentially
+    its harmonics. Supports two methods:
+
+    1. ``'fft'``: Use FFT masking to isolate exact frequency bins (ZapLine style).
+       Best for sharp line noise with harmonics.
+    2. ``'iir'``: Use a narrow bandpass (notch) filter.
+       Simpler, but affects broader band.
 
     Parameters
     ----------
     freq : float
-        Center frequency to isolate in Hz.
+        Line frequency in Hz.
     sfreq : float
         Sampling frequency in Hz.
-    bandwidth : float
-        Filter bandwidth in Hz. Default 1.0.
+    method : {'fft', 'iir'}
+        Method to use. Default 'fft'.
+    n_harmonics : int, optional
+        Number of harmonics (for 'fft' method). If None, all up to Nyquist.
+    bandwidth : float, optional
+        Bandwidth in Hz (for 'iir' method). Default 1.0.
+    order : int, optional
+        Filter order (for 'iir' method). Default 4.
+    nfft : int, optional
+        FFT window size (for 'fft' method). Default 1024.
+    overlap : float, optional
+        Overlap fraction (for 'fft' method). Default 0.5.
 
     Examples
     --------
-    >>> from mne_denoise.dss.denoisers import NotchBias
-    >>> bias = NotchBias(freq=60, sfreq=250, bandwidth=2)
-    >>> biased_data = bias.apply(data)
-
-    See Also
-    --------
-    BandpassBias : Band-pass filter bias.
-
-    References
-    ----------
-    de Cheveigné (2020). ZapLine
-    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
+    >>> bias = LineNoiseBias(freq=50, sfreq=1000, method="fft")
+    >>> biased = bias.apply(data)
     """
 
     def __init__(
@@ -161,32 +163,120 @@ class NotchBias(LinearDenoiser):
         freq: float,
         sfreq: float,
         *,
+        method: str = "fft",
+        n_harmonics: int | None = None,
         bandwidth: float = 1.0,
+        order: int = 4,
+        nfft: int = 1024,
+        overlap: float = 0.5,
     ) -> None:
         self.freq = freq
         self.sfreq = sfreq
+        self.method = method
+        self.n_harmonics = n_harmonics
         self.bandwidth = bandwidth
+        self.order = order
+        self.nfft = nfft
+        self.overlap = overlap
 
-        # Create a narrow bandpass around the target frequency
-        low = freq - bandwidth / 2
-        high = freq + bandwidth / 2
-        self._bandpass = BandpassBias(
-            freq_band=(low, high),
-            sfreq=sfreq,
-            order=4,
-        )
+        if method == "iir":
+            low = freq - bandwidth / 2
+            high = freq + bandwidth / 2
+            self._bandpass = BandpassBias(
+                freq_band=(low, high), sfreq=sfreq, order=order
+            )
+        elif method == "fft":
+            # FFT setup logic
+            nyquist = sfreq / 2
+            if n_harmonics is None:
+                self.n_harmonics = int(np.floor(nyquist / freq))
+            else:
+                max_harmonics = int(np.floor(nyquist / freq))
+                self.n_harmonics = min(n_harmonics, max_harmonics)
+
+            self._harmonic_freqs = np.array(
+                [freq * (h + 1) for h in range(self.n_harmonics)]
+            )
+            self._harmonic_freqs = self._harmonic_freqs[self._harmonic_freqs < nyquist]
+        else:
+            raise ValueError(f"Unknown method '{method}', must be 'fft' or 'iir'.")
 
     def apply(self, data: np.ndarray) -> np.ndarray:
-        """Apply notch isolation bias.
+        """Apply the selected bias."""
+        if self.method == "iir":
+            return self._bandpass.apply(data)
+        elif self.method == "fft":
+            return self._apply_fft(data)
+        return data
 
-        Parameters
-        ----------
-        data : ndarray
-            Input data.
+    def _apply_fft(self, data: np.ndarray) -> np.ndarray:
+        """Apply FFT-based harmonic bias."""
+        if data.ndim == 3:
+            n_channels, n_times, n_epochs = data.shape
+            biased = np.zeros_like(data)
+            for ep in range(n_epochs):
+                biased[:, :, ep] = self._apply_fft_2d(data[:, :, ep])
+            return biased
+        elif data.ndim == 2:
+            return self._apply_fft_2d(data)
+        else:
+            raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
 
-        Returns
-        -------
-        biased : ndarray
-            Data filtered to isolate the target frequency.
-        """
-        return self._bandpass.apply(data)
+    def _get_target_indices(self, nfft: int) -> list:
+        """Get FFT bin indices for target frequencies."""
+        freq_bins = np.fft.fftfreq(nfft, 1 / self.sfreq)
+        target_indices = []
+
+        for f in self._harmonic_freqs:
+            idx = np.argmin(np.abs(freq_bins - f))
+            if idx not in target_indices:
+                target_indices.append(idx)
+            # Negative frequency
+            idx_neg = np.argmin(np.abs(freq_bins + f))
+            if idx_neg not in target_indices:
+                target_indices.append(idx_neg)
+
+        return target_indices
+
+    def _apply_fft_2d(self, data: np.ndarray) -> np.ndarray:
+        """Apply bias to 2D data using FFT."""
+        n_channels, n_times = data.shape
+
+        # Use data length or nfft, whichever is smaller
+        actual_nfft = min(self.nfft, n_times)
+        target_indices = self._get_target_indices(actual_nfft)
+
+        # If data is shorter than nfft, process as single block
+        if n_times <= actual_nfft:
+            X = fft(data, n=actual_nfft, axis=1)
+            X_bias = np.zeros_like(X)
+            for idx in target_indices:
+                X_bias[:, idx] = X[:, idx]
+            biased = np.real(ifft(X_bias, axis=1))[:, :n_times]
+            return biased
+
+        # Welch-style block processing
+        step = int(actual_nfft * (1 - self.overlap))
+        step = max(step, 1)
+
+        biased = np.zeros_like(data)
+        counts = np.zeros(n_times)
+
+        for start in range(0, n_times - actual_nfft + 1, step):
+            end = start + actual_nfft
+            segment = data[:, start:end]
+
+            X = fft(segment, axis=1)
+            X_bias = np.zeros_like(X)
+            for idx in target_indices:
+                X_bias[:, idx] = X[:, idx]
+
+            segment_biased = np.real(ifft(X_bias, axis=1))
+            biased[:, start:end] += segment_biased
+            counts[start:end] += 1
+
+        # Normalize by overlap counts
+        counts = np.maximum(counts, 1)
+        biased /= counts
+
+        return biased

@@ -38,6 +38,9 @@ napoleon_google_docstring = False
 napoleon_numpy_docstring = True
 numpydoc_show_class_members = False
 
+# MyST configuration
+myst_heading_anchors = 3
+
 sphinx_gallery_conf = {
     "examples_dirs": "../examples",
     "gallery_dirs": "auto_examples",

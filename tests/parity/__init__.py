@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -75,9 +74,9 @@ class ParityMetrics:
 
     def __init__(self, name: str):
         self.name = name
-        self.correlations: List[float] = []
-        self.rmse_values: List[float] = []
-        self.max_abs_diffs: List[float] = []
+        self.correlations: list[float] = []
+        self.rmse_values: list[float] = []
+        self.max_abs_diffs: list[float] = []
 
     def add_comparison(
         self,
@@ -113,7 +112,7 @@ class ParityMetrics:
             "max_abs_diff": max_diff,
         }
 
-    def summary(self) -> Dict[str, float]:
+    def summary(self) -> dict[str, float]:
         """Get summary statistics."""
         return {
             "mean_correlation": float(np.mean(self.correlations)),
@@ -138,7 +137,7 @@ def generate_test_data(
     n_epochs: int = 50,
     sfreq: float = 250.0,
     seed: int = 42,
-) -> Dict[str, Union[np.ndarray, float]]:
+) -> dict[str, np.ndarray | float]:
     """Generate synthetic test data for parity testing.
 
     Creates data with:
@@ -199,7 +198,7 @@ def generate_test_data(
 
 
 def save_test_data_for_matlab(
-    data: Dict[str, np.ndarray],
+    data: dict[str, np.ndarray],
     output_dir: Path,
 ):
     """Save test data in format readable by MATLAB."""

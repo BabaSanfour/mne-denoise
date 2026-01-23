@@ -8,8 +8,6 @@ Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
 
 from __future__ import annotations
 
-from typing import Optional
-
 from ..denoisers.periodic import CombFilterBias
 from ..linear import DSS
 
@@ -19,7 +17,7 @@ def ssvep_dss(
     stim_freq: float,
     *,
     n_harmonics: int = 3,
-    n_components: Optional[int] = None,
+    n_components: int | None = None,
     **dss_kws,
 ) -> DSS:
     """Create a DSS configured for SSVEP extraction.
@@ -54,7 +52,7 @@ def ssvep_dss(
     >>> ssvep_sources = dss.transform(epochs)
 
     >>> # Get denoised data back in sensor space
-    >>> dss = ssvep_dss(sfreq=250, stim_freq=12, return_type='epochs')
+    >>> dss = ssvep_dss(sfreq=250, stim_freq=12, return_type="epochs")
     >>> dss.fit(epochs)
     >>> denoised_epochs = dss.transform(epochs)
     """

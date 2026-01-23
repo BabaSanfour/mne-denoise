@@ -4,7 +4,7 @@ Denoising Evoked Responses.
 
 This example demonstrates how to use DSS to enhance **Evoked Responses** (ERPs/ERFs).
 We explore two strategies:
-1.  **Standard Denoising**: Using `TrialAverageBias` to enhance the common evoked response (N100/P200).
+1.  **Standard Denoising**: Using `AverageBias` to enhance the common evoked response (N100/P200).
 2.  **Contrast Enhancement**: Building a **Custom Bias** to isolate the *difference* between two experimental conditions (Left vs Right Audio).
 
 Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
@@ -14,6 +14,7 @@ Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
 # %%
 # Imports
 # -------
+import contextlib
 import os
 
 import matplotlib.pyplot as plt
@@ -21,7 +22,7 @@ import mne
 import numpy as np
 from mne.datasets import sample
 
-from mne_denoise.dss import DSS, LinearDenoiser, TrialAverageBias
+from mne_denoise.dss import DSS, AverageBias, LinearDenoiser
 from mne_denoise.viz import (
     plot_component_summary,
     plot_component_time_series,
@@ -73,7 +74,7 @@ epochs_sim = mne.EpochsArray(
 )
 
 # 2. Fit DSS
-dss_sim = DSS(n_components=5, bias=TrialAverageBias())
+dss_sim = DSS(n_components=5, bias=AverageBias(axis="epochs"))
 dss_sim.fit(epochs_sim)
 
 # 3. Visualize Results
@@ -113,10 +114,8 @@ print("Loading MNE Sample data...")
 home = os.path.expanduser("~")
 mne_data_path = os.path.join(home, "mne_data")
 if not os.path.exists(mne_data_path):
-    try:
+    with contextlib.suppress(OSError):
         os.makedirs(mne_data_path)
-    except OSError:
-        pass
 
 data_path = sample.data_path()
 raw_fname = data_path / "MEG" / "sample" / "sample_audvis_raw.fif"
@@ -138,7 +137,7 @@ epochs = mne.Epochs(
     tmin=-0.2,
     tmax=0.5,
     baseline=(None, 0),
-    reject=dict(grad=4000e-13, mag=4e-12, eog=150e-6),
+    reject={"grad": 4000e-13, "mag": 4e-12, "eog": 150e-6},
     preload=True,
     verbose=False,
 )
@@ -156,10 +155,10 @@ print(f"Epochs: {len(epochs_meg)} trials, {len(epochs_meg.ch_names)} channels")
 print("\n--- Part 1: Standard Trial Average Bias ---")
 
 # 1. Fit DSS
-# We use TrialAverageBias, which replaces every trial with the mean of all trials.
+# We use AverageBias(axis='epochs'), which replaces every trial with the mean of all trials.
 dss_std = DSS(
     n_components=10,
-    bias=TrialAverageBias(),
+    bias=AverageBias(axis="epochs"),
     cov_method="empirical",
     cov_kws={"n_jobs": 1},
 )

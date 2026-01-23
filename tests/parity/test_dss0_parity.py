@@ -167,17 +167,17 @@ class TestDSS0Parity:
 
 
 class TestDSS1Parity:
-    """Test parity between Python DSS (TrialAverageBias) and MATLAB nt_dss1."""
+    """Test parity between Python DSS (AverageBias) and MATLAB nt_dss1."""
 
     def test_evoked_bias_parity(self, matlab_engine, test_data):
         """Compare evoked/ERP-based DSS."""
-        from mne_denoise.dss import DSS, TrialAverageBias
+        from mne_denoise.dss import DSS, AverageBias
 
         epoched = test_data["epoched"]
         n_channels, n_times, n_epochs = epoched.shape
 
         # Python: DSS with trial average bias
-        bias = TrialAverageBias()
+        bias = AverageBias(axis="epochs")
         dss = DSS(bias=bias, n_components=n_channels)
         dss.fit(epoched)
         py_filters = dss.filters_
@@ -207,13 +207,13 @@ class TestDSS1Parity:
 
     def test_evoked_component_recovers_signal(self, matlab_engine, test_data):
         """Verify top component correlates with true evoked source."""
-        from mne_denoise.dss import DSS, TrialAverageBias
+        from mne_denoise.dss import DSS, AverageBias
 
         epoched = test_data["epoched"]
         evoked_mixing = test_data["evoked_mixing"]
 
         # Python
-        bias = TrialAverageBias()
+        bias = AverageBias(axis="epochs")
         dss = DSS(bias=bias, n_components=5)
         dss.fit(epoched)
 

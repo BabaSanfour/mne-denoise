@@ -221,7 +221,7 @@ def run_parity_tests(use_matlab: bool = True) -> None:
     if use_matlab:
         try:
             eng.quit()
-        except:
+        except Exception:
             pass
 
 

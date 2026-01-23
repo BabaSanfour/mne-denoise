@@ -4,6 +4,8 @@ Authors: Sina Esmaeili <sina.esmaeili@umontreal.ca>
          Hamza Abdelhedi <hamza.abdelhedi@umontreal.ca>
 """
 
+import contextlib
+
 import matplotlib.pyplot as plt
 import mne
 import numpy as np
@@ -133,7 +135,7 @@ def plot_spectral_psd_comparison(
     # Handle different component types
 
     # Convert components to numpy array if needed
-    if isinstance(components, (mne.io.BaseRaw, mne.BaseEpochs)):
+    if isinstance(components, mne.io.BaseRaw | mne.BaseEpochs):
         comp_data_raw = components.get_data()
     else:
         comp_data_raw = np.asarray(components)
@@ -307,7 +309,7 @@ def plot_time_course_comparison(
 
     times = inst_orig.times
 
-    if isinstance(inst_orig, (mne.io.BaseRaw, mne.io.RawArray)):
+    if isinstance(inst_orig, mne.io.BaseRaw | mne.io.RawArray):
         data1 = inst_orig.get_data(picks=picks, start=start, stop=stop)
         data2 = inst_denoised.get_data(picks=picks, start=start, stop=stop)
         if start is not None:
@@ -383,7 +385,7 @@ def plot_power_map(inst_orig, inst_denoised, info=None, show=True, ax=None):
             raise ValueError("info is required")
 
     def _get_var(inst):
-        if isinstance(inst, (mne.io.BaseRaw, mne.io.RawArray, mne.Evoked)):
+        if isinstance(inst, mne.io.BaseRaw | mne.io.RawArray | mne.Evoked):
             d = inst.get_data()  # (n_ch, n_times)
             return np.var(d, axis=1)
         elif isinstance(inst, mne.BaseEpochs):
@@ -465,7 +467,7 @@ def plot_spectrogram_comparison(
         local_picks = picks
         if local_picks is None:
             # Try 'data' first, if fails or empty, pick 'all'
-            try:
+            with contextlib.suppress(ValueError):
                 # Check if 'data' yields anything
                 _ = (
                     mne.pick_types(
@@ -479,8 +481,6 @@ def plot_spectrogram_comparison(
                     if "data" in inst
                     else []
                 )
-            except ValueError:
-                pass
 
             if (
                 len(
@@ -593,7 +593,7 @@ def plot_denoising_summary(inst_orig, inst_denoised, info=None, show=True):
     ax_gfp = fig.add_subplot(gs[1, :])
 
     def _get_gfp(inst):
-        if isinstance(inst, (mne.io.BaseRaw, mne.io.RawArray, mne.Evoked)):
+        if isinstance(inst, mne.io.BaseRaw | mne.io.RawArray | mne.Evoked):
             d = inst.get_data()
             return np.std(d, axis=0)
         elif isinstance(inst, mne.BaseEpochs):

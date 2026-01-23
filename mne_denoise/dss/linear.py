@@ -15,7 +15,7 @@ References
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Tuple, Union
+from collections.abc import Callable
 
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -29,6 +29,7 @@ try:
 except ImportError:
     mne = None
 
+from ..utils import extract_data_from_mne, reconstruct_mne_object
 from .denoisers import LinearDenoiser
 from .utils import compute_covariance
 
@@ -41,10 +42,10 @@ def compute_dss(
     covariance_baseline: np.ndarray,
     covariance_biased: np.ndarray,
     *,
-    n_components: Optional[int] = None,
-    rank: Optional[int] = None,
+    n_components: int | None = None,
+    rank: int | None = None,
     reg: float = 1e-9,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     r"""Compute DSS spatial filters from baseline and biased covariances.
 
     This implements the core Linear DSS algorithm as described in Särelä & Valpola (2005) [1]_.
@@ -101,7 +102,7 @@ def compute_dss(
     >>> # Compute covariances
     >>> cov_baseline = compute_covariance(data)
     >>> # Biased covariance: trial-averaged standard example or filtering
-    >>> cov_biased = compute_covariance(data) # Just a placeholder
+    >>> cov_biased = compute_covariance(data)  # Just a placeholder
     >>> # Compute DSS
     >>> filters, patterns, evs = compute_dss(cov_baseline, cov_biased, n_components=5)
 
@@ -278,7 +279,7 @@ class DSS(BaseEstimator, TransformerMixin):
     >>> # Extract sources
     >>> sources = dss.transform(raw_data)
     >>> # Or return denoised data
-    >>> dss.return_type = 'raw'
+    >>> dss.return_type = "raw"
     >>> denoised_raw = dss.transform(raw_data)
 
     See Also
@@ -288,13 +289,13 @@ class DSS(BaseEstimator, TransformerMixin):
 
     def __init__(
         self,
-        bias: Union[LinearDenoiser, Callable],
-        n_components: Optional[int] = None,
-        rank: Union[int, dict, None] = None,
+        bias: LinearDenoiser | Callable,
+        n_components: int | None = None,
+        rank: int | dict | None = None,
         reg: float = 1e-9,
         normalize_input: bool = True,
         cov_method: str = "empirical",
-        cov_kws: Optional[dict] = None,
+        cov_kws: dict | None = None,
         return_type: str = "sources",
     ) -> None:
         self.n_components = n_components
@@ -317,17 +318,21 @@ class DSS(BaseEstimator, TransformerMixin):
 
     def fit(
         self,
-        X: Union[BaseRaw, BaseEpochs, Evoked, np.ndarray],
+        X: BaseRaw | BaseEpochs | Evoked | np.ndarray,
         y=None,
-        weights: Optional[np.ndarray] = None,
-    ) -> "DSS":
+        weights: np.ndarray | None = None,
+    ) -> DSS:
         """Compute DSS spatial filters.
 
         Parameters
         ----------
         X : Raw | Epochs | Evoked | array
-            The data to fit. If array, shape must be (n_channels, n_times) or
-            (n_channels, n_times, n_epochs).
+            The data to fit.
+            - If array, shape must be:
+              - `(n_channels, n_times)` for continuous data.
+              - `(n_channels, n_times, n_epochs)` for epoch data (evoked DSS).
+              - `(n_datasets, n_channels, n_times)` for group data (Joint DSS).
+            Note: For group DSS, you must reshape your list of datasets into a 3D array before fitting.
         y : None
             Ignored.
         weights : array, shape (n_times,), optional
@@ -344,7 +349,7 @@ class DSS(BaseEstimator, TransformerMixin):
         else:
             X_norm = X
 
-        if mne is not None and isinstance(X_norm, (BaseRaw, BaseEpochs, Evoked)):
+        if mne is not None and isinstance(X_norm, BaseRaw | BaseEpochs | Evoked):
             self._fit_mne(X_norm, weights=weights)
         elif isinstance(X_norm, np.ndarray):
             self._fit_numpy(X_norm, weights=weights)
@@ -357,8 +362,8 @@ class DSS(BaseEstimator, TransformerMixin):
         return self
 
     def _normalize(
-        self, X: Union[BaseRaw, BaseEpochs, Evoked, np.ndarray], fit: bool = False
-    ) -> Union[BaseRaw, BaseEpochs, Evoked, np.ndarray]:
+        self, X: BaseRaw | BaseEpochs | Evoked | np.ndarray, fit: bool = False
+    ) -> BaseRaw | BaseEpochs | Evoked | np.ndarray:
         """Normalize data channel-wise.
 
         This mimics MNE's Scaling capabilities, ensuring channels with different
@@ -366,12 +371,18 @@ class DSS(BaseEstimator, TransformerMixin):
         """
         # Helper to get numpy data
         is_mne = False
-        if mne is not None and isinstance(X, (BaseRaw, BaseEpochs, Evoked)):
+        mne_type = None
+        if mne is not None and isinstance(X, BaseRaw | BaseEpochs | Evoked):
             data = X.get_data()
             is_mne = True
             if isinstance(X, BaseEpochs):
+                mne_type = "epochs"
                 # MNE Epochs: (n_epochs, n_channels, n_times) -> (n_channels, n_times, n_epochs)
                 data = np.transpose(data, (1, 2, 0))
+            elif isinstance(X, Evoked):
+                mne_type = "evoked"
+            else:
+                mne_type = "raw"
         else:
             data = X
 
@@ -400,14 +411,37 @@ class DSS(BaseEstimator, TransformerMixin):
             data_norm = data_norm.reshape(orig_shape)
 
         if is_mne:
-            if isinstance(X, BaseRaw):
-                return mne.io.RawArray(data_norm, X.info, verbose=False)
-            elif isinstance(X, BaseEpochs):
+            if mne_type == "raw":
+                out = mne.io.RawArray(data_norm, X.info.copy(), verbose=False)
+                # Preserve annotations
+                if hasattr(X, "annotations") and X.annotations is not None:
+                    out.set_annotations(X.annotations)
+                return out
+            elif mne_type == "epochs":
                 # Transpose back to MNE format: (n_ch, n_times, n_epochs) -> (n_epochs, n_ch, n_times)
                 data_norm = np.transpose(data_norm, (2, 0, 1))
-                return mne.EpochsArray(data_norm, X.info, verbose=False)
+                out = mne.EpochsArray(
+                    data_norm,
+                    X.info.copy(),
+                    events=getattr(X, "events", None),
+                    tmin=getattr(X, "tmin", 0),
+                    event_id=getattr(X, "event_id", None),
+                    verbose=False,
+                )
+                # Preserve metadata
+                if hasattr(X, "metadata") and X.metadata is not None:
+                    out.metadata = X.metadata.copy()
+                return out
             else:  # Evoked
-                return mne.EvokedArray(data_norm, X.info, verbose=False)
+                out = mne.EvokedArray(
+                    data_norm,
+                    X.info.copy(),
+                    tmin=getattr(X, "tmin", 0),
+                    comment=getattr(X, "comment", ""),
+                    nave=getattr(X, "nave", 1),
+                    verbose=False,
+                )
+                return out
         else:
             return data_norm
 
@@ -420,8 +454,8 @@ class DSS(BaseEstimator, TransformerMixin):
 
     def _fit_mne(
         self,
-        inst: Union[BaseRaw, BaseEpochs, Evoked],
-        weights: Optional[np.ndarray] = None,
+        inst: BaseRaw | BaseEpochs | Evoked,
+        weights: np.ndarray | None = None,
     ) -> None:
         """Fit using MNE objects."""
         self.info_ = inst.info
@@ -431,19 +465,17 @@ class DSS(BaseEstimator, TransformerMixin):
             data = inst.get_data()
             self._fit_numpy(data, weights=weights)
             return
+
         method = self.cov_method
         kws = self.cov_kws.copy() if self.cov_kws else {}
         # Set defaults if not in kws
         kws.setdefault("rank", self.rank)
         kws.setdefault("verbose", False)
 
-        if isinstance(inst, BaseEpochs):
-            data = inst.get_data()
+        data, _, mne_type, _ = extract_data_from_mne(inst)
+        if mne_type == "epochs":
+            # DSS transpose preference
             data = np.transpose(data, (1, 2, 0))
-        elif isinstance(inst, Evoked):
-            data = inst.data
-        else:  # Raw
-            data = inst.get_data()
 
         biased_data = self._apply_bias(data)
 
@@ -478,16 +510,8 @@ class DSS(BaseEstimator, TransformerMixin):
         sources_cov = self.filters_ @ baseline_cov.data @ self.filters_.T
         self.explained_variance_ = np.diag(sources_cov)
 
-    def _fit_numpy(self, X: np.ndarray, weights: Optional[np.ndarray] = None) -> None:
+    def _fit_numpy(self, X: np.ndarray, weights: np.ndarray | None = None) -> None:
         """Fit using numpy arrays."""
-        if self.rank is not None:
-            import warnings
-
-            warnings.warn(
-                "Rank parameter is currently ignored for NumPy inputs. "
-                "It is only used when fitting with MNE objects (Raw/Epochs/Evoked)."
-            )
-
         biased_X = self._apply_bias(X)
 
         method = self.cov_method
@@ -496,10 +520,17 @@ class DSS(BaseEstimator, TransformerMixin):
         baseline_cov = compute_covariance(X, method=method, weights=weights, **kws)
         biased_cov = compute_covariance(biased_X, method=method, weights=weights, **kws)
 
+        # Use rank if provided (compute from covariance if not)
+        rank = None
+        if self.rank is not None and isinstance(self.rank, int):
+            rank = self.rank
+            # If rank is a dict (MNE style), ignore for numpy
+
         self.filters_, self.patterns_, self.eigenvalues_ = compute_dss(
             covariance_baseline=baseline_cov,
             covariance_biased=biased_cov,
             n_components=self.n_components,
+            rank=rank,
             reg=self.reg,
         )
 
@@ -508,14 +539,15 @@ class DSS(BaseEstimator, TransformerMixin):
         self.explained_variance_ = np.diag(sources_cov)
 
     def transform(
-        self, X: Union[BaseRaw, BaseEpochs, Evoked, np.ndarray]
-    ) -> Union[np.ndarray, BaseRaw, BaseEpochs, Evoked]:
+        self, X: BaseRaw | BaseEpochs | Evoked | np.ndarray
+    ) -> np.ndarray | BaseRaw | BaseEpochs | Evoked:
         """Apply DSS spatial filters.
 
         Parameters
         ----------
         X : Raw | Epochs | Evoked | array
             Data to transform.
+            - If array, must match the shape convention used in fit (see fit docstring).
 
         Returns
         -------
@@ -534,14 +566,11 @@ class DSS(BaseEstimator, TransformerMixin):
             X_in = X
 
         # Helper to extract data
-        is_mne = False
-        if mne is not None and isinstance(X_in, (BaseRaw, BaseEpochs, Evoked)):
-            is_mne = True
-            data = X_in.get_data()
-            if isinstance(X_in, BaseEpochs):
-                data = np.transpose(data, (1, 2, 0))
-        else:
-            data = X_in
+        data, _, mne_type, orig_inst = extract_data_from_mne(X_in)
+
+        # DSS internal convention for Epochs: (n_channels, n_times, n_epochs)
+        if mne_type == "epochs":
+            data = np.transpose(data, (1, 2, 0))
 
         orig_shape = data.shape
         if data.ndim == 3:
@@ -563,8 +592,9 @@ class DSS(BaseEstimator, TransformerMixin):
                 sources = sources.reshape(
                     self.n_components or sources.shape[0], n_times, n_epochs
                 )
-                if is_mne and isinstance(X_in, BaseEpochs):
-                    sources = np.transpose(sources, (2, 0, 1))
+                if mne_type == "epochs":
+                    # Return as (n_epochs, n_components, n_times)
+                    return sources.transpose(2, 0, 1)
             return sources
 
         # Use only kept components
@@ -584,18 +614,14 @@ class DSS(BaseEstimator, TransformerMixin):
             else:  # (n_ch, n_times)
                 rec = rec * self.channel_norms_[:, np.newaxis]
 
-        if is_mne:
-            out = X.copy()
-            if isinstance(X, BaseEpochs):
-                out._data = np.transpose(rec, (2, 0, 1))
-            else:
-                out._data = rec
-            return out
+        # Prepare for reconstruction (transpose back if needed)
+        if mne_type == "epochs":
+            rec = np.transpose(rec, (2, 0, 1))
 
-        return rec
+        return reconstruct_mne_object(rec, orig_inst, mne_type, verbose=False)
 
     def inverse_transform(
-        self, sources: np.ndarray, component_indices: Optional[np.ndarray] = None
+        self, sources: np.ndarray, component_indices: np.ndarray | None = None
     ) -> np.ndarray:
         """Transform sources back to sensor space.
 

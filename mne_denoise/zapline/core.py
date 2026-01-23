@@ -1,1207 +1,781 @@
-"""DSS-based ZapLine implementation for line noise removal.
+"""ZapLine: Line noise removal using Denoising Source Separation.
 
-Implements the ZapLine algorithm (de Cheveigné, 2020) and ZapLine-Plus
-(Klug & Kloosterman, 2022) using the DSS framework.
+This module implements the ZapLine algorithm for removing power line noise (50/60 Hz)
+and its harmonics from M/EEG recordings using Denoising Source Separation (DSS).
+
+The algorithm works by:
+1. Decomposing data into a smooth component and a residual (line-frequency related)
+2. Applying DSS to the residual to find components that maximize line noise power
+3. Projecting out the noise components while preserving neural signals
+
+This module contains:
+1. `ZapLine`: Scikit-learn/MNE compatible Transformer (inherits from DSS)
+
+The adaptive mode (ZapLine-plus) extends this with:
+- Automatic noise frequency detection
+- Data segmentation based on covariance stationarity
+- Per-segment adaptive parameter tuning
+
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 
 References
 ----------
-de Cheveigné, A. (2020). ZapLine: A simple and effective method to remove
-    power line artifacts. NeuroImage, 207, 116356.
+.. [1] de Cheveigné, A. (2020). ZapLine: A simple and effective method to remove
+       power line artifacts. NeuroImage, 207, 116356.
+       https://doi.org/10.1016/j.neuroimage.2019.116356
 
-Klug, M., & Kloosterman, N. A. (2022). Zapline-plus: A Zapline extension
-    for automatic and adaptive removal of frequency-specific noise artifacts
-    in M/EEG. Human Brain Mapping, 43(9), 2743-2758.
+.. [2] Klug, M., & Kloosterman, N. A. (2022). Zapline-plus: A Zapline extension for
+       automatic and adaptive removal of frequency-specific noise artifacts in M/EEG.
+       Human Brain Mapping, 43(9), 2743-2758.
+       https://doi.org/10.1002/hbm.25832
+
+.. [3] de Cheveigné, A., & Simon, J. Z. (2008). Denoising based on spatial filtering.
+       Journal of Neuroscience Methods, 171(2), 331-339.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Union
+import logging
+import warnings
 
 import numpy as np
-from scipy import signal
-from scipy.fft import fft
 
-# =============================================================================
-# Result dataclasses
-# =============================================================================
+# Inherit from DSS
+from ..dss.denoisers.spectral import LineNoiseBias
+from ..dss.denoisers.temporal import SmoothingBias
+from ..dss.linear import DSS
+from ..dss.utils.selection import iterative_outlier_removal
+from ..utils import extract_data_from_mne, reconstruct_mne_object
+from .adaptive import (
+    apply_hybrid_cleanup,
+    check_artifact_presence,
+    check_spectral_qa,
+    detect_harmonics,
+    find_fine_peak,
+    find_noise_freqs,
+    segment_data,
+)
+
+logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ZapLineResult:
-    """Results from DSS-ZapLine processing.
+class ZapLine(DSS):
+    r"""ZapLine Transformer for line noise removal.
+
+    Implements the ZapLine algorithm [1]_ for removing power line noise (50/60 Hz)
+    and its harmonics from M/EEG recordings. Inherits from :class:`DSS` and is
+    compatible with scikit-learn and MNE-Python objects.
+
+    The algorithm uses Denoising Source Separation (DSS) to find spatial filters
+    that maximize power at the line noise frequency, then projects out these
+    noise components while preserving neural signals.
+
+    The cleaning process follows these steps:
+
+    1. **Smoothing**: Apply a moving average filter with period matching the line
+       frequency to separate slowly-varying ("smooth") and fast ("residual") components
+    2. **DSS**: Apply DSS to the residual using :class:`LineNoiseBias` to find
+       components that maximize line noise power
+    3. **Artifact removal**: Project out the top noise components from the residual
+    4. **Reconstruction**: Add back the smooth component to obtain cleaned data
+
+    Parameters
+    ----------
+    sfreq : float
+        Sampling frequency in Hz. Required.
+    line_freq : float | None, default=60.0
+        Line noise frequency in Hz (typically 50 or 60 Hz).
+        If ``None`` and ``adaptive=True``, the frequency is auto-detected.
+        If ``None`` and ``adaptive=False``, raises an error.
+    n_remove : int | 'auto', default='auto'
+        Number of noise components to remove.
+        If ``'auto'``, uses iterative outlier removal on DSS eigenvalues [1]_.
+        If ``int``, removes exactly that many components.
+    n_harmonics : int | None, default=None
+        Number of harmonics to include in the bias function.
+        If ``None``, auto-determined based on Nyquist frequency.
+    nfft : int, default=1024
+        FFT length for the spectral bias function.
+    nkeep : int | None, default=None
+        Number of PCA components to retain before DSS.
+        If ``None``, uses ``rank`` or auto-determined from data.
+    rank : int | None, default=None
+        Rank of the data for whitening. If ``None``, auto-determined.
+    reg : float, default=1e-9
+        Regularization parameter for DSS covariance inversion.
+    threshold : float, default=3.0
+        Sigma threshold for iterative outlier removal when ``n_remove='auto'``.
+    adaptive : bool, default=False
+        If ``True``, use adaptive ZapLine-plus mode [2]_ with:
+        - Automatic frequency detection
+        - Data segmentation based on covariance stationarity
+        - Per-segment parameter adaptation
+    adaptive_params : dict | None, default=None
+        Parameters for adaptive mode. See Notes for available options.
 
     Attributes
     ----------
-    cleaned : ndarray
-        Cleaned data with line noise removed.
-    removed : ndarray
-        Removed noise components.
-    n_removed : int
-        Number of components removed.
-    dss_filters : ndarray
-        DSS spatial filters for line noise.
-    dss_eigenvalues : ndarray
-        DSS eigenvalues (noise power per component).
-    line_freq : float
-        Target line frequency.
-    n_harmonics : int
-        Number of harmonics processed.
-    """
+    filters_ : ndarray, shape (n_removed, n_channels)
+        Spatial filters (unmixing matrix) for the removed noise components.
+    patterns_ : ndarray, shape (n_channels, n_removed)
+        Spatial patterns (mixing matrix) for the removed noise components.
+    eigenvalues_ : ndarray, shape (n_components,)
+        DSS eigenvalues (ratio of line-noise power to total power).
+    n_removed_ : int
+        Number of components actually removed.
+    n_harmonics_ : int | None
+        Number of harmonics used by the bias function.
+    adaptive_results_ : dict | None
+        Results from adaptive mode, including chunk information.
 
-    cleaned: np.ndarray
-    removed: np.ndarray
-    n_removed: int
-    dss_filters: np.ndarray
-    dss_eigenvalues: np.ndarray
-    line_freq: float
-    n_harmonics: int = 1
-
-
-@dataclass
-class ZapLinePlusResult:
-    """Results from ZapLine-Plus processing.
-
-    Attributes
-    ----------
-    cleaned : ndarray
-        Cleaned data.
-    removed : ndarray
-        Total removed noise.
-    config : dict
-        Final configuration used.
-    analytics : dict
-        Analytics and diagnostics.
-    chunk_results : list
-        Per-chunk cleaning results.
-    """
-
-    cleaned: np.ndarray
-    removed: np.ndarray
-    config: Dict[str, Any]
-    analytics: Dict[str, Any]
-    chunk_results: List[Dict[str, Any]] = field(default_factory=list)
-
-
-# =============================================================================
-# Core ZapLine implementation (de Cheveigné 2020)
-# =============================================================================
-
-
-def _smooth_data(data: np.ndarray, period: int, n_iterations: int = 1) -> np.ndarray:
-    """Smooth data by moving average over one period of line frequency.
-
-    This is equivalent to MATLAB's nt_smooth - it cancels the line frequency
-    and its harmonics while preserving lower frequencies.
-
-    Parameters
-    ----------
-    data : ndarray, shape (n_channels, n_times)
-        Input data.
-    period : int
-        Period in samples (sfreq / line_freq).
-    n_iterations : int
-        Number of smoothing iterations.
-
-    Returns
-    -------
-    smoothed : ndarray
-        Smoothed data.
-    """
-    if period < 1:
-        return data.copy()
-
-    kernel = np.ones(period) / period
-    smoothed = data.copy()
-
-    for _ in range(n_iterations):
-        # Apply moving average along time axis
-        smoothed = np.apply_along_axis(
-            lambda x: np.convolve(x, kernel, mode="same"), axis=1, arr=smoothed
-        )
-
-    return smoothed
-
-
-def _bias_fft(
-    data: np.ndarray,
-    freqs: np.ndarray,
-    sfreq: float,
-    nfft: int = 1024,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Compute covariance matrices biased at specific frequencies.
-
-    This is equivalent to MATLAB's nt_bias_fft - computes the baseline
-    covariance (c0) and the biased covariance at target frequencies (c1).
-
-    Parameters
-    ----------
-    data : ndarray, shape (n_channels, n_times)
-        Input data.
-    freqs : ndarray
-        Target frequencies in Hz.
-    sfreq : float
-        Sampling frequency.
-    nfft : int
-        FFT size.
-
-    Returns
-    -------
-    c0 : ndarray, shape (n_channels, n_channels)
-        Baseline covariance.
-    c1 : ndarray, shape (n_channels, n_channels)
-        Biased covariance at target frequencies.
-    """
-    n_channels, n_times = data.shape
-
-    # Compute FFT
-    nfft = min(nfft, n_times)
-    n_segments = n_times // nfft
-
-    if n_segments < 1:
-        n_segments = 1
-        nfft = n_times
-
-    # Baseline covariance
-    c0 = np.zeros((n_channels, n_channels))
-    # Biased covariance
-    c1 = np.zeros((n_channels, n_channels))
-
-    # Frequency indices for target frequencies
-    freq_bins = np.fft.fftfreq(nfft, 1 / sfreq)
-    target_indices = []
-    for f in freqs:
-        idx = np.argmin(np.abs(freq_bins - f))
-        if idx not in target_indices:
-            target_indices.append(idx)
-        # Also include negative frequency
-        idx_neg = np.argmin(np.abs(freq_bins + f))
-        if idx_neg not in target_indices:
-            target_indices.append(idx_neg)
-
-    # Process segments
-    for seg in range(n_segments):
-        start = seg * nfft
-        end = start + nfft
-        segment = data[:, start:end]
-
-        # Compute FFT
-        X = fft(segment, axis=1)
-
-        # Baseline: covariance of all frequencies
-        c0 += np.real(X @ X.conj().T) / nfft
-
-        # Biased: covariance of target frequencies only
-        X_bias = np.zeros_like(X)
-        for idx in target_indices:
-            X_bias[:, idx] = X[:, idx]
-
-        c1 += np.real(X_bias @ X_bias.conj().T) / nfft
-
-    # Average over segments
-    c0 /= n_segments
-    c1 /= n_segments
-
-    return c0, c1
-
-
-def dss_zapline(
-    data: np.ndarray,
-    line_freq: float,
-    sfreq: float,
-    *,
-    n_remove: Union[int, str] = "auto",
-    n_harmonics: int = None,
-    nfft: int = 1024,
-    nkeep: Optional[int] = None,
-    rank: Optional[int] = None,
-    reg: float = 1e-9,
-    threshold: float = 3.0,
-) -> ZapLineResult:
-    """Remove line noise using DSS-based spatial filtering.
-
-    Implements the ZapLine algorithm (de Cheveigné, 2020):
-    1. Smooth data to isolate low-frequency content
-    2. Compute residual (line noise + high-freq)
-    3. Use FFT-based bias for DSS at line frequency harmonics
-    4. Find spatial components that maximize line noise variance
-    5. Project out top components from original data
-
-    Parameters
-    ----------
-    data : ndarray, shape (n_channels, n_times)
-        Input data with line noise.
-    line_freq : float
-        Line noise frequency in Hz (e.g., 50 or 60).
-    sfreq : float
-        Sampling frequency in Hz.
-    n_remove : int or 'auto'
-        Number of components to remove. If 'auto', determine using
-        outlier detection. Default 'auto'.
-    n_harmonics : int, optional
-        Number of harmonics to include. If None, use all harmonics
-        up to Nyquist.
-    nfft : int
-        FFT size for bias computation. Default 1024.
-    nkeep : int, optional
-        Number of PCA components to keep before DSS. Helps avoid
-        overfitting with many channels.
-    rank : int, optional
-        Rank for DSS whitening.
-    reg : float
-        Regularization for DSS. Default 1e-9.
-    threshold : float
-        Z-score threshold for auto component selection. Default 3.0.
-
-    Returns
-    -------
-    result : ZapLineResult
-        Container with cleaned data and metadata.
-
-    Examples
+    See Also
     --------
-    >>> # Remove 50 Hz line noise
-    >>> result = dss_zapline(eeg_data, line_freq=50, sfreq=1000)
-    >>> cleaned = result.cleaned
-
-    >>> # Remove 60 Hz with all harmonics
-    >>> result = dss_zapline(eeg_data, line_freq=60, sfreq=1000)
+    DSS : Parent class implementing Denoising Source Separation.
+    LineNoiseBias : Bias function for line noise.
+    mne_denoise.zapline.adaptive : Adaptive ZapLine-plus utilities.
 
     Notes
     -----
-    This implementation follows the original MATLAB nt_zapline algorithm:
-    - Uses moving average smoothing to separate low-freq from residual
-    - Uses FFT-based bias covariance (nt_bias_fft)
-    - Applies DSS (nt_dss0) to find line-noise components
-    - Projects out noise using time-shift regression (nt_tsr)
-    """
-    data = np.asarray(data)
-    if data.ndim != 2:
-        raise ValueError(
-            f"Data must be 2D (n_channels, n_times), got shape {data.shape}"
-        )
+    **Adaptive Mode Parameters** (``adaptive_params`` dict):
 
-    n_channels, n_times = data.shape
-    nyquist = sfreq / 2
-
-    # Compute number of harmonics if not specified
-    if n_harmonics is None:
-        n_harmonics = int(np.floor(nyquist / line_freq))
-    else:
-        max_harmonics = int(np.floor(nyquist / line_freq))
-        n_harmonics = min(n_harmonics, max_harmonics)
-
-    # Step 1: Smooth data to get low-frequency component
-    # Period = samples per line frequency cycle
-    period = int(round(sfreq / line_freq))
-    data_smooth = _smooth_data(data, period, n_iterations=1)
-
-    # Step 2: Residual contains line noise and high frequencies
-    data_residual = data - data_smooth
-
-    # Step 3: Reduce dimensionality if requested (avoid overfitting)
-    if nkeep is not None and nkeep < n_channels:
-        # PCA reduction
-        residual_centered = data_residual - data_residual.mean(axis=1, keepdims=True)
-        cov = residual_centered @ residual_centered.T / n_times
-        eigvals, eigvecs = np.linalg.eigh(cov)
-        idx = np.argsort(eigvals)[::-1][:nkeep]
-        pca_filters = eigvecs[:, idx].T  # (nkeep, n_channels)
-        data_reduced = pca_filters @ data_residual  # (nkeep, n_times)
-    else:
-        data_reduced = data_residual
-        pca_filters = None
-
-    # Step 4: Compute FFT-based bias covariance matrices
-    harmonic_freqs = np.array([line_freq * (h + 1) for h in range(n_harmonics)])
-    harmonic_freqs = harmonic_freqs[harmonic_freqs < nyquist]
-
-    c0, c1 = _bias_fft(data_reduced, harmonic_freqs, sfreq, nfft)
-
-    # Step 5: Apply DSS with covariance matrices
-    # Regularize c0
-    c0_reg = c0 + reg * np.trace(c0) / c0.shape[0] * np.eye(c0.shape[0])
-
-    # Solve generalized eigenvalue problem using scipy
-    from scipy.linalg import eigh as scipy_eigh
-
-    try:
-        eigvals, eigvecs = scipy_eigh(c1, c0_reg)
-    except np.linalg.LinAlgError:
-        # Fallback: use standard eigenvalue problem
-        c0_inv = np.linalg.pinv(c0_reg)
-        eigvals, eigvecs = np.linalg.eigh(c0_inv @ c1)
-
-    # Sort by eigenvalue (descending)
-    idx = np.argsort(eigvals)[::-1]
-    eigvals = eigvals[idx]
-    dss_filters = eigvecs[:, idx].T  # (n_components, n_reduced)
-
-    # Eigenvalues are the scores (ratio of biased to baseline variance)
-    scores = np.abs(eigvals)
-
-    # Step 6: Determine number of components to remove
-    if n_remove == "auto":
-        n_remove = _iterative_outlier_removal(scores, threshold)
-        # Cap at 1/5 of components
-        n_remove = min(n_remove, len(scores) // 5)
-        n_remove = max(n_remove, 1)  # Remove at least 1
-    else:
-        n_remove = min(int(n_remove), len(scores))
-
-    if n_remove == 0:
-        return ZapLineResult(
-            cleaned=data.copy(),
-            removed=np.zeros_like(data),
-            n_removed=0,
-            dss_filters=dss_filters,
-            dss_eigenvalues=scores,
-            line_freq=line_freq,
-            n_harmonics=n_harmonics,
-        )
-
-    # Step 7: Project out line noise components
-    # Extract noise components
-    filters_noise = dss_filters[:n_remove]  # (n_remove, n_reduced)
-    noise_sources = filters_noise @ data_reduced  # (n_remove, n_times)
-
-    # Time-shift regression to project out noise
-    # This is equivalent to nt_tsr
-    if pca_filters is not None:
-        # Map back to original channel space
-        # patterns_noise = (pca_filters.T @ filters_noise.T).T
-        noise_in_original = pca_filters.T @ filters_noise.T @ noise_sources
-    else:
-        noise_in_original = filters_noise.T @ noise_sources
-
-    # Regress out noise from residual
-    residual_clean = _regress_out(data_residual, noise_in_original.T)
-
-    # Reconstruct clean signal
-    cleaned = data_smooth + residual_clean
-    removed = data - cleaned
-
-    # Map DSS filters to original space for output
-    if pca_filters is not None:
-        dss_filters_original = dss_filters @ pca_filters
-    else:
-        dss_filters_original = dss_filters
-
-    return ZapLineResult(
-        cleaned=cleaned,
-        removed=removed,
-        n_removed=n_remove,
-        dss_filters=dss_filters_original,
-        dss_eigenvalues=scores,
-        line_freq=line_freq,
-        n_harmonics=n_harmonics,
-    )
-
-
-def _regress_out(data: np.ndarray, regressors: np.ndarray) -> np.ndarray:
-    """Regress out components from data.
-
-    Parameters
-    ----------
-    data : ndarray, shape (n_channels, n_times)
-        Original data.
-    regressors : ndarray, shape (n_times, n_regressors)
-        Regressors to remove.
-
-    Returns
-    -------
-    cleaned : ndarray, shape (n_channels, n_times)
-        Data with regressors removed.
-    """
-    # Solve: data = coeffs @ regressors.T + residual
-    # coeffs = data @ regressors @ inv(regressors.T @ regressors)
-    reg_cov = regressors.T @ regressors
-    reg_cov += 1e-10 * np.trace(reg_cov) / reg_cov.shape[0] * np.eye(reg_cov.shape[0])
-
-    try:
-        coeffs = data @ regressors @ np.linalg.inv(reg_cov)
-    except np.linalg.LinAlgError:
-        coeffs = data @ regressors @ np.linalg.pinv(reg_cov)
-
-    cleaned = data - coeffs @ regressors.T
-    return cleaned
-
-
-def _iterative_outlier_removal(scores: np.ndarray, sigma: float = 3.0) -> int:
-    """Detect outliers iteratively using mean + sigma threshold.
-
-    This is equivalent to MATLAB's iterative_outlier_removal.
-
-    Parameters
-    ----------
-    scores : ndarray
-        Component scores.
-    sigma : float
-        Sigma threshold. Default 3.0.
-
-    Returns
-    -------
-    n_outliers : int
-        Number of outliers detected.
-    """
-    scores = np.asarray(scores)
-    n_outliers = 0
-    remaining = scores.copy()
-
-    while len(remaining) > 2:
-        mean_val = np.mean(remaining)
-        std_val = np.std(remaining)
-
-        if std_val < 1e-12:
-            break
-
-        threshold = mean_val + sigma * std_val
-        outliers = remaining > threshold
-
-        if not np.any(outliers):
-            break
-
-        n_outliers += np.sum(outliers)
-        remaining = remaining[~outliers]
-
-    return n_outliers
-
-
-def _auto_select_components(eigenvalues: np.ndarray, threshold: float) -> int:
-    """Select number of components using outlier detection."""
-    return _iterative_outlier_removal(eigenvalues, threshold)
-
-
-# =============================================================================
-# ZapLine-Plus implementation (Klug & Kloosterman 2022)
-# =============================================================================
-
-
-def zapline_plus(
-    data: np.ndarray,
-    sfreq: float,
-    *,
-    noisefreqs: Optional[Union[str, List[float]]] = "line",
-    minfreq: float = 17.0,
-    maxfreq: float = 99.0,
-    adaptive_nremove: bool = True,
-    fixed_nremove: int = 1,
-    detection_winsize: float = 6.0,
-    coarse_freq_detect_power_diff: float = 4.0,
-    search_individual_noise: bool = True,
-    noise_comp_detect_sigma: float = 3.0,
-    adaptive_sigma: bool = True,
-    minsigma: float = 2.5,
-    maxsigma: float = 5.0,
-    chunk_length: float = 0,
-    min_chunk_length: float = 30.0,
-    nkeep: Optional[int] = None,
-    verbose: bool = True,
-) -> ZapLinePlusResult:
-    """Adaptive ZapLine-Plus for automatic line noise removal.
-
-    Implements the full ZapLine-Plus algorithm (Klug & Kloosterman, 2022):
-    1. Automatic noise frequency detection
-    2. Adaptive chunking based on noise stationarity
-    3. Per-chunk frequency refinement
-    4. Automatic component selection with outlier detection
-    5. Adaptive parameter adjustment for optimal cleaning
-
-    Parameters
-    ----------
-    data : ndarray, shape (n_channels, n_times)
-        Input data with line noise.
-    sfreq : float
-        Sampling frequency in Hz.
-    noisefreqs : str or list of float, optional
-        Noise frequencies to remove. If 'line', auto-detect 50/60 Hz.
-        If None or empty, auto-detect all noise frequencies.
-    minfreq : float
-        Minimum frequency to search for noise. Default 17.0.
-    maxfreq : float
-        Maximum frequency to search for noise. Default 99.0.
-    adaptive_nremove : bool
-        Use adaptive component selection. Default True.
-    fixed_nremove : int
-        Fixed number of components to remove (minimum if adaptive). Default 1.
-    detection_winsize : float
-        Window size in Hz for peak detection. Default 6.0.
-    coarse_freq_detect_power_diff : float
-        Power threshold for noise detection (in 10*log10). Default 4.0.
-    search_individual_noise : bool
-        Search for peak frequency in each chunk. Default True.
-    noise_comp_detect_sigma : float
-        Sigma threshold for outlier detection. Default 3.0.
-    adaptive_sigma : bool
-        Adapt sigma based on cleaning results. Default True.
-    minsigma : float
-        Minimum sigma. Default 2.5.
-    maxsigma : float
-        Maximum sigma. Default 5.0.
-    chunk_length : float
-        Fixed chunk length in seconds. If 0, use adaptive chunking. Default 0.
-    min_chunk_length : float
-        Minimum chunk length for adaptive chunking. Default 30.0.
-    nkeep : int, optional
-        PCA reduction before DSS.
-    verbose : bool
-        Print progress. Default True.
-
-    Returns
-    -------
-    result : ZapLinePlusResult
-        Container with cleaned data, config, and analytics.
+    - ``fmin`` : float (default 17.0) - Minimum frequency for noise detection
+    - ``fmax`` : float (default 99.0) - Maximum frequency for noise detection
+    - ``process_harmonics`` : bool (default False) - Process detected harmonics
+    - ``max_harmonics`` : int - Maximum number of harmonics to process
+    - ``hybrid_fallback`` : bool (default False) - Use notch filter fallback
+    - ``min_chunk_len`` : float (default 30.0) - Minimum segment length in seconds
+    - ``n_remove_params`` : dict - Parameters for component selection
+    - ``qa_params`` : dict - Parameters for QA (max_sigma, min_sigma)
 
     Examples
     --------
-    >>> # Auto-detect and remove line noise
-    >>> result = zapline_plus(eeg_data, sfreq=500)
-    >>> cleaned = result.cleaned
+    Basic usage with MNE Raw object:
 
-    >>> # Remove 50 Hz specifically
-    >>> result = zapline_plus(eeg_data, sfreq=500, noisefreqs=[50.0])
+    >>> from mne_denoise.zapline import ZapLine
+    >>> # Remove 50 Hz line noise
+    >>> zapline = ZapLine(sfreq=1000, line_freq=50.0)
+    >>> raw_clean = zapline.fit_transform(raw)
+
+    Using automatic component selection:
+
+    >>> zapline = ZapLine(sfreq=1000, line_freq=60.0, n_remove="auto")
+    >>> zapline.fit(data)
+    >>> print(f"Removed {zapline.n_removed_} components")
+    >>> cleaned = zapline.transform(data)
+
+    Adaptive mode (ZapLine-plus):
+
+    >>> zapline = ZapLine(sfreq=1000, line_freq=None, adaptive=True)
+    >>> cleaned = zapline.fit_transform(epochs)  # Auto-detects noise frequencies
 
     References
     ----------
-    Klug, M., & Kloosterman, N. A. (2022). Zapline-plus: A Zapline extension
-    for automatic and adaptive removal of frequency-specific noise artifacts
-    in M/EEG. Human Brain Mapping, 43(9), 2743-2758.
+    .. [1] de Cheveigné, A. (2020). ZapLine: A simple and effective method to remove
+           power line artifacts. NeuroImage, 207, 116356.
+    .. [2] Klug, M., & Kloosterman, N. A. (2022). Zapline-plus: A Zapline extension
+           for automatic and adaptive removal of frequency-specific noise artifacts
+           in M/EEG. Human Brain Mapping, 43(9), 2743-2758.
     """
-    data = np.asarray(data)
-    if data.ndim != 2:
-        raise ValueError(
-            f"Data must be 2D (n_channels, n_times), got shape {data.shape}"
+
+    def __init__(
+        self,
+        sfreq: float,
+        line_freq: float | None = 60.0,
+        n_remove: int | str = "auto",
+        n_harmonics: int | None = None,
+        nfft: int = 1024,
+        nkeep: int | None = None,
+        rank: int | None = None,
+        reg: float = 1e-9,
+        threshold: float = 3.0,
+        adaptive: bool = False,
+        adaptive_params: dict | None = None,
+    ):
+        self.sfreq = float(sfreq)
+        self.line_freq = float(line_freq) if line_freq is not None else None
+        self.n_remove = n_remove
+        self.n_harmonics = n_harmonics
+        self.nfft = nfft
+        self.nkeep = nkeep
+        self.threshold = threshold
+        self.adaptive = adaptive
+        self.adaptive_params = adaptive_params if adaptive_params is not None else {}
+
+        # Initialize DSS Bias immediately if line_freq is known and valid
+        if self.line_freq is not None and self.line_freq > 0:
+            self.bias = LineNoiseBias(
+                freq=self.line_freq,
+                sfreq=self.sfreq,
+                method="fft",
+                n_harmonics=self.n_harmonics,
+                nfft=self.nfft,
+                overlap=0.5,
+            )
+            self.n_harmonics_ = self.bias.n_harmonics
+        else:
+            self.bias = None
+            self.n_harmonics_ = None
+
+        # Initialize DSS parent with our bias
+        super().__init__(
+            bias=self.bias, n_components=None, rank=rank, reg=reg, normalize_input=False
         )
 
-    n_channels, n_times = data.shape
+        self.n_removed_ = None
+        self.adaptive_results_ = None
 
-    if verbose:
-        print("ZapLine-Plus: Removing frequency artifacts using DSS")
-        print(f"  Data: {n_channels} channels x {n_times} samples @ {sfreq} Hz")
+    def fit(self, X, y=None):
+        """Fit ZapLine spatial filters to data.
 
-    # Step 1: Determine noise frequencies
-    if noisefreqs == "line":
-        noisefreqs = _detect_line_frequency(data, sfreq, minfreq, maxfreq)
-        if verbose:
-            print(f"  Detected line frequency: {noisefreqs[0]} Hz")
-    elif noisefreqs is None or len(noisefreqs) == 0:
-        noisefreqs = _find_noise_frequencies(
-            data,
-            sfreq,
-            minfreq,
-            maxfreq,
-            detection_winsize,
-            coarse_freq_detect_power_diff,
-        )
-        if verbose:
-            print(f"  Detected noise frequencies: {noisefreqs}")
-    else:
-        noisefreqs = list(noisefreqs)
+        Computes DSS filters that maximize power at the line noise frequency.
+        Only available in standard mode (``adaptive=False``).
 
-    if not noisefreqs:
-        if verbose:
-            print("  No noise frequencies detected")
-        return ZapLinePlusResult(
-            cleaned=data.copy(),
-            removed=np.zeros_like(data),
-            config={"noisefreqs": []},
-            analytics={"noise_detected": False},
-        )
+        Parameters
+        ----------
+        X : Raw | Epochs | Evoked | ndarray
+            The data to fit. Can be:
 
-    # Step 2: Process each noise frequency
-    cleaned = data.copy()
-    total_removed = np.zeros_like(data)
-    all_chunk_results = []
+            - MNE Raw, Epochs, or Evoked object
+            - NumPy array of shape ``(n_channels, n_times)`` for continuous data
+            - NumPy array of shape ``(n_epochs, n_channels, n_times)`` for epoched data
 
-    current_sigma = noise_comp_detect_sigma
-    current_fixed = fixed_nremove
+        y : None
+            Ignored. Present for scikit-learn API compatibility.
 
-    for freq in noisefreqs:
-        if verbose:
-            print(f"\n  Processing {freq} Hz...")
+        Returns
+        -------
+        self : ZapLine
+            The fitted estimator.
 
-        # Determine chunks
-        chunks = _determine_chunks(
-            cleaned, sfreq, freq, chunk_length, min_chunk_length, detection_winsize
-        )
+        Raises
+        ------
+        RuntimeError
+            If ``adaptive=True``. Use :meth:`fit_transform` instead.
+        ValueError
+            If ``line_freq`` is ``None``.
 
-        if verbose:
-            print(f"    {len(chunks)} chunk(s)")
+        See Also
+        --------
+        transform : Apply the fitted filters to remove noise.
+        fit_transform : Fit and transform in one step.
+        """
+        if self.adaptive:
+            raise RuntimeError(
+                "Adaptive mode requires simultaneous fit and transform (local chunks). "
+                "Use fit_transform() instead."
+            )
 
-        # Clean each chunk with adaptive parameters
-        for max_iter in range(8):  # Max 8 adaptation iterations
-            chunk_results = []
+        data, extracted_sfreq, _, _ = extract_data_from_mne(X)
+
+        # Validate sfreq consistency
+        if extracted_sfreq is not None and not np.isclose(extracted_sfreq, self.sfreq):
+            warnings.warn(
+                f"Input data sfreq ({extracted_sfreq}) differs from init sfreq ({self.sfreq}). "
+                "Using init sfreq. Please verify your data or init parameters.",
+                stacklevel=2,
+            )
+
+        # Confirm line_freq is set
+        if self.line_freq is None:
+            raise ValueError("line_freq required for standard fit().")
+
+        # Handle 3D
+        if data.ndim == 3:
+            n_ep, n_ch, n_t = data.shape
+            data_cont = np.transpose(data, (1, 0, 2)).reshape(n_ch, -1)
+        else:
+            data_cont = data
+
+        # Run core fitting logic
+        self._fit_dss(data_cont)
+
+        return self
+
+    def transform(self, X):
+        """Apply ZapLine cleaning to remove line noise.
+
+        Uses the fitted spatial filters to project out noise components.
+        Only available in standard mode (``adaptive=False``).
+
+        Parameters
+        ----------
+        X : Raw | Epochs | Evoked | ndarray
+            The data to clean. Must have the same number of channels as the
+            data used for fitting.
+
+        Returns
+        -------
+        X_clean : Raw | Epochs | Evoked | ndarray
+            Cleaned data with line noise removed. Returns the same type as input.
+
+        Raises
+        ------
+        RuntimeError
+            If ``adaptive=True``. Use :meth:`fit_transform` instead.
+        RuntimeError
+            If the estimator has not been fitted.
+
+        See Also
+        --------
+        fit : Fit the spatial filters.
+        fit_transform : Fit and transform in one step.
+        """
+        if self.adaptive:
+            raise RuntimeError(
+                "Adaptive mode requires simultaneous fit and transform (local chunks). "
+                "Use fit_transform() instead."
+            )
+
+        # Check if fitted
+        if self.filters_ is None:
+            raise RuntimeError("Not fitted")
+
+        data, extracted_sfreq, mne_type, orig_inst = extract_data_from_mne(X)
+
+        # Validate sfreq consistency
+        if extracted_sfreq is not None and not np.isclose(extracted_sfreq, self.sfreq):
+            warnings.warn(
+                f"Input data sfreq ({extracted_sfreq}) differs from init sfreq ({self.sfreq}). "
+                "Using init sfreq.",
+                stacklevel=2,
+            )
+
+        # Standard Transform
+        if data.ndim == 3:
+            n_ep, n_ch, n_t = data.shape
+            data_cont = np.transpose(data, (1, 0, 2)).reshape(n_ch, -1)
+            cleaned_cont = self._apply_standard_cleaning(data_cont)
+            cleaned = cleaned_cont.reshape(n_ch, n_ep, n_t).transpose(1, 0, 2)
+        else:
+            cleaned = self._apply_standard_cleaning(data)
+
+        return reconstruct_mne_object(cleaned, orig_inst, mne_type)
+
+    def fit_transform(self, X, y=None, **fit_params):
+        """Fit and transform data in one step.
+
+        This method works for both standard and adaptive modes:
+
+        - **Standard mode** (``adaptive=False``): Fits DSS filters and applies
+          noise removal in one step.
+        - **Adaptive mode** (``adaptive=True``): Runs the full ZapLine-plus
+          algorithm with automatic frequency detection, data segmentation,
+          and per-segment parameter adaptation.
+
+        Parameters
+        ----------
+        X : Raw | Epochs | Evoked | ndarray
+            The data to process.
+        y : None
+            Ignored. Present for scikit-learn API compatibility.
+        **fit_params : dict
+            Additional parameters passed to the parent :meth:`DSS.fit_transform`
+            in standard mode.
+
+        Returns
+        -------
+        X_clean : Raw | Epochs | Evoked | ndarray
+            Cleaned data with line noise removed. Returns the same type as input.
+
+        Notes
+        -----
+        In adaptive mode, results are stored in :attr:`adaptive_results_` with:
+
+        - ``cleaned``: The cleaned data array
+        - ``removed``: The removed artifact array
+        - ``n_removed``: Total components removed across all chunks
+        - ``line_freq``: Detected line frequency
+        - ``chunk_info``: List of per-chunk processing information
+        """
+        data, extracted_sfreq, mne_type, orig_inst = extract_data_from_mne(X)
+
+        if extracted_sfreq is not None and not np.isclose(extracted_sfreq, self.sfreq):
+            warnings.warn(
+                f"Input data sfreq ({extracted_sfreq}) differs from init sfreq ({self.sfreq}). "
+                "Using init sfreq.",
+                stacklevel=2,
+            )
+
+        if self.adaptive:
+            # Adaptive logic (ZapLine-plus)
+            if data.ndim == 3:
+                n_ep, n_ch, n_t = data.shape
+                data_cont = np.transpose(data, (1, 0, 2)).reshape(n_ch, -1)
+            else:
+                n_ch, n_t = data.shape
+                data_cont = data
+
+            # Run adaptive orchestration as instance method
+            res = self._run_adaptive(data_cont)
+
+            self.adaptive_results_ = res
+            cleaned = res["cleaned"]
+
+            if data.ndim == 3:
+                cleaned = cleaned.reshape(n_ch, n_ep, n_t).transpose(1, 0, 2)
+
+            return reconstruct_mne_object(cleaned, orig_inst, mne_type)
+        else:
+            # Standard logic
+            return super().fit_transform(X, y=y, **fit_params)
+
+    def _fit_dss(self, data: np.ndarray):
+        """Fit DSS spatial filters to residual data.
+
+        Core internal fitting logic that:
+        1. Separates data into smooth and residual components
+        2. Fits DSS on the residual using ``LineNoiseBias``
+        3. Determines number of components to remove
+        4. Truncates filters to noise-relevant components
+
+        Parameters
+        ----------
+        data : ndarray, shape (n_channels, n_times)
+            Continuous data to fit.
+        """
+        # 1. Smooth data
+        data_smooth, data_residual = self._get_smooth_residual(data, warn=True)
+
+        # 2. Setup (Rank)
+        dss_rank = self.nkeep if self.nkeep is not None else self.rank
+        self.rank = dss_rank
+
+        # 3. Call DSS fit on Residual
+        if self.bias is None:
+            self.filters_ = np.zeros((0, data.shape[0]))
+            self.patterns_ = np.zeros((data.shape[0], 0))
+            self.eigenvalues_ = np.array([])
+            self.n_removed_ = 0
+            return
+
+        super().fit(data_residual)
+
+        # 4. Determine n_remove
+        if self.n_remove == "auto":
+            self.n_removed_ = iterative_outlier_removal(
+                self.eigenvalues_, self.threshold
+            )
+        else:
+            self.n_removed_ = min(int(self.n_remove), len(self.eigenvalues_))
+
+        # 5. Truncate filters to keep ONLY the noise components
+        # Note: we discard self.patterns_ from DSS and compute strictly using filters
+        if self.n_removed_ > 0:
+            self.filters_ = self.filters_[: self.n_removed_]
+            # Use pseudo-inverse for robust reconstruction projection
+            # ZapLine strategy: project OUT the subspace spanned by filters
+            self.patterns_ = np.linalg.pinv(self.filters_)
+        else:
+            self.filters_ = np.zeros((0, data.shape[0]))
+            self.patterns_ = np.zeros((data.shape[0], 0))
+
+    def _apply_standard_cleaning(self, data: np.ndarray) -> np.ndarray:
+        """Apply noise cleaning using fitted DSS filters.
+
+        Removes line noise by projecting out the artifact subspace from
+        the residual (high-frequency) component of the data.
+
+        Parameters
+        ----------
+        data : ndarray, shape (n_channels, n_times)
+            Continuous data to clean.
+
+        Returns
+        -------
+        cleaned : ndarray, shape (n_channels, n_times)
+            Cleaned data with line noise removed.
+        """
+        if self.n_removed_ <= 0:
+            return data.copy()
+
+        # 1. Smooth
+        data_smooth, data_residual = self._get_smooth_residual(data, warn=False)
+
+        # 2. Extract artifact sources using fitted filters (manual to avoid recentering)
+        # DSS filters are spatial (n_comp, n_ch).
+        # data_residual is (n_ch, n_times).
+        sources = self.filters_ @ data_residual
+
+        # 3. Project back to artifact
+        # patterns_ is (n_ch, n_comp).
+        artifact = self.patterns_ @ sources
+
+        # 4. Subtract artifact from residual, add back smooth
+        cleaned = data_smooth + (data_residual - artifact)
+
+        return cleaned
+
+    def _get_smooth_residual(self, data: np.ndarray, warn: bool = False):
+        """Decompose data into smooth and residual components.
+
+        Uses a moving average filter with period matching the line frequency
+        to separate slowly-varying and fast (line-frequency related) components.
+
+        Parameters
+        ----------
+        data : ndarray, shape (n_channels, n_times)
+            Input data to decompose.
+        warn : bool, default=False
+            If ``True``, warn when ``sfreq/line_freq`` is not close to an integer.
+
+        Returns
+        -------
+        data_smooth : ndarray, shape (n_channels, n_times)
+            Smoothed (low-frequency) component.
+        data_residual : ndarray, shape (n_channels, n_times)
+            Residual (high-frequency) component containing line noise.
+        """
+        # Use self.sfreq directly
+        # If line_freq=0 (unlikely here if fit passed), period undefined.
+        # Check integrity
+        if self.line_freq is None or self.line_freq == 0:
+            # Should not happen in standard mode, effectively no cleaning
+            return data, np.zeros_like(data)
+
+        period = int(round(self.sfreq / self.line_freq))
+        if warn and abs(self.sfreq / self.line_freq - period) > 0.1:
+            warnings.warn(
+                f"sfreq/line_freq = {self.sfreq / self.line_freq:.2f} is not close to an integer. "
+                f"Smoothing will use period={period} samples.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        smoother = SmoothingBias(window=period, iterations=1)
+        data_smooth = smoother.apply(data)
+        data_residual = data - data_smooth
+        return data_smooth, data_residual
+
+    # =========================================================================
+    # Adaptive Mode (ZapLine-plus) Methods
+    # =========================================================================
+
+    def _run_adaptive(self, data: np.ndarray) -> dict:
+        """Run ZapLine-plus adaptive algorithm.
+
+        Orchestrates:
+        1. Noise frequency detection (if line_freq is None)
+        2. Data segmentation based on covariance stationarity
+        3. Per-chunk processing with QA loop
+
+        Parameters
+        ----------
+        data : ndarray (n_channels, n_times)
+            Continuous data.
+
+        Returns
+        -------
+        results : dict
+            Contains 'cleaned', 'removed', 'n_removed', 'chunk_info', etc.
+        """
+        n_channels, n_times = data.shape
+        params = self.adaptive_params.copy()
+
+        # Extract params with defaults
+        fmin = params.get("fmin", 17.0)
+        fmax = params.get("fmax", 99.0)
+        n_remove_params = params.get("n_remove_params", {})
+        qa_params = params.get("qa_params", {})
+        process_harmonics = params.get("process_harmonics", False)
+        max_harmonics = params.get("max_harmonics", None)
+        hybrid_fallback = params.get("hybrid_fallback", False)
+        min_chunk_len = params.get("min_chunk_len", 30.0)
+
+        sigma_init = n_remove_params.get("sigma", 3.0)
+        min_remove = n_remove_params.get("min_remove", 1)
+        max_prop_remove = n_remove_params.get("max_prop", 0.2)
+
+        # 1. Automatic frequency detection
+        line_freqs = self.line_freq
+        if line_freqs is None:
+            logger.info("Detecting line noise frequencies...")
+            line_freqs = find_noise_freqs(data, self.sfreq, fmin=fmin, fmax=fmax)
+            logger.info(f"Detected: {line_freqs}")
+        elif isinstance(line_freqs, int | float):
+            line_freqs = [float(line_freqs)]
+
+        # Quick exit if nothing to clean
+        if not line_freqs:
+            return {
+                "cleaned": data.copy(),
+                "removed": np.zeros_like(data),
+                "n_removed": 0,
+                "line_freq": 0.0,
+                "chunk_info": [],
+            }
+
+        current_data = data.copy()
+        all_chunk_metadata = []
+
+        # Collect all target frequencies
+        all_freqs_to_process = []
+        for lfreq in line_freqs:
+            all_freqs_to_process.append(lfreq)
+            if process_harmonics:
+                harmonics = detect_harmonics(
+                    current_data, self.sfreq, lfreq, max_harmonics
+                )
+                all_freqs_to_process.extend(harmonics)
+
+        # Process each frequency sequentially
+        for target_freq in all_freqs_to_process:
+            segments = segment_data(
+                current_data,
+                self.sfreq,
+                target_freq=target_freq,
+                min_chunk_len=min_chunk_len,
+            )
+
+            # Process each segment
             cleaned_chunks = []
+            for _seg_idx, (start, end) in enumerate(segments):
+                chunk = current_data[:, start:end]
 
-            for i, (start, end) in enumerate(chunks):
-                chunk_data = cleaned[:, start:end]
-
-                # Detect peak frequency in chunk
-                if search_individual_noise:
-                    chunk_freq = _refine_chunk_frequency(
-                        chunk_data, sfreq, freq, detection_winsize
-                    )
-                else:
-                    chunk_freq = freq
-
-                # Apply ZapLine to chunk
-                if adaptive_nremove:
-                    n_remove = "auto"
-                else:
-                    n_remove = current_fixed
-
-                result = dss_zapline(
-                    chunk_data,
-                    chunk_freq,
-                    sfreq,
-                    n_remove=n_remove,
-                    threshold=current_sigma,
-                    nkeep=nkeep,
+                res = self._process_chunk(
+                    chunk,
+                    target_freq,
+                    sigma_init,
+                    min_remove,
+                    max_prop_remove,
+                    qa_params,
+                    hybrid_fallback,
                 )
 
-                # Ensure minimum removal
-                if result.n_removed < current_fixed:
-                    result = dss_zapline(
-                        chunk_data,
-                        chunk_freq,
-                        sfreq,
-                        n_remove=current_fixed,
-                        nkeep=nkeep,
-                    )
-
-                cleaned_chunks.append(result.cleaned)
-                chunk_results.append(
+                cleaned_chunks.append(res["cleaned"])
+                all_chunk_metadata.append(
                     {
+                        "frequency": target_freq,
+                        "fine_freq": res["fine_freq"],
                         "start": start,
                         "end": end,
-                        "freq": chunk_freq,
-                        "n_removed": result.n_removed,
-                        "eigenvalues": result.dss_eigenvalues,
+                        "n_removed": res["n_removed"],
+                        "artifact_present": res["present"],
                     }
                 )
 
-            # Reconstruct full data
-            for i, (start, end) in enumerate(chunks):
-                cleaned[:, start:end] = cleaned_chunks[i]
+            if cleaned_chunks:
+                current_data = np.concatenate(cleaned_chunks, axis=1)
 
-            # Check cleaning quality
-            if not adaptive_sigma:
-                break
-
-            assessment = _assess_cleaning(data, cleaned, sfreq, freq, detection_winsize)
-
-            if assessment["too_strong"] and current_sigma < maxsigma:
-                current_sigma = min(maxsigma, current_sigma + 0.25)
-                current_fixed = max(1, current_fixed - 1)
-                if verbose:
-                    print(
-                        f"    Cleaning too strong, relaxing (sigma={current_sigma:.2f})"
-                    )
-                continue
-
-            if assessment["too_weak"] and current_sigma > minsigma:
-                current_sigma = max(minsigma, current_sigma - 0.25)
-                current_fixed += 1
-                if verbose:
-                    print(
-                        f"    Cleaning too weak, strengthening (sigma={current_sigma:.2f})"
-                    )
-                continue
-
-            break
-
-        all_chunk_results.extend(chunk_results)
-
-        if verbose:
-            mean_removed = np.mean([r["n_removed"] for r in chunk_results])
-            print(f"    Removed {mean_removed:.1f} components on average")
-
-    total_removed = data - cleaned
-
-    # Compute analytics
-    analytics = _compute_analytics(data, cleaned, sfreq, noisefreqs)
-
-    config = {
-        "noisefreqs": noisefreqs,
-        "noise_comp_detect_sigma": current_sigma,
-        "fixed_nremove": current_fixed,
-        "adaptive_nremove": adaptive_nremove,
-        "adaptive_sigma": adaptive_sigma,
-        "chunk_length": chunk_length,
-        "min_chunk_length": min_chunk_length,
-    }
-
-    if verbose:
-        print(f"\n  Proportion of power removed: {analytics['proportion_removed']:.4f}")
-        for freq in noisefreqs:
-            ratio_key = f"ratio_noise_{int(freq)}"
-            if ratio_key in analytics:
-                print(
-                    f"  Noise/surroundings ratio at {freq} Hz: {analytics[ratio_key]:.2f}"
-                )
-
-    return ZapLinePlusResult(
-        cleaned=cleaned,
-        removed=total_removed,
-        config=config,
-        analytics=analytics,
-        chunk_results=all_chunk_results,
-    )
-
-
-# =============================================================================
-# Helper functions
-# =============================================================================
-
-
-def _detect_line_frequency(
-    data: np.ndarray,
-    sfreq: float,
-    minfreq: float,
-    maxfreq: float,
-) -> List[float]:
-    """Detect dominant line frequency (50 or 60 Hz)."""
-    n_times = data.shape[1]
-    nperseg = min(n_times, int(4 * sfreq))
-
-    freqs, psd = signal.welch(data, sfreq, nperseg=nperseg, axis=1)
-    mean_psd = np.mean(psd, axis=0)
-
-    candidates = [50.0, 60.0]
-    powers = []
-
-    for freq in candidates:
-        if freq < minfreq or freq > maxfreq:
-            powers.append(-np.inf)
-            continue
-
-        mask = (freqs >= freq - 1) & (freqs <= freq + 1)
-        if np.any(mask):
-            powers.append(np.mean(mean_psd[mask]))
-        else:
-            powers.append(-np.inf)
-
-    return [candidates[np.argmax(powers)]]
-
-
-def _find_noise_frequencies(
-    data: np.ndarray,
-    sfreq: float,
-    minfreq: float,
-    maxfreq: float,
-    detection_winsize: float,
-    power_diff_thresh: float,
-) -> List[float]:
-    """Find all noise frequencies above threshold."""
-    n_times = data.shape[1]
-    nperseg = min(n_times, int(4 * sfreq))
-
-    freqs, psd = signal.welch(data, sfreq, nperseg=nperseg, axis=1)
-    # Geometric mean (log space)
-    psd_log = 10 * np.log10(np.maximum(psd, 1e-30))
-    mean_psd_log = np.mean(psd_log, axis=0)
-
-    noise_freqs = []
-    search_start = minfreq
-
-    while search_start < maxfreq:
-        # Find peak in current window
-        mask = (freqs >= search_start) & (
-            freqs <= min(search_start + detection_winsize, maxfreq)
-        )
-        if not np.any(mask):
-            break
-
-        window_psd = mean_psd_log[mask]
-        window_freqs = freqs[mask]
-
-        # Center power (excluding middle third)
-        third = len(window_psd) // 3
-        if third < 1:
-            break
-        center_psd = np.mean(np.concatenate([window_psd[:third], window_psd[-third:]]))
-
-        # Check for peak
-        peak_idx = np.argmax(window_psd)
-        peak_power = window_psd[peak_idx]
-
-        if peak_power - center_psd > power_diff_thresh:
-            noise_freqs.append(float(window_freqs[peak_idx]))
-            search_start = window_freqs[peak_idx] + detection_winsize / 2
-        else:
-            search_start += detection_winsize / 2
-
-    return noise_freqs
-
-
-def _determine_chunks(
-    data: np.ndarray,
-    sfreq: float,
-    freq: float,
-    chunk_length: float,
-    min_chunk_length: float,
-    detection_winsize: float,
-) -> List[Tuple[int, int]]:
-    """Determine chunk boundaries based on noise stationarity."""
-    n_times = data.shape[1]
-
-    if chunk_length > 0:
-        # Fixed chunk length
-        chunk_samples = int(chunk_length * sfreq)
-        chunks = []
-        for start in range(0, n_times, chunk_samples):
-            end = min(start + chunk_samples, n_times)
-            chunks.append((start, end))
-        return chunks
-
-    # Adaptive chunking based on covariance stationarity
-    min_samples = int(min_chunk_length * sfreq)
-    segment_samples = int(sfreq)  # 1 second segments
-
-    if n_times < 2 * min_samples:
-        return [(0, n_times)]
-
-    # Bandpass around target frequency
-    nyquist = sfreq / 2
-    low = max((freq - detection_winsize / 2) / nyquist, 0.01)
-    high = min((freq + detection_winsize / 2) / nyquist, 0.99)
-
-    try:
-        sos = signal.butter(4, [low, high], btype="band", output="sos")
-        data_bp = signal.sosfiltfilt(sos, data, axis=1)
-    except Exception:
-        return [(0, n_times)]
-
-    # Compute covariance per segment
-    n_segments = n_times // segment_samples
-    if n_segments < 3:
-        return [(0, n_times)]
-
-    covs = []
-    for i in range(n_segments):
-        start = i * segment_samples
-        end = min((i + 1) * segment_samples, n_times)
-        segment = data_bp[:, start:end]
-        cov = np.cov(segment)
-        covs.append(cov)
-
-    # Compute distances between consecutive covariances
-    distances = []
-    for i in range(len(covs) - 1):
-        diff = covs[i + 1] - covs[i]
-        distances.append(np.linalg.norm(diff, "fro"))
-    distances = np.array(distances)
-
-    if len(distances) < 2 or np.std(distances) < 1e-10:
-        return [(0, n_times)]
-
-    # Find peaks (chunk boundaries)
-    prominence = np.quantile(distances, 0.95)
-    min_distance = max(1, int(min_chunk_length / 1.0))  # 1 second segments
-
-    peaks, _ = signal.find_peaks(
-        distances, prominence=prominence, distance=min_distance
-    )
-
-    # Build chunks
-    boundaries = [0]
-    for peak in peaks:
-        boundary = min(n_times, (peak + 1) * segment_samples)
-        if boundary - boundaries[-1] >= min_samples:
-            boundaries.append(boundary)
-
-    if n_times - boundaries[-1] < min_samples:
-        boundaries[-1] = n_times
-    else:
-        boundaries.append(n_times)
-
-    chunks = [(boundaries[i], boundaries[i + 1]) for i in range(len(boundaries) - 1)]
-    return chunks if chunks else [(0, n_times)]
-
-
-def _refine_chunk_frequency(
-    data: np.ndarray,
-    sfreq: float,
-    target_freq: float,
-    detection_winsize: float,
-) -> float:
-    """Find peak frequency within chunk around target."""
-    n_times = data.shape[1]
-    nperseg = min(n_times, int(sfreq))
-
-    freqs, psd = signal.welch(data, sfreq, nperseg=nperseg, axis=1)
-    psd_log = 10 * np.log10(np.maximum(psd, 1e-30))
-    mean_psd = np.mean(psd_log, axis=0)
-
-    # Search within narrow window
-    mask = (freqs >= target_freq - 0.5) & (freqs <= target_freq + 0.5)
-    if not np.any(mask):
-        return target_freq
-
-    peak_idx = np.argmax(mean_psd[mask])
-    return float(freqs[mask][peak_idx])
-
-
-def _assess_cleaning(
-    original: np.ndarray,
-    cleaned: np.ndarray,
-    sfreq: float,
-    freq: float,
-    detection_winsize: float,
-) -> Dict[str, bool]:
-    """Assess if cleaning is too weak or too strong."""
-    n_times = original.shape[1]
-    nperseg = min(n_times, int(4 * sfreq))
-
-    freqs, psd_clean = signal.welch(cleaned, sfreq, nperseg=nperseg, axis=1)
-    psd_log = 10 * np.log10(np.maximum(psd_clean, 1e-30))
-    mean_psd = np.mean(psd_log, axis=0)
-
-    # Check around noise frequency
-    mask = (freqs >= freq - detection_winsize / 2) & (
-        freqs <= freq + detection_winsize / 2
-    )
-    if not np.any(mask):
-        return {"too_weak": False, "too_strong": False}
-
-    window_psd = mean_psd[mask]
-    third = max(1, len(window_psd) // 3)
-
-    center = np.mean(np.concatenate([window_psd[:third], window_psd[-third:]]))
-    lower_quantile = np.mean(
-        [np.quantile(window_psd[:third], 0.05), np.quantile(window_psd[-third:], 0.05)]
-    )
-
-    upper_thresh = center + 2 * (center - lower_quantile)
-    lower_thresh = center - 2 * (center - lower_quantile)
-
-    # Check for remaining peak (too weak) or notch (too strong)
-    freq_mask = (freqs >= freq - 0.05) & (freqs <= freq + 0.05)
-    below_mask = (freqs >= freq - 0.4) & (freqs <= freq + 0.1)
-
-    too_weak = False
-    too_strong = False
-
-    if np.any(freq_mask):
-        above = np.mean(mean_psd[freq_mask] > upper_thresh)
-        too_weak = above > 0.005
-
-    if np.any(below_mask):
-        below = np.mean(mean_psd[below_mask] < lower_thresh)
-        too_strong = below > 0.005
-
-    return {"too_weak": too_weak, "too_strong": too_strong}
-
-
-def _compute_analytics(
-    original: np.ndarray,
-    cleaned: np.ndarray,
-    sfreq: float,
-    noisefreqs: List[float],
-) -> Dict[str, Any]:
-    """Compute cleaning analytics."""
-    n_times = original.shape[1]
-    nperseg = min(n_times, int(4 * sfreq))
-
-    freqs, psd_orig = signal.welch(original, sfreq, nperseg=nperseg, axis=1)
-    _, psd_clean = signal.welch(cleaned, sfreq, nperseg=nperseg, axis=1)
-
-    psd_orig_log = 10 * np.log10(np.maximum(psd_orig, 1e-30))
-    psd_clean_log = 10 * np.log10(np.maximum(psd_clean, 1e-30))
-
-    # Proportion of power removed (in log space = geometric mean)
-    proportion_removed = 1 - 10 ** (
-        (np.mean(psd_clean_log) - np.mean(psd_orig_log)) / 10
-    )
-
-    analytics = {
-        "proportion_removed": float(proportion_removed),
-        "noise_detected": True,
-    }
-
-    # Per-frequency analytics
-    for freq in noisefreqs:
-        freq_mask = (freqs >= freq - 0.5) & (freqs <= freq + 0.5)
-        surround_mask = ((freqs >= freq - 3) & (freqs <= freq - 1)) | (
-            (freqs >= freq + 1) & (freqs <= freq + 3)
-        )
-
-        if np.any(freq_mask) and np.any(surround_mask):
-            ratio_orig = np.mean(psd_orig[:, freq_mask]) / np.mean(
-                psd_orig[:, surround_mask]
-            )
-            ratio_clean = np.mean(psd_clean[:, freq_mask]) / np.mean(
-                psd_clean[:, surround_mask]
-            )
-
-            analytics[f"ratio_noise_{int(freq)}_raw"] = float(ratio_orig)
-            analytics[f"ratio_noise_{int(freq)}"] = float(ratio_clean)
-
-    return analytics
-
-
-# =============================================================================
-# Convenience functions
-# =============================================================================
-
-
-def dss_zapline_adaptive(
-    data: np.ndarray,
-    sfreq: float,
-    *,
-    line_freq: Optional[float] = None,
-    min_freq: float = 47.0,
-    max_freq: float = 63.0,
-    n_harmonics: int = None,
-    bandwidth: float = 2.0,
-    threshold: float = 3.0,
-    max_iter: int = 5,
-    min_remove: int = 1,
-    max_remove_fraction: float = 0.2,
-) -> ZapLineResult:
-    """Adaptive DSS-ZapLine with automatic frequency detection.
-
-    Simple adaptive wrapper around dss_zapline that iteratively
-    removes line noise until no significant noise remains.
-
-    Parameters
-    ----------
-    data : ndarray, shape (n_channels, n_times)
-        Input data.
-    sfreq : float
-        Sampling frequency in Hz.
-    line_freq : float, optional
-        Line frequency. If None, auto-detect from 50/60 Hz.
-    min_freq : float
-        Minimum search frequency. Default 47.0.
-    max_freq : float
-        Maximum search frequency. Default 63.0.
-    n_harmonics : int, optional
-        Number of harmonics. If None, use all up to Nyquist.
-    bandwidth : float
-        Filter bandwidth in Hz. Default 2.0.
-    threshold : float
-        Component selection threshold. Default 3.0.
-    max_iter : int
-        Maximum adaptation iterations. Default 5.
-    min_remove : int
-        Minimum components to remove. Default 1.
-    max_remove_fraction : float
-        Maximum fraction of components to remove. Default 0.2.
-
-    Returns
-    -------
-    result : ZapLineResult
-        Final cleaning result.
-    """
-    # Auto-detect line frequency if not specified
-    if line_freq is None:
-        detected = _detect_line_frequency(data, sfreq, min_freq, max_freq)
-        line_freq = detected[0] if detected else 50.0
-
-    n_channels = data.shape[0]
-    max_remove = max(1, int(n_channels * max_remove_fraction))
-
-    current_data = data.copy()
-    total_removed = np.zeros_like(data)
-    last_result = None
-
-    for iteration in range(max_iter):
-        result = dss_zapline(
-            current_data,
-            line_freq,
-            sfreq,
-            n_remove="auto",
-            n_harmonics=n_harmonics,
-            threshold=threshold,
-        )
-
-        total_removed = total_removed + result.removed
-        current_data = result.cleaned
-        last_result = result
-
-        if result.n_removed == 0:
-            break
-
-        if result.n_removed >= max_remove:
-            break
-
-    return ZapLineResult(
-        cleaned=current_data,
-        removed=total_removed,
-        n_removed=last_result.n_removed if last_result else 0,
-        dss_filters=last_result.dss_filters if last_result else np.array([]),
-        dss_eigenvalues=last_result.dss_eigenvalues if last_result else np.array([]),
-        line_freq=line_freq,
-        n_harmonics=last_result.n_harmonics if last_result else 1,
-    )
-
-
-def compute_psd_reduction(
-    original: np.ndarray,
-    cleaned: np.ndarray,
-    sfreq: float,
-    line_freq: float,
-    *,
-    bandwidth: float = 2.0,
-) -> Dict[str, float]:
-    """Compute PSD reduction metrics at line frequency.
-
-    Parameters
-    ----------
-    original : ndarray
-        Original data.
-    cleaned : ndarray
-        Cleaned data.
-    sfreq : float
-        Sampling frequency.
-    line_freq : float
-        Line frequency.
-    bandwidth : float
-        Bandwidth for power computation.
-
-    Returns
-    -------
-    metrics : dict
-        Dictionary with:
-        - 'power_original': Mean power at line freq before
-        - 'power_cleaned': Mean power at line freq after
-        - 'reduction_db': Power reduction in dB
-        - 'reduction_ratio': Power ratio (original/cleaned)
-    """
-    n_times = original.shape[1]
-    nperseg = min(n_times, int(4 * sfreq))
-
-    freqs, psd_orig = signal.welch(original, sfreq, nperseg=nperseg, axis=1)
-    _, psd_clean = signal.welch(cleaned, sfreq, nperseg=nperseg, axis=1)
-
-    # Average across channels
-    psd_orig = np.mean(psd_orig, axis=0)
-    psd_clean = np.mean(psd_clean, axis=0)
-
-    # Power at line frequency
-    mask = (freqs >= line_freq - bandwidth / 2) & (freqs <= line_freq + bandwidth / 2)
-    if not np.any(mask):
         return {
-            "power_original": np.nan,
-            "power_cleaned": np.nan,
-            "reduction_db": np.nan,
-            "reduction_ratio": np.nan,
+            "cleaned": current_data,
+            "removed": data - current_data,
+            "n_removed": sum(c.get("n_removed", 0) for c in all_chunk_metadata),
+            "line_freq": line_freqs[0] if line_freqs else 0,
+            "chunk_info": all_chunk_metadata,
         }
 
-    power_orig = np.mean(psd_orig[mask])
-    power_clean = np.mean(psd_clean[mask])
+    def _process_chunk(
+        self,
+        chunk: np.ndarray,
+        target_freq: float,
+        sigma_init: float,
+        min_remove: int,
+        max_prop_remove: float,
+        qa_params: dict,
+        hybrid_fallback: bool,
+    ) -> dict:
+        """Process a single chunk with QA loop.
 
-    if power_clean < 1e-15:
-        reduction_db = np.inf
-        reduction_ratio = np.inf
-    else:
-        reduction_db = 10 * np.log10(power_orig / power_clean)
-        reduction_ratio = power_orig / power_clean
+        Parameters
+        ----------
+        chunk : ndarray (n_channels, n_times)
+            Data chunk.
+        target_freq : float
+            Coarse target frequency.
+        sigma_init : float
+            Initial threshold for outlier detection.
+        min_remove : int
+            Minimum components to remove.
+        max_prop_remove : float
+            Maximum proportion of channels to remove.
+        qa_params : dict
+            QA parameters (max_sigma, min_sigma).
+        hybrid_fallback : bool
+            Whether to use notch fallback for weak cleaning.
 
-    return {
-        "power_original": float(power_orig),
-        "power_cleaned": float(power_clean),
-        "reduction_db": float(reduction_db),
-        "reduction_ratio": float(reduction_ratio),
-    }
+        Returns
+        -------
+        result : dict
+            Contains 'cleaned', 'n_removed', 'fine_freq', 'present'.
+        """
+        max_sigma = qa_params.get("max_sigma", 4.0)
+        min_sigma = qa_params.get("min_sigma", 2.5)
+
+        n_channels = chunk.shape[0]
+        fine_freq = find_fine_peak(chunk, self.sfreq, target_freq)
+        present = check_artifact_presence(chunk, self.sfreq, fine_freq)
+
+        current_sigma = sigma_init
+        current_min_remove = min_remove if present else 0
+
+        best_chunk_clean = None
+        is_too_strong = False
+        status = "ok"
+
+        max_retries = 5
+        res_n_removed = 0
+        res_cleaned = chunk.copy()
+
+        for _retry in range(max_retries):
+            # Create fresh ZapLine for this chunk
+            est = ZapLine(
+                sfreq=self.sfreq,
+                line_freq=fine_freq,
+                n_remove="auto",
+                threshold=current_sigma,
+                adaptive=False,
+            )
+
+            est.fit(chunk)
+            res_cleaned = est.transform(chunk)
+            res_n_removed = est.n_removed_
+
+            # Apply constraints
+            max_rem_cap = int(n_channels * max_prop_remove)
+            n_rem = min(res_n_removed, max_rem_cap)
+            n_rem = max(n_rem, current_min_remove)
+
+            # Refit if constraints changed n_removed
+            if n_rem != res_n_removed:
+                est = ZapLine(
+                    sfreq=self.sfreq,
+                    line_freq=fine_freq,
+                    n_remove=int(n_rem),
+                    adaptive=False,
+                )
+                est.fit(chunk)
+                res_cleaned = est.transform(chunk)
+                res_n_removed = est.n_removed_
+
+            status = check_spectral_qa(res_cleaned, self.sfreq, fine_freq)
+
+            if status == "ok":
+                best_chunk_clean = res_cleaned
+                break
+            elif status == "weak":
+                if is_too_strong:
+                    best_chunk_clean = res_cleaned
+                    break
+                else:
+                    current_sigma = max(current_sigma - 0.25, min_sigma)
+                    current_min_remove = current_min_remove + 1
+            elif status == "strong":
+                is_too_strong = True
+                current_sigma = min(current_sigma + 0.25, max_sigma)
+                current_min_remove = max(current_min_remove - 1, 0)
+
+        if best_chunk_clean is None:
+            best_chunk_clean = res_cleaned
+
+        if hybrid_fallback and status == "weak":
+            best_chunk_clean = apply_hybrid_cleanup(
+                best_chunk_clean, self.sfreq, fine_freq
+            )
+
+        return {
+            "cleaned": best_chunk_clean,
+            "n_removed": res_n_removed,
+            "fine_freq": fine_freq,
+            "present": present,
+        }

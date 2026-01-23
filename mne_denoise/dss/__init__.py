@@ -10,6 +10,7 @@ For ZapLine, see `mne_denoise.zapline`.
 # Core
 # Denoisers & Biases (Flat API)
 from .denoisers import (
+    AverageBias,
     BandpassBias,
     CombFilterBias,
     CycleAverageBias,
@@ -17,8 +18,8 @@ from .denoisers import (
     GaussDenoiser,
     KurtosisDenoiser,
     LinearDenoiser,
+    LineNoiseBias,
     NonlinearDenoiser,
-    NotchBias,
     PeakFilterBias,
     QuasiPeriodicDenoiser,
     RobustTanhDenoiser,
@@ -29,7 +30,6 @@ from .denoisers import (
     SpectrogramDenoiser,
     TanhMaskDenoiser,
     TimeShiftBias,
-    TrialAverageBias,
     WienerMaskDenoiser,
     beta_gauss,
     beta_pow3,
@@ -72,9 +72,9 @@ __all__ = [
     # Denoisers (from .denoisers)
     "LinearDenoiser",
     "NonlinearDenoiser",
-    "TrialAverageBias",
+    "AverageBias",
     "BandpassBias",
-    "NotchBias",
+    "LineNoiseBias",
     "PeakFilterBias",
     "CombFilterBias",
     "CycleAverageBias",

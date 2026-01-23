@@ -14,8 +14,7 @@ We cover both **linear biases** (TimeShiftBias, SmoothingBias) and
 - Part 1: TimeShiftBias + TSR (Time-Shift Regression)
 - Part 2: SmoothingBias (Temporal Smoothing)
 - Part 3: DCTDenoiser + IterativeDSS (DCT Domain)
-- Part 4: TemporalSmoothnessDenoiser + IterativeDSS
-- Part 5: Real EEG Slow Cortical Potentials
+- Part 4: Real EEG Slow Cortical Potentials
 
 Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
          Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
@@ -34,7 +33,6 @@ from mne_denoise.dss import DSS, IterativeDSS
 from mne_denoise.dss.denoisers import (
     DCTDenoiser,
     SmoothingBias,
-    TemporalSmoothnessDenoiser,
     TimeShiftBias,
 )
 from mne_denoise.dss.variants import smooth_dss, time_shift_dss
@@ -248,44 +246,11 @@ print(f"\nCorrelation with ground truth: {corr_dct:.3f}")
 
 
 # %%
-# Part 4: Temporal Smoothness Denoiser (Nonlinear, IterativeDSS)
-# ===============================================================
-# Moving average smoothing for temporal structure
-
-print("\n--- Part 4: TemporalSmoothnessDenoiser + IterativeDSS ---")
-
-# TemporalSmoothnessDenoiser with 20% smoothing factor
-temp_smooth_denoiser = TemporalSmoothnessDenoiser(smoothing_factor=0.2)
-
-idss_tempsmooth = IterativeDSS(
-    denoiser=temp_smooth_denoiser, n_components=3, max_iter=5
-)
-
-idss_tempsmooth.fit(raw_sim)
-
-print("IterativeDSS (TempSmooth) converged")
-
-# Visualize
-plot_component_summary(idss_tempsmooth, data=raw_sim, n_components=3, show=False)
-plt.gcf().suptitle("TemporalSmoothnessDenoiser + IterativeDSS")
-plt.show(block=False)
-
-sources_tempsmooth = idss_tempsmooth.transform(raw_sim)
-comp0_tempsmooth = sources_tempsmooth[0]
-
-if np.corrcoef(comp0_tempsmooth, drift)[0, 1] < 0:
-    comp0_tempsmooth *= -1
-
-corr_tempsmooth = np.corrcoef(comp0_tempsmooth, drift)[0, 1]
-print(f"\nCorrelation with ground truth: {corr_tempsmooth:.3f}")
-
-
-# %%
 # Compare All Methods
 # ===================
 # Visualize how different temporal methods extract the drift
 
-fig, axes = plt.subplots(5, 1, figsize=(14, 10), sharex=True)
+fig, axes = plt.subplots(4, 1, figsize=(14, 8), sharex=True)
 t_compare = times[:2000]
 scale = np.std(drift) / np.std(comp0_tsr)
 
@@ -318,18 +283,6 @@ axes[3].set_ylabel("Amplitude")
 axes[3].legend()
 axes[3].grid(True, alpha=0.3)
 
-axes[4].plot(
-    t_compare,
-    comp0_tempsmooth[:2000] * scale,
-    "purple",
-    label=f"TempSmooth (r={corr_tempsmooth:.3f})",
-)
-axes[4].set_title("TemporalSmoothnessDenoiser (Adaptive Smoothing)")
-axes[4].set_xlabel("Time (s)")
-axes[4].set_ylabel("Amplitude")
-axes[4].legend()
-axes[4].grid(True, alpha=0.3)
-
 plt.tight_layout()
 plt.show(block=False)
 
@@ -337,11 +290,11 @@ print("\n--- All methods successfully extract the slow drift ---")
 
 
 # %%
-# Part 5: Real EEG Data (Slow Cortical Potentials)
+# Part 4: Real EEG Data (Slow Cortical Potentials)
 # =================================================
 # Apply TSR to real EEG for slow drift extraction
 
-print("\n--- Part 5: Real EEG Data ---")
+print("\n--- Part 4: Real EEG Data ---")
 
 # Use eegbci dataset (resting state with eyes closed - has slow drifts)
 from mne.datasets import eegbci

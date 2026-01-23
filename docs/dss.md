@@ -8,7 +8,8 @@ The `mne_denoise.dss` module provides a comprehensive implementation of **Denois
 
 ```python
 import numpy as np
-from mne_denoise.dss import DSS, BandpassBias, dss_zapline
+from mne_denoise.dss import DSS, BandpassBias
+from mne_denoise.zapline import ZapLine
 
 # Example: Extract alpha rhythm
 data = np.random.randn(64, 10000)  # 64 channels, 10000 samples
@@ -19,8 +20,10 @@ dss.fit(data)
 alpha_sources = dss.transform(data)
 
 # Example: Remove line noise
-result = dss_zapline(data, line_freq=50, sfreq=500)
-cleaned_data = result.cleaned
+# Example: Remove line noise
+est = ZapLine(line_freq=50, sfreq=500)
+est.fit(data)
+cleaned_data = est.transform(data)
 ```
 
 ## Core Components
@@ -62,16 +65,18 @@ sources = it_dss.transform(data)
 Remove 50/60 Hz line noise and harmonics:
 
 ```python
-from mne_denoise.dss import dss_zapline, dss_zapline_adaptive
+from mne_denoise.zapline import ZapLine, dss_zapline_plus
 
-# Fixed frequency
-result = dss_zapline(data, line_freq=50, sfreq=500, n_remove='auto')
+# Clean line noise (fixed frequency)
+est = ZapLine(line_freq=50, sfreq=500, n_remove='auto')
+est.fit(data)
+cleaned = est.transform(data)
 
-# Auto-detect frequency
-result = dss_zapline_adaptive(data, sfreq=500)
+# Adaptive cleaning (ZapLine-plus)
+result = dss_zapline_plus(data, sfreq=500)
 
 # Check metrics
-print(f"Power reduction: {result.n_removed} components, {compute_psd_reduction(...)['reduction_db']:.1f} dB")
+print(f"Power reduction: {est.n_removed_} components")
 ```
 
 ## Bias Functions (Denoisers)
@@ -194,6 +199,6 @@ See the docstrings of individual functions for detailed parameter descriptions:
 ```python
 help(compute_dss)
 help(DSS)
-help(dss_zapline)
+help(ZapLine)
 help(IterativeDSS)
 ```

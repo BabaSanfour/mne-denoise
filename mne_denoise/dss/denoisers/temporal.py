@@ -16,8 +16,6 @@ References
 
 from __future__ import annotations
 
-from typing import Optional, Union
-
 import numpy as np
 
 from .base import LinearDenoiser, NonlinearDenoiser
@@ -42,7 +40,7 @@ class TimeShiftBias(LinearDenoiser):
 
     Examples
     --------
-    >>> bias = TimeShiftBias(shifts=[1, 2, 5, 10], method='prediction')
+    >>> bias = TimeShiftBias(shifts=[1, 2, 5, 10], method="prediction")
     >>> biased_data = bias.apply(data)
 
     See Also
@@ -52,7 +50,7 @@ class TimeShiftBias(LinearDenoiser):
 
     def __init__(
         self,
-        shifts: Union[int, np.ndarray] = 10,
+        shifts: int | np.ndarray = 10,
         method: str = "autocorrelation",
     ) -> None:
         self.shifts = shifts
@@ -151,42 +149,35 @@ class TimeShiftBias(LinearDenoiser):
 
 
 class SmoothingBias(LinearDenoiser):
-    """Temporal smoothing bias for extracting slow signals.
+    """Unified temporal smoothing bias (Moving Average).
 
-    Applies a moving average filter to create a bias that emphasizes
-    low-frequency temporal structure.
+    Uses a boxcar moving average filter to smooth the data."
 
     Parameters
     ----------
     window : int
-        Smoothing window size in samples. Default 10.
+        Smoothing window size in samples.
+        Note: If you want to cancel a specific frequency (e.g. 50Hz line noise),
+        set window = int(sfreq / 50).
+    iterations : int
+        Number of smoothing passes. Repeated smoothing approximates a Gaussian filter
+        and provides sharper frequency cutoff. Default 1.
 
     Examples
     --------
-    >>> bias = SmoothingBias(window=20)
-    >>> biased_data = bias.apply(data)
+    >>> bias = SmoothingBias(window=20)  # Simple smoothing
+    >>> biased = bias.apply(data)
 
-    See Also
-    --------
-    TimeShiftBias : Bias for periodic or autocorrelated signals.
+    >>> # To remove 50Hz line noise (Period smoothing)
+    >>> bias = SmoothingBias(window=int(1000 / 50), iterations=1)
     """
 
-    def __init__(self, window: int = 10) -> None:
+    def __init__(self, window: int = 10, iterations: int = 1) -> None:
         self.window = window
+        self.iterations = iterations
 
     def apply(self, data: np.ndarray) -> np.ndarray:
-        """Apply temporal smoothing bias.
-
-        Parameters
-        ----------
-        data : ndarray, shape (n_channels, n_times) or (n_channels, n_times, n_epochs)
-            Input data.
-
-        Returns
-        -------
-        biased : ndarray, same shape as input
-            Smoothed data.
-        """
+        """Apply smoothing bias."""
         from scipy.ndimage import uniform_filter1d
 
         orig_shape = data.shape
@@ -195,7 +186,12 @@ class SmoothingBias(LinearDenoiser):
         else:
             data_2d = data
 
-        smoothed = uniform_filter1d(data_2d, size=self.window, axis=1, mode="reflect")
+        smoothed = data_2d.copy()
+        for _ in range(self.iterations):
+            # Use axis=-1 to support 1D (n_times) and 2D (n_ch, n_times)
+            smoothed = uniform_filter1d(
+                smoothed, size=self.window, axis=-1, mode="reflect"
+            )
 
         if data.ndim == 3:
             return smoothed.reshape(orig_shape)
@@ -216,6 +212,11 @@ class DCTDenoiser(NonlinearDenoiser):
         If mask is None, this fraction of DCT coefficients are kept.
         Default 0.5 (lowpass, keep first 50% of coefficients).
 
+    cutoff_fraction : float
+        Fraction of DCT coefficients to keep. If mask is None,
+        this fraction of DCT coefficients are kept.
+        Default 0.5 (lowpass, keep first 50% of coefficients).
+
     Examples
     --------
     >>> from mne_denoise.dss.denoisers import DCTDenoiser
@@ -230,7 +231,7 @@ class DCTDenoiser(NonlinearDenoiser):
     """
 
     def __init__(
-        self, mask: Optional[np.ndarray] = None, cutoff_fraction: float = 0.5
+        self, mask: np.ndarray | None = None, cutoff_fraction: float = 0.5
     ) -> None:
         self.mask = mask
         self.cutoff_fraction = cutoff_fraction
@@ -282,59 +283,3 @@ class DCTDenoiser(NonlinearDenoiser):
         dct_coeffs = dct(source, type=2, norm="ortho")
         dct_filtered = dct_coeffs * mask
         return idct(dct_filtered, type=2, norm="ortho")
-
-
-class TemporalSmoothnessDenoiser(NonlinearDenoiser):
-    """Nonlinear denoiser emphasizing temporally smooth sources.
-
-    Promotes sources with high autocorrelation by penalizing
-    rapid fluctuations. Useful for slow-wave or DC-shift artifacts.
-
-    Parameters
-    ----------
-    smoothing_factor : float
-        Weight for temporal smoothness penalty. Default 0.1.
-    order : int
-        Derivative order for smoothness measure. Default 1.
-
-    Examples
-    --------
-    >>> from mne_denoise.dss.denoisers import TemporalSmoothnessDenoiser
-    >>> denoiser = TemporalSmoothnessDenoiser(smoothing_factor=0.2)
-    >>> smooth_source = denoiser.denoise(source)
-
-    References
-    ----------
-    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
-    """
-
-    def __init__(
-        self,
-        smoothing_factor: float = 0.1,
-        order: int = 1,
-    ) -> None:
-        self.smoothing_factor = smoothing_factor
-        self.order = max(1, order)
-
-    def denoise(self, source: np.ndarray) -> np.ndarray:
-        """Apply temporal smoothing denoiser."""
-        if source.ndim == 1:
-            window = max(3, int(len(source) * self.smoothing_factor))
-            weights = np.ones(window) / window
-            smoothed = np.convolve(source, weights, mode="same")
-            return (
-                1 - self.smoothing_factor
-            ) * source + self.smoothing_factor * smoothed
-        elif source.ndim == 2:
-            n_times, n_trials = source.shape
-            window = max(3, int(n_times * self.smoothing_factor))
-            weights = np.ones(window) / window
-            denoised = np.zeros_like(source)
-            for t in range(n_trials):
-                smoothed = np.convolve(source[:, t], weights, mode="same")
-                denoised[:, t] = (1 - self.smoothing_factor) * source[
-                    :, t
-                ] + self.smoothing_factor * smoothed
-            return denoised
-        else:
-            raise ValueError(f"Source must be 1D or 2D, got {source.ndim}D")

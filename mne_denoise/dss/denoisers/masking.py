@@ -13,8 +13,6 @@ References
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 from scipy import ndimage
 
@@ -64,7 +62,7 @@ class WienerMaskDenoiser(NonlinearDenoiser):
         noise_percentile: float = 25.0,
         *,
         min_gain: float = 0.01,
-        noise_variance: Optional[float] = None,
+        noise_variance: float | None = None,
     ) -> None:
         self.window_samples = max(3, window_samples)
         self.noise_percentile = noise_percentile

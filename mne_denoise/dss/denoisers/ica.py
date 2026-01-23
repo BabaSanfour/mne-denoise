@@ -185,7 +185,7 @@ class KurtosisDenoiser(NonlinearDenoiser):
     Examples
     --------
     >>> from mne_denoise.dss.denoisers import KurtosisDenoiser
-    >>> denoiser = KurtosisDenoiser(nonlinearity='cube')
+    >>> denoiser = KurtosisDenoiser(nonlinearity="cube")
     >>> denoised = denoiser.denoise(source)
 
     References

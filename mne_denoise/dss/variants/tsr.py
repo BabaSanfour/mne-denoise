@@ -14,8 +14,6 @@ References
 
 from __future__ import annotations
 
-from typing import Optional, Union
-
 import numpy as np
 
 from ..denoisers.temporal import SmoothingBias, TimeShiftBias
@@ -23,10 +21,10 @@ from ..linear import DSS
 
 
 def time_shift_dss(
-    shifts: Union[int, np.ndarray] = 10,
+    shifts: int | np.ndarray = 10,
     *,
     method: str = "autocorrelation",
-    n_components: Optional[int] = None,
+    n_components: int | None = None,
     **dss_kws,
 ) -> DSS:
     """Create a DSS configured for temporal predictability.
@@ -72,7 +70,7 @@ def time_shift_dss(
 def smooth_dss(
     window: int = 10,
     *,
-    n_components: Optional[int] = None,
+    n_components: int | None = None,
     **dss_kws,
 ) -> DSS:
     """Create a DSS configured for temporally smooth sources.

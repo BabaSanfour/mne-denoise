@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mne
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose
@@ -397,15 +398,24 @@ def test_dss_error_mask_length_mismatch():
         dss.inverse_transform(sources, component_indices=wrong_mask)
 
 
-def test_dss_warning_rank_numpy():
-    """DSS should warn when rank is used with numpy arrays."""
+def test_dss_supports_rank_numpy():
+    """DSS should support rank parameter with numpy arrays (no warning)."""
+    import warnings
+
     rng = np.random.default_rng(42)
     data = rng.standard_normal((8, 500))
 
-    dss = DSS(bias=lambda x: x, n_components=3, rank=5)
-
-    with pytest.warns(UserWarning, match="[Rr]ank"):
+    # Should not warn
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        dss = DSS(bias=lambda x: x, n_components=3, rank=5)
         dss.fit(data)
+
+        # Filter out unrelated warnings if any (e.g. from MNE)
+        rank_warnings = [
+            warning for warning in w if "rank" in str(warning.message).lower()
+        ]
+        assert len(rank_warnings) == 0
 
 
 # =============================================================================
@@ -456,9 +466,9 @@ def test_dss_evoked_workflow():
 
     data = noise + signal
 
-    from mne_denoise.dss.denoisers import TrialAverageBias
+    from mne_denoise.dss.denoisers import AverageBias
 
-    bias = TrialAverageBias()
+    bias = AverageBias(axis="epochs")
     dss = DSS(bias=bias, n_components=3)
     sources = dss.fit_transform(data)
 
@@ -470,8 +480,6 @@ def test_dss_evoked_workflow():
 # =============================================================================
 # MNE Integration Tests
 # =============================================================================
-
-import mne
 
 
 def test_dss_with_mne_raw():
@@ -508,9 +516,9 @@ def test_dss_with_mne_epochs():
     )
     epochs = mne.EpochsArray(data, info, verbose=False)
 
-    from mne_denoise.dss.denoisers import TrialAverageBias
+    from mne_denoise.dss.denoisers import AverageBias
 
-    dss = DSS(bias=TrialAverageBias(), n_components=3)
+    dss = DSS(bias=AverageBias(axis="epochs"), n_components=3)
     sources = dss.fit_transform(epochs)
 
     # Sources should be (n_epochs, n_components, n_times)
@@ -682,9 +690,9 @@ def test_dss_array_evoked_extracts_known_erp():
     signal = np.outer(mixing_weights, erp)[:, :, np.newaxis]  # (n_ch, n_times, 1)
     data = noise + signal  # Signal replicated across epochs
 
-    from mne_denoise.dss.denoisers import TrialAverageBias
+    from mne_denoise.dss.denoisers import AverageBias
 
-    bias = TrialAverageBias()
+    bias = AverageBias(axis="epochs")
 
     dss = DSS(bias=bias, n_components=1, normalize_input=False)
     sources = dss.fit_transform(data)  # (1, n_times, n_epochs)
@@ -721,10 +729,10 @@ def test_dss_mne_raw_extracts_line_noise():
     )
     raw = mne.io.RawArray(data, info, verbose=False)
 
-    # Use notch bias around 50 Hz
-    from mne_denoise.dss.denoisers import NotchBias
+    # Use line noise bias (notch method)
+    from mne_denoise.dss.denoisers import LineNoiseBias
 
-    bias = NotchBias(freq=50, sfreq=sfreq, bandwidth=2)
+    bias = LineNoiseBias(freq=50, sfreq=sfreq, method="iir", bandwidth=2)
 
     dss = DSS(bias=bias, n_components=1, normalize_input=False)
     sources = dss.fit_transform(raw)
@@ -758,9 +766,9 @@ def test_dss_mne_epochs_extracts_known_erp():
     )
     epochs = mne.EpochsArray(data, info, verbose=False)
 
-    from mne_denoise.dss.denoisers import TrialAverageBias
+    from mne_denoise.dss.denoisers import AverageBias
 
-    bias = TrialAverageBias()
+    bias = AverageBias(axis="epochs")
 
     dss = DSS(bias=bias, n_components=1, normalize_input=False)
     sources = dss.fit_transform(epochs)  # (n_epochs, 1, n_times)
@@ -846,9 +854,9 @@ def test_dss_mne_epochs_inverse_transform_with_normalization():
     )
     epochs = mne.EpochsArray(data, info, verbose=False)
 
-    from mne_denoise.dss.denoisers import TrialAverageBias
+    from mne_denoise.dss.denoisers import AverageBias
 
-    dss = DSS(bias=TrialAverageBias(), n_components=3, normalize_input=True)
+    dss = DSS(bias=AverageBias(axis="epochs"), n_components=3, normalize_input=True)
 
     # Fit and transform - sources will be (n_epochs, n_components, n_times)
     sources = dss.fit_transform(epochs)

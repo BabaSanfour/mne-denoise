@@ -33,13 +33,14 @@ Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
 # %%
 # Imports
 # -------
+import contextlib
 import os
 
 import mne
 import numpy as np
 from mne.datasets import sample
 
-from mne_denoise.dss import DSS, BandpassBias, TrialAverageBias
+from mne_denoise.dss import DSS, AverageBias, BandpassBias
 from mne_denoise.viz import (
     plot_component_summary,
     plot_component_time_series,
@@ -138,7 +139,7 @@ print(f"Created epochs: {epochs.get_data().shape}")
 # Bias: Maximize power of the mean over epochs.
 
 print("\n--- Synthetic: Trial Average Bias ---")
-dss_evoked = DSS(n_components=3, bias=TrialAverageBias(), return_type="sources")
+dss_evoked = DSS(n_components=3, bias=AverageBias(), return_type="sources")
 dss_evoked.fit(epochs)
 
 # Visualize
@@ -252,10 +253,8 @@ print("\nLoading MNE Sample data...")
 home = os.path.expanduser("~")
 mne_data_path = os.path.join(home, "mne_data")
 if not os.path.exists(mne_data_path):
-    try:
+    with contextlib.suppress(OSError):
         os.makedirs(mne_data_path)
-    except OSError:
-        pass
 
 data_path = sample.data_path()
 raw_fname = data_path / "MEG" / "sample" / "sample_audvis_raw.fif"
@@ -325,7 +324,7 @@ epochs_real = mne.Epochs(
 )
 print(f"Epochs extracted: {len(epochs_real)}")
 
-dss_m100 = DSS(n_components=5, bias=TrialAverageBias())
+dss_m100 = DSS(n_components=5, bias=AverageBias())
 dss_m100.fit(epochs_real)
 
 # Visualize
@@ -360,7 +359,7 @@ plot_evoked_comparison(epochs_real, epochs_m100, show=True)
 # Conclusion
 # ----------
 # We successfully demonstrated the flexibility of DSS:
-# *   **TrialAverageBias**: Found phase-locked signals (Sine wave, M100) by averaging.
+# *   **AverageBias**: Found phase-locked signals (Sine wave, M100) by averaging.
 # *   **BandpassBias**: Found induced/oscillatory signals (50Hz, Alpha) by filtering.
 #
 # The same algorithm, `DSS`, solved both problems simply by changing the definition of "interesting".

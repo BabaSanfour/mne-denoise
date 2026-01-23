@@ -12,6 +12,14 @@ DSS
    mne_denoise.dss.iterative_dss
    mne_denoise.dss.IterativeDSS
 
+ZapLine
+-------
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   mne_denoise.zapline.ZapLine
+
 Denoisers
 ---------
 .. autosummary::
@@ -19,10 +27,10 @@ Denoisers
    :nosignatures:
 
    mne_denoise.dss.denoisers.LinearDenoiser
-   mne_denoise.dss.denoisers.TrialAverageBias
+   mne_denoise.dss.denoisers.AverageBias
    mne_denoise.dss.denoisers.CycleAverageBias
    mne_denoise.dss.denoisers.BandpassBias
-   mne_denoise.dss.denoisers.NotchBias
+   mne_denoise.dss.denoisers.LineNoiseBias
    mne_denoise.dss.denoisers.PeakFilterBias
    mne_denoise.dss.denoisers.CombFilterBias
    mne_denoise.dss.denoisers.TimeShiftBias
@@ -37,7 +45,6 @@ Denoisers
    mne_denoise.dss.denoisers.WienerMaskDenoiser
    mne_denoise.dss.denoisers.SpectrogramDenoiser
    mne_denoise.dss.denoisers.DCTDenoiser
-   mne_denoise.dss.denoisers.TemporalSmoothnessDenoiser
    mne_denoise.dss.denoisers.QuasiPeriodicDenoiser
 
 Variants
@@ -68,3 +75,9 @@ Visualization
    mne_denoise.viz.plot_overlay_comparison
    mne_denoise.viz.plot_narrowband_scan
    mne_denoise.viz.plot_tf_mask
+
+   mne_denoise.viz.plot_zapline_analytics
+   mne_denoise.viz.plot_cleaning_summary
+   mne_denoise.viz.plot_component_scores
+   mne_denoise.viz.plot_zapline_patterns
+   mne_denoise.viz.plot_zapline_psd_comparison
