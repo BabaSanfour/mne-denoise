@@ -2,11 +2,11 @@ coverage:
   status:
     project:
       default:
-        target: 80%       # Global target
-        threshold: 1%     # Allow 1% drop
+        target: 80% # Global target
+        threshold: 1% # Allow 1% drop
     patch:
       default:
-        target: auto      # Diff must be covered at least as well as the project
+        target: auto # Diff must be covered at least as well as the project
 
 comment:
   layout: "reach, diff, flags, files"
