@@ -105,10 +105,18 @@ print("Signal amplitude: 1.0, Noise amplitude: 3.0 (SNR ~ 0.33)")
 # ---------------
 # JDSS finds the spatial filter that maximizes the ratio of
 # "grand average variance" to "mean of individual variances".
+#
+# Note: DSS expects input shape (n_channels, n_times, n_epochs).
+# We treat the 5 subjects as "epochs" for the purpose of finding
+# reproducible components across subjects.
+# So we transpose datasets from (n_subjects, n_ch, n_times) to (n_ch, n_times, n_subjects).
 
 print("\nApplying JDSS (via DSS with group averaging)...")
-jdss = DSS(bias=AverageBias(axis="datasets"), n_components=3)
-jdss.fit(np.array(list(datasets)))
+datasets_dss = np.transpose(datasets, (1, 2, 0))  # (16, 1000, 5)
+
+# Use 'epochs' axis to average over the 3rd dimension (which represents subjects here)
+jdss = DSS(bias=AverageBias(axis="epochs"), n_components=3)
+jdss.fit(datasets_dss)
 
 print(f"Eigenvalues (repeatability scores): {jdss.eigenvalues_}")
 print("  -> Score near 1.0 = highly reproducible.")
@@ -117,10 +125,11 @@ print("  -> Score near 0.0 = random noise.\n")
 # %%
 # Extract Sources
 # ---------------
-# Apply the learned filters to each dataset.
+# Apply the learned filters to the data.
+# Transform returns (n_components, n_times, n_subjects) because input was (n_ch, n_times, n_subjects)
 
-sources = jdss.transform(list(datasets))  # List of (n_comp, n_times)
-sources = np.array(sources)  # (n_subjects, n_components, n_times)
+sources = jdss.transform(datasets_dss)  # (3, 1000, 5)
+sources = np.transpose(sources, (2, 0, 1))  # (n_subjects, n_components, n_times)
 
 # Grand average of sources
 ga_sources = np.mean(sources, axis=0)  # (n_components, n_times)

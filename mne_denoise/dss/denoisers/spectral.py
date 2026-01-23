@@ -127,9 +127,10 @@ class LineNoiseBias(LinearDenoiser):
 
     Isolates power at a specific frequency (e.g., 50/60 Hz) and potentially
     its harmonics. Supports two methods:
-    1. 'fft': Use FFT masking to isolate exact frequency bins (ZapLine style).
+
+    1. ``'fft'``: Use FFT masking to isolate exact frequency bins (ZapLine style).
        Best for sharp line noise with harmonics.
-    2. 'iir': Use a narrow bandpass (notch) filter.
+    2. ``'iir'``: Use a narrow bandpass (notch) filter.
        Simpler, but affects broader band.
 
     Parameters

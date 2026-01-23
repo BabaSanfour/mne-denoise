@@ -11,7 +11,7 @@ We compare:
 2.  **Channel Averaging**: Averaging the best 20 channels.
 3.  **PCA**: The Principal Component with the highest evoked power.
 4.  **FastICA**: The Independent Component with the highest evoked power.
-5.  **DSS**: The first component extracted using `TrialAverageBias`.
+5.  **DSS**: The first component extracted using `AverageBias`.
 
 **Metric**:
 We define "SNR Proxy" as the variance of the trial-averaged signal.
@@ -27,7 +27,7 @@ import mne
 import numpy as np
 from sklearn.decomposition import PCA, FastICA
 
-from mne_denoise.dss import DSS, TrialAverageBias
+from mne_denoise.dss import DSS, AverageBias
 
 print(__doc__)
 
@@ -206,10 +206,10 @@ if np.corrcoef(wave_ica, true_evoked_data)[0, 1] < 0:
 # Method 5: DSS (Trial Averaging)
 # -------------------------------
 print("\nRunning Method 5: DSS (Our Method)...")
-# We use TrialAverageBias, which specifically optimizes for the evoked response
+# We use AverageBias (default axis='epochs'), which specifically optimizes for the evoked response
 # (maximizing ratio of Mean / Variance).
 
-dss = DSS(bias=TrialAverageBias(), n_components=5)
+dss = DSS(bias=AverageBias(), n_components=5)
 dss.fit(epochs)
 data_dss = dss.transform(epochs)  # returns (n_epochs, n_comps, n_times)
 

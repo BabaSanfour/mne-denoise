@@ -4,7 +4,7 @@ Denoising Evoked Responses.
 
 This example demonstrates how to use DSS to enhance **Evoked Responses** (ERPs/ERFs).
 We explore two strategies:
-1.  **Standard Denoising**: Using `TrialAverageBias` to enhance the common evoked response (N100/P200).
+1.  **Standard Denoising**: Using `AverageBias` to enhance the common evoked response (N100/P200).
 2.  **Contrast Enhancement**: Building a **Custom Bias** to isolate the *difference* between two experimental conditions (Left vs Right Audio).
 
 Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)

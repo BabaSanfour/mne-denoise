@@ -32,7 +32,7 @@ jobs:
         run: pre-commit run --all-files
 
   test:
-    name: Test (py${{ matrix.python-version }}, ${{ matrix.os }})
+    name: "Test (py${{ matrix.python-version }}, ${{ matrix.os }})"
     needs: lint
     runs-on: ${{ matrix.os }}
     strategy:

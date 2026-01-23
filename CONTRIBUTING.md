@@ -368,4 +368,4 @@ For feature requests:
 - Check existing issues and discussions first
 - Join the [MNE-Python community](https://mne.tools/stable/overview/get_help.html)
 
-Thank you for contributing! 
+Thank you for contributing!

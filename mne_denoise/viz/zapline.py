@@ -111,7 +111,7 @@ def plot_component_scores(
     Parameters
     ----------
     estimator : ZapLine
-        Fitted ZapLine estimator with eigenvalues_ attribute.
+        Fitted ZapLine estimator with ``eigenvalues_`` attribute.
     ax : Axes | None
         Matplotlib axes. If None, creates new figure.
     show : bool
@@ -182,7 +182,7 @@ def plot_spatial_patterns(
     Parameters
     ----------
     estimator : ZapLine
-        Fitted ZapLine estimator with patterns_ attribute.
+        Fitted ZapLine estimator with ``patterns_`` attribute.
     n_patterns : int
         Number of top patterns to display.
     ax : Axes | None
