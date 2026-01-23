@@ -1,24 +1,33 @@
 """General utilities for mne-denoise."""
 
-from typing import Tuple, Union, Optional, Any
+from typing import Any
+
 import numpy as np
 
 try:
     import mne
-    from mne.io import BaseRaw
     from mne.epochs import BaseEpochs
     from mne.evoked import Evoked
+    from mne.io import BaseRaw
+
     _HAS_MNE = True
 except ImportError:
     mne = None
-    # Mock classes for type hinting/checking
-    class BaseRaw: pass
-    class BaseEpochs: pass
-    class Evoked: pass
+    # Mock classes for type hinting/checking when MNE not available
+
+    class BaseRaw:  # noqa: D101
+        """Mock BaseRaw class."""
+
+    class BaseEpochs:  # noqa: D101
+        """Mock BaseEpochs class."""
+
+    class Evoked:  # noqa: D101
+        """Mock Evoked class."""
+
     _HAS_MNE = False
 
 
-def extract_data_from_mne(X: Any) -> Tuple[np.ndarray, Optional[float], str, Any]:
+def extract_data_from_mne(X: Any) -> tuple[np.ndarray, float | None, str, Any]:
     """Extract data and metadata from input (MNE object or array).
 
     Parameters
@@ -41,11 +50,11 @@ def extract_data_from_mne(X: Any) -> Tuple[np.ndarray, Optional[float], str, Any
     mne_type = "array"
     orig_inst = None
 
-    if _HAS_MNE and isinstance(X, (BaseRaw, BaseEpochs, Evoked)):
+    if _HAS_MNE and isinstance(X, BaseRaw | BaseEpochs | Evoked):
         orig_inst = X
         sfreq = X.info["sfreq"]
         data = X.get_data()
-        
+
         if isinstance(X, BaseEpochs):
             mne_type = "epochs"
         elif isinstance(X, Evoked):
@@ -60,10 +69,7 @@ def extract_data_from_mne(X: Any) -> Tuple[np.ndarray, Optional[float], str, Any
 
 
 def reconstruct_mne_object(
-    data: np.ndarray,
-    orig_inst: Any,
-    mne_type: str,
-    verbose: bool = False
+    data: np.ndarray, orig_inst: Any, mne_type: str, verbose: bool = False
 ) -> Any:
     """Reconstruct MNE object from data and template instance.
 
@@ -100,32 +106,27 @@ def reconstruct_mne_object(
         event_id = getattr(orig_inst, "event_id", None)
         tmin = getattr(orig_inst, "tmin", 0)
         metadata = getattr(orig_inst, "metadata", None)
-        
+
         out = mne.EpochsArray(
             data,
             orig_inst.info,
             events=events,
             event_id=event_id,
             tmin=tmin,
-            verbose=verbose
+            verbose=verbose,
         )
         if metadata is not None:
-             out.metadata = metadata.copy()
+            out.metadata = metadata.copy()
         return out
 
     elif mne_type == "evoked":
         nave = getattr(orig_inst, "nave", 1)
         tmin = getattr(orig_inst, "tmin", 0)
         comment = getattr(orig_inst, "comment", "")
-        
+
         out = mne.EvokedArray(
-            data,
-            orig_inst.info,
-            tmin=tmin,
-            nave=nave,
-            comment=comment,
-            verbose=verbose
+            data, orig_inst.info, tmin=tmin, nave=nave, comment=comment, verbose=verbose
         )
         return out
-        
+
     return data

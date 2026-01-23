@@ -35,7 +35,7 @@ htmlcov/
 
 .DS_Store
 
-/data/ 
+/data/
 /figures/
 /outputs/
 /scratch/

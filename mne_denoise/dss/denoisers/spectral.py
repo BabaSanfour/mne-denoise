@@ -14,8 +14,6 @@ References
 
 from __future__ import annotations
 
-from typing import Optional, Tuple, Union
-
 import numpy as np
 from scipy import signal
 from scipy.fft import fft, ifft
@@ -58,7 +56,7 @@ class BandpassBias(LinearDenoiser):
 
     def __init__(
         self,
-        freq_band: Tuple[float, float],
+        freq_band: tuple[float, float],
         sfreq: float,
         *,
         order: int = 4,
@@ -70,9 +68,9 @@ class BandpassBias(LinearDenoiser):
         self.method = method
 
         # Pre-compute filter coefficients
-        self._b: Optional[np.ndarray] = None
-        self._a: Optional[np.ndarray] = None
-        self._sos: Optional[np.ndarray] = None
+        self._b: np.ndarray | None = None
+        self._a: np.ndarray | None = None
+        self._sos: np.ndarray | None = None
         self._design_filter()
 
     def _design_filter(self) -> None:
@@ -155,7 +153,7 @@ class LineNoiseBias(LinearDenoiser):
 
     Examples
     --------
-    >>> bias = LineNoiseBias(freq=50, sfreq=1000, method='fft')
+    >>> bias = LineNoiseBias(freq=50, sfreq=1000, method="fft")
     >>> biased = bias.apply(data)
     """
 
@@ -165,7 +163,7 @@ class LineNoiseBias(LinearDenoiser):
         sfreq: float,
         *,
         method: str = "fft",
-        n_harmonics: Optional[int] = None,
+        n_harmonics: int | None = None,
         bandwidth: float = 1.0,
         order: int = 4,
         nfft: int = 1024,
@@ -227,7 +225,7 @@ class LineNoiseBias(LinearDenoiser):
         """Get FFT bin indices for target frequencies."""
         freq_bins = np.fft.fftfreq(nfft, 1 / self.sfreq)
         target_indices = []
-        
+
         for f in self._harmonic_freqs:
             idx = np.argmin(np.abs(freq_bins - f))
             if idx not in target_indices:
@@ -242,11 +240,11 @@ class LineNoiseBias(LinearDenoiser):
     def _apply_fft_2d(self, data: np.ndarray) -> np.ndarray:
         """Apply bias to 2D data using FFT."""
         n_channels, n_times = data.shape
-        
+
         # Use data length or nfft, whichever is smaller
         actual_nfft = min(self.nfft, n_times)
         target_indices = self._get_target_indices(actual_nfft)
-        
+
         # If data is shorter than nfft, process as single block
         if n_times <= actual_nfft:
             X = fft(data, n=actual_nfft, axis=1)
@@ -275,10 +273,9 @@ class LineNoiseBias(LinearDenoiser):
             segment_biased = np.real(ifft(X_bias, axis=1))
             biased[:, start:end] += segment_biased
             counts[start:end] += 1
-        
+
         # Normalize by overlap counts
         counts = np.maximum(counts, 1)
         biased /= counts
 
         return biased
-

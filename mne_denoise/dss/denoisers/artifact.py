@@ -13,7 +13,7 @@ References
 
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -43,7 +43,7 @@ class CycleAverageBias(LinearDenoiser):
     >>> # ECG artifact removal
     >>> from mne.preprocessing import find_ecg_events
     >>> from mne_denoise.dss.denoisers import CycleAverageBias
-    >>> r_peaks, _ = find_ecg_events(raw) # MNE returns events array
+    >>> r_peaks, _ = find_ecg_events(raw)  # MNE returns events array
     >>> # Extract sample indices (column 0)
     >>> r_peak_samples = r_peaks[:, 0]
     >>> bias = CycleAverageBias(event_samples=r_peak_samples, window=(-100, 200))
@@ -66,7 +66,7 @@ class CycleAverageBias(LinearDenoiser):
         event_samples: Sequence[int],
         window: tuple[int, int] = (-100, 200),
         *,
-        sfreq: Optional[float] = None,
+        sfreq: float | None = None,
     ) -> None:
         self.event_samples = np.asarray(event_samples, dtype=int)
 

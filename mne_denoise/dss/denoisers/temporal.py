@@ -16,8 +16,6 @@ References
 
 from __future__ import annotations
 
-from typing import Optional, Union
-
 import numpy as np
 
 from .base import LinearDenoiser, NonlinearDenoiser
@@ -42,7 +40,7 @@ class TimeShiftBias(LinearDenoiser):
 
     Examples
     --------
-    >>> bias = TimeShiftBias(shifts=[1, 2, 5, 10], method='prediction')
+    >>> bias = TimeShiftBias(shifts=[1, 2, 5, 10], method="prediction")
     >>> biased_data = bias.apply(data)
 
     See Also
@@ -52,7 +50,7 @@ class TimeShiftBias(LinearDenoiser):
 
     def __init__(
         self,
-        shifts: Union[int, np.ndarray] = 10,
+        shifts: int | np.ndarray = 10,
         method: str = "autocorrelation",
     ) -> None:
         self.shifts = shifts
@@ -152,8 +150,8 @@ class TimeShiftBias(LinearDenoiser):
 
 class SmoothingBias(LinearDenoiser):
     """Unified temporal smoothing bias (Moving Average).
-    
-    Uses a boxcar moving average filter to smooth the data.
+
+    Uses a boxcar moving average filter to smooth the data."
 
     Parameters
     ----------
@@ -171,7 +169,7 @@ class SmoothingBias(LinearDenoiser):
     >>> biased = bias.apply(data)
 
     >>> # To remove 50Hz line noise (Period smoothing)
-    >>> bias = SmoothingBias(window=int(1000/50), iterations=1)
+    >>> bias = SmoothingBias(window=int(1000 / 50), iterations=1)
     """
 
     def __init__(self, window: int = 10, iterations: int = 1) -> None:
@@ -191,7 +189,9 @@ class SmoothingBias(LinearDenoiser):
         smoothed = data_2d.copy()
         for _ in range(self.iterations):
             # Use axis=-1 to support 1D (n_times) and 2D (n_ch, n_times)
-            smoothed = uniform_filter1d(smoothed, size=self.window, axis=-1, mode="reflect")
+            smoothed = uniform_filter1d(
+                smoothed, size=self.window, axis=-1, mode="reflect"
+            )
 
         if data.ndim == 3:
             return smoothed.reshape(orig_shape)
@@ -231,7 +231,7 @@ class DCTDenoiser(NonlinearDenoiser):
     """
 
     def __init__(
-        self, mask: Optional[np.ndarray] = None, cutoff_fraction: float = 0.5
+        self, mask: np.ndarray | None = None, cutoff_fraction: float = 0.5
     ) -> None:
         self.mask = mask
         self.cutoff_fraction = cutoff_fraction

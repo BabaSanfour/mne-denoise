@@ -92,21 +92,21 @@ fprintf('\n4. Checking nt_zapline...\n');
 if exist('nt_zapline', 'file')
     % Add line noise for testing
     data_noisy = data + line_source * line_mixing * 3;
-    
+
     fline = 50 / sfreq;  % Normalized frequency
     [data_cleaned, artifacts] = nt_zapline(data_noisy, fline);
-    
+
     % Compute PSD reduction at 50 Hz
     [psd_orig, f] = pwelch(data_noisy(:,1), 256, [], [], sfreq);
     [psd_clean, ~] = pwelch(data_cleaned(:,1), 256, [], [], sfreq);
-    
+
     idx_50 = find(f >= 49 & f <= 51);
     power_orig = mean(psd_orig(idx_50));
     power_clean = mean(psd_clean(idx_50));
     zapline_reduction_db = 10 * log10(power_orig / max(power_clean, 1e-12));
-    
+
     fprintf('   ZapLine 50 Hz reduction: %.1f dB\n', zapline_reduction_db);
-    
+
     save_zapline = true;
 else
     fprintf('   nt_zapline not found, skipping\n');

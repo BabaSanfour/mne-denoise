@@ -10,9 +10,9 @@ import importlib.util
 
 import numpy as np
 import pytest
+from scipy import signal
 
 from mne_denoise.zapline import ZapLine
-from scipy import signal
 
 try:
     if importlib.util.find_spec("matlab") and importlib.util.find_spec("matlab.engine"):
@@ -62,17 +62,17 @@ def test_data():
 
 def compute_psd_reduction(data, cleaned, sfreq, line_freq):
     """Compute PSD reduction at line frequency."""
-    from scipy import signal
     nperseg = int(sfreq)
     f, psd_orig = signal.welch(data, fs=sfreq, nperseg=nperseg, axis=-1)
     f, psd_clean = signal.welch(cleaned, fs=sfreq, nperseg=nperseg, axis=-1)
-    
+
     idx = np.argmin(np.abs(f - line_freq))
     power_orig = np.mean(psd_orig[:, idx])
     power_clean = np.mean(psd_clean[:, idx])
-    
+
     reduction = 10 * np.log10(power_orig / power_clean)
     return {"reduction_db": reduction}
+
 
 class TestZapLineParity:
     """Test parity between Python dss_zapline and MATLAB nt_zapline."""
@@ -166,9 +166,7 @@ class TestZapLineParity:
 
         # Python with harmonics
         # Python with harmonics
-        est = ZapLine(
-            line_freq=50, sfreq=sfreq, n_remove="auto", n_harmonics=2
-        )
+        est = ZapLine(line_freq=50, sfreq=sfreq, n_remove="auto", n_harmonics=2)
         est.fit(data)
         py_cleaned = est.transform(data)
 
@@ -194,7 +192,6 @@ class TestZapLineParity:
         py_cleaned = est.transform(data)
 
         # Check that 10 Hz alpha is preserved
-        from scipy import signal
 
         nperseg = int(4 * sfreq)
         freqs, psd_orig = signal.welch(data[0], sfreq, nperseg=nperseg)
@@ -246,7 +243,7 @@ class TestZapLineEdgeCases:
         est = ZapLine(line_freq=60, sfreq=500, n_remove=2)
         est.fit(data)
         cleaned = est.transform(data)
-        
+
         metrics = compute_psd_reduction(data, cleaned, 500, 60)
 
         print(f"60 Hz reduction: {metrics['reduction_db']:.1f} dB")

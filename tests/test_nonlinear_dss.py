@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mne
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose
@@ -402,8 +403,6 @@ def test_iterative_dss_class_inverse_transform_before_fit():
 # =============================================================================
 # MNE Integration
 # =============================================================================
-
-import mne
 
 
 def test_iterative_dss_class_mne_raw():

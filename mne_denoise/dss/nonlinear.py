@@ -14,12 +14,12 @@ References
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Tuple, Union
+from collections.abc import Callable
 
 import numpy as np
 
-from .utils.whitening import whiten_data
 from ..utils import extract_data_from_mne
+from .utils.whitening import whiten_data
 
 
 def _resolve_callable(param, x, default=None):
@@ -36,14 +36,14 @@ def iterative_dss_one(
     X_whitened: np.ndarray,
     denoiser: Callable[[np.ndarray], np.ndarray],
     *,
-    w_init: Optional[np.ndarray] = None,
+    w_init: np.ndarray | None = None,
     max_iter: int = 100,
     tol: float = 1e-6,
-    alpha: Union[float, Callable[[np.ndarray], float], None] = None,
-    beta: Union[float, Callable[[np.ndarray], float], None] = None,
-    gamma: Union[float, Callable[[np.ndarray, np.ndarray, int], float], None] = None,
-    random_state: Optional[Union[int, np.random.Generator]] = None,
-) -> Tuple[np.ndarray, np.ndarray, int, bool]:
+    alpha: float | Callable[[np.ndarray], float] | None = None,
+    beta: float | Callable[[np.ndarray], float] | None = None,
+    gamma: float | Callable[[np.ndarray, np.ndarray, int], float] | None = None,
+    random_state: int | np.random.Generator | None = None,
+) -> tuple[np.ndarray, np.ndarray, int, bool]:
     """Fixed-point iteration for extracting a single DSS component.
 
     This implements Algorithm 1 from Särelä & Valpola (2005) [1]_ with optional
@@ -203,17 +203,17 @@ def iterative_dss(
     n_components: int,
     *,
     method: str = "deflation",
-    rank: Optional[int] = None,
+    rank: int | None = None,
     reg: float = 1e-9,
     max_iter: int = 100,
     tol: float = 1e-6,
-    w_init: Optional[np.ndarray] = None,
+    w_init: np.ndarray | None = None,
     verbose: bool = False,
-    alpha: Union[float, Callable, None] = None,
-    beta: Union[float, Callable, None] = None,
-    gamma: Union[float, Callable, None] = None,
-    random_state: Optional[Union[int, np.random.Generator]] = None,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    alpha: float | Callable | None = None,
+    beta: float | Callable | None = None,
+    gamma: float | Callable | None = None,
+    random_state: int | np.random.Generator | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Extract multiple DSS components using iterative (nonlinear) algorithm.
 
     This implements the Iterative DSS algorithm from Särelä & Valpola (2005) [1]_.
@@ -300,7 +300,7 @@ def iterative_dss(
     >>> data = np.random.randn(10, 1000)
     >>> denoiser = TanhMaskDenoiser()
     >>> filters, sources, patterns, _ = iterative_dss(
-    ...     data, denoiser, n_components=2, method='symmetric'
+    ...     data, denoiser, n_components=2, method="symmetric"
     ... )
 
     See Also
@@ -314,7 +314,7 @@ def iterative_dss(
     """
     # Use helper for validation/extraction
     data, _, mne_type, _ = extract_data_from_mne(data)
-    
+
     # Flatten if 3D (assume n_epochs, n_channels, n_times)
     if data.ndim == 3:
         n_epochs, n_channels, n_times = data.shape
@@ -392,13 +392,13 @@ def _iterative_dss_deflation(
     *,
     max_iter: int,
     tol: float,
-    w_init: Optional[np.ndarray],
+    w_init: np.ndarray | None,
     verbose: bool,
-    alpha: Union[float, Callable, None] = None,
-    beta: Union[float, Callable, None] = None,
-    gamma: Union[float, Callable, None] = None,
-    random_state: Optional[Union[int, np.random.Generator]] = None,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    alpha: float | Callable | None = None,
+    beta: float | Callable | None = None,
+    gamma: float | Callable | None = None,
+    random_state: int | np.random.Generator | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Extract components one-by-one using deflation.
 
     **Algorithm**::
@@ -508,13 +508,13 @@ def _iterative_dss_symmetric(
     *,
     max_iter: int,
     tol: float,
-    w_init: Optional[np.ndarray],
+    w_init: np.ndarray | None,
     verbose: bool,
-    alpha: Union[float, Callable, None] = None,
-    beta: Union[float, Callable, None] = None,
-    gamma: Union[float, Callable, None] = None,
-    random_state: Optional[Union[int, np.random.Generator]] = None,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    alpha: float | Callable | None = None,
+    beta: float | Callable | None = None,
+    gamma: float | Callable | None = None,
+    random_state: int | np.random.Generator | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Extract components simultaneously with symmetric orthogonalization.
 
     **Algorithm**::
@@ -730,15 +730,15 @@ class IterativeDSS:
         n_components: int,
         *,
         method: str = "deflation",
-        rank: Optional[int] = None,
+        rank: int | None = None,
         reg: float = 1e-9,
         max_iter: int = 100,
         tol: float = 1e-6,
         verbose: bool = False,
-        alpha: Union[float, Callable, None] = None,
-        beta: Union[float, Callable, None] = None,
-        gamma: Union[float, Callable, None] = None,
-        random_state: Optional[Union[int, np.random.Generator]] = None,
+        alpha: float | Callable | None = None,
+        beta: float | Callable | None = None,
+        gamma: float | Callable | None = None,
+        random_state: int | np.random.Generator | None = None,
     ) -> None:
         self.denoiser = denoiser
         self.n_components = n_components
@@ -754,13 +754,13 @@ class IterativeDSS:
         self.random_state = random_state
 
         # Fitted attributes
-        self.filters_: Optional[np.ndarray] = None
-        self.patterns_: Optional[np.ndarray] = None
-        self.sources_: Optional[np.ndarray] = None
-        self.convergence_info_: Optional[np.ndarray] = None
+        self.filters_: np.ndarray | None = None
+        self.patterns_: np.ndarray | None = None
+        self.sources_: np.ndarray | None = None
+        self.convergence_info_: np.ndarray | None = None
         self._mne_info = None
 
-    def fit(self, X) -> "IterativeDSS":
+    def fit(self, X) -> IterativeDSS:
         """Compute Iterative DSS spatial filters.
 
         Parameters
@@ -777,14 +777,16 @@ class IterativeDSS:
         self : IterativeDSS
             The fitted transformer.
         """
-
         # Validate and extract data using shared helper
         data, _, mne_type, mne_info = extract_data_from_mne(X)
 
         # Store MNE info for later use if available
-        if mne_type in ("raw", "epochs") and mne_info is not None:
-             if hasattr(mne_info, "info"):
-                 self._mne_info = mne_info.info
+        if (
+            mne_type in ("raw", "epochs")
+            and mne_info is not None
+            and hasattr(mne_info, "info")
+        ):
+            self._mne_info = mne_info.info
 
         filters, sources, patterns, conv_info = iterative_dss(
             data,
@@ -827,9 +829,9 @@ class IterativeDSS:
 
         # Validate and extract data
         data, _, mne_type, _ = extract_data_from_mne(X)
-        
+
         original_shape = data.shape
-        
+
         if data.ndim == 3:
             n_epochs, n_channels, n_times = data.shape
             data_2d = data.transpose(1, 0, 2).reshape(n_channels, -1)

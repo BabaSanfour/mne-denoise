@@ -245,7 +245,6 @@ corr_dct = np.corrcoef(comp0_dct, drift)[0, 1]
 print(f"\nCorrelation with ground truth: {corr_dct:.3f}")
 
 
-
 # %%
 # Compare All Methods
 # ===================

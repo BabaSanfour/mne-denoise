@@ -8,7 +8,7 @@ components that carry power line artifacts (50/60 Hz and harmonics).
 
 References:
 
-- de Cheveigné, A. (2020). ZapLine: A simple and effective method to remove 
+- de Cheveigné, A. (2020). ZapLine: A simple and effective method to remove
   power line artifacts. NeuroImage, 207, 116356.
 - Klug, M., & Kloosterman, N. A. (2022). Zapline-plus: A Zapline extension for
   automatic and adaptive removal of frequency-specific noise artifacts in M/EEG.

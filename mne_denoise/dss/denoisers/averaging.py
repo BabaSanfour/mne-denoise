@@ -14,8 +14,6 @@ References
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 
 from .base import LinearDenoiser
@@ -43,12 +41,12 @@ class AverageBias(LinearDenoiser):
     >>> from mne_denoise.dss.denoisers import AverageBias
     >>> # For evoked response enhancement (like old TrialAverageBias)
     >>> epochs_data = np.random.randn(64, 100, 50)  # channels x times x trials
-    >>> bias = AverageBias(axis='epochs')
+    >>> bias = AverageBias(axis="epochs")
     >>> biased = bias.apply(epochs_data)
-    
+
     >>> # For group-level repeatability (like old JDSS)
     >>> group_data = np.random.randn(10, 64, 100)  # subjects x channels x times
-    >>> bias = AverageBias(axis='datasets')
+    >>> bias = AverageBias(axis="datasets")
     >>> biased = bias.apply(group_data)
 
     References
@@ -57,9 +55,7 @@ class AverageBias(LinearDenoiser):
     de Cheveigné & Parra (2014). Joint denoising source separation.
     """
 
-    def __init__(
-        self, axis: str = "epochs", weights: Optional[np.ndarray] = None
-    ) -> None:
+    def __init__(self, axis: str = "epochs", weights: np.ndarray | None = None) -> None:
         if axis not in ("epochs", "datasets"):
             raise ValueError(f"axis must be 'epochs' or 'datasets', got {axis!r}")
         self.axis = axis
@@ -113,11 +109,11 @@ class AverageBias(LinearDenoiser):
     def _apply_datasets(self, data: np.ndarray) -> np.ndarray:
         """Average across datasets."""
         if data.ndim != 3:
-             raise ValueError("AverageBias(axis='datasets') requires 3D data.")
-        
+            raise ValueError("AverageBias(axis='datasets') requires 3D data.")
+
         # Typically, for group DSS (JDSS), the input data shape might be
         # (n_datasets, n_channels, n_times). We assume axis=0 corresponds to datasets.
-        
+
         n_datasets, n_channels, n_times = data.shape
 
         if self.weights is not None:

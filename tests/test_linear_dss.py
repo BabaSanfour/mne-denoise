@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mne
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose
@@ -400,6 +401,7 @@ def test_dss_error_mask_length_mismatch():
 def test_dss_supports_rank_numpy():
     """DSS should support rank parameter with numpy arrays (no warning)."""
     import warnings
+
     rng = np.random.default_rng(42)
     data = rng.standard_normal((8, 500))
 
@@ -408,9 +410,11 @@ def test_dss_supports_rank_numpy():
         warnings.simplefilter("always")
         dss = DSS(bias=lambda x: x, n_components=3, rank=5)
         dss.fit(data)
-        
+
         # Filter out unrelated warnings if any (e.g. from MNE)
-        rank_warnings = [warning for warning in w if "rank" in str(warning.message).lower()]
+        rank_warnings = [
+            warning for warning in w if "rank" in str(warning.message).lower()
+        ]
         assert len(rank_warnings) == 0
 
 
@@ -476,8 +480,6 @@ def test_dss_evoked_workflow():
 # =============================================================================
 # MNE Integration Tests
 # =============================================================================
-
-import mne
 
 
 def test_dss_with_mne_raw():
@@ -730,7 +732,7 @@ def test_dss_mne_raw_extracts_line_noise():
     # Use line noise bias (notch method)
     from mne_denoise.dss.denoisers import LineNoiseBias
 
-    bias = LineNoiseBias(freq=50, sfreq=sfreq, method='iir', bandwidth=2)
+    bias = LineNoiseBias(freq=50, sfreq=sfreq, method="iir", bandwidth=2)
 
     dss = DSS(bias=bias, n_components=1, normalize_input=False)
     sources = dss.fit_transform(raw)

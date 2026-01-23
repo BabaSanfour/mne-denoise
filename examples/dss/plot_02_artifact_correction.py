@@ -19,6 +19,7 @@ Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
 # %%
 # Imports
 # -------
+import contextlib
 import os
 
 import matplotlib.pyplot as plt
@@ -27,7 +28,7 @@ import numpy as np
 from mne.datasets import sample
 from mne.preprocessing import create_ecg_epochs, create_eog_epochs
 
-from mne_denoise.dss import DSS, CycleAverageBias, AverageBias
+from mne_denoise.dss import DSS, AverageBias, CycleAverageBias
 from mne_denoise.viz import (
     plot_component_summary,
     plot_component_time_series,
@@ -47,10 +48,8 @@ print("Loading MNE Sample data...")
 home = os.path.expanduser("~")
 mne_data_path = os.path.join(home, "mne_data")
 if not os.path.exists(mne_data_path):
-    try:
+    with contextlib.suppress(OSError):
         os.makedirs(mne_data_path)
-    except OSError:
-        pass
 
 data_path = sample.data_path()
 raw_fname = data_path / "MEG" / "sample" / "sample_audvis_raw.fif"

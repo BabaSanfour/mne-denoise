@@ -9,8 +9,6 @@ Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 import numpy as np
 from numpy.linalg import LinAlgError
 
@@ -18,9 +16,9 @@ from numpy.linalg import LinAlgError
 def compute_whitener(
     cov: np.ndarray,
     *,
-    rank: Optional[int] = None,
+    rank: int | None = None,
     reg: float = 1e-9,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute whitening and de-whitening matrices from covariance.
 
     Parameters
@@ -97,9 +95,9 @@ def compute_whitener(
 def whiten_data(
     data: np.ndarray,
     *,
-    rank: Optional[int] = None,
+    rank: int | None = None,
     reg: float = 1e-9,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Whiten multichannel data using PCA.
 
     Parameters

@@ -15,8 +15,6 @@ References
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 from scipy import signal
 from scipy.ndimage import zoom
@@ -90,7 +88,7 @@ class SpectrogramBias(LinearDenoiser):
         self,
         mask: np.ndarray,
         nperseg: int = 256,
-        noverlap: Optional[int] = None,
+        noverlap: int | None = None,
     ) -> None:
         self.mask = mask
         self.nperseg = nperseg
@@ -163,8 +161,8 @@ class SpectrogramDenoiser(NonlinearDenoiser):
         self,
         threshold_percentile: float = 90.0,
         nperseg: int = 256,
-        noverlap: Optional[int] = None,
-        mask: Optional[np.ndarray] = None,
+        noverlap: int | None = None,
+        mask: np.ndarray | None = None,
     ) -> None:
         self.threshold_percentile = threshold_percentile
         self.nperseg = nperseg

@@ -23,10 +23,8 @@ Key components:
 6. **Fallback cleaning**: Notch filter fallback for cases where DSS-based
    cleaning is insufficient.
 
-Authors
--------
-Sina Esmaeili (sina.esmaeili@umontreal.ca)
-Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 
 References
 ----------
@@ -42,7 +40,6 @@ References
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Tuple
 
 import numpy as np
 from scipy import signal
@@ -56,6 +53,7 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
 # 1. CleanLine Utilities (Fallback cleanup)
 # -----------------------------------------------------------------------------
+
 
 def apply_cleanline_notch(
     data: np.ndarray,
@@ -95,18 +93,18 @@ def apply_cleanline_notch(
     nyquist = sfreq / 2
     low = (freq - bandwidth / 2) / nyquist
     high = (freq + bandwidth / 2) / nyquist
-    
+
     # Ensure within valid range
     low = max(0.001, min(low, 0.999))
     high = max(0.001, min(high, 0.999))
-    
+
     if low >= high:
         return data  # Cannot filter, return unchanged
-    
+
     # Use bandstop (notch) filter
-    sos = signal.butter(order, [low, high], btype='bandstop', output='sos')
+    sos = signal.butter(order, [low, high], btype="bandstop", output="sos")
     filtered = signal.sosfiltfilt(sos, data, axis=1)
-    
+
     return filtered
 
 
@@ -143,41 +141,42 @@ def apply_hybrid_cleanup(
         Cleaned data, or original data if cleaning would cause excessive
         signal loss.
     """
-    
     # Apply notch
     filtered = apply_cleanline_notch(data, sfreq, freq, bandwidth)
-    
+
     # Check spectral impact
     n_times = data.shape[1]
     n_fft = min(n_times, int(sfreq * 4))
-    
+
     freqs, psd_orig = welch(data, fs=sfreq, nperseg=n_fft, axis=-1)
     # Recompute only necessary parts if optimization needed, but welch is fast
     _, psd_filt = welch(filtered, fs=sfreq, nperseg=n_fft, axis=-1)
-    
+
     # Check power in surrounding frequencies (excluding notch region)
     surr_low = (freqs > freq - 3) & (freqs < freq - bandwidth)
     surr_high = (freqs > freq + bandwidth) & (freqs < freq + 3)
     surr_mask = surr_low | surr_high
-    
+
     if not np.any(surr_mask):
         return filtered  # Can't check, apply anyway
-    
+
     mean_orig = np.mean(psd_orig[:, surr_mask])
     mean_filt = np.mean(psd_filt[:, surr_mask])
-    
+
     # Power reduction in dB
     reduction_db = 10 * np.log10(mean_orig / max(mean_filt, 1e-20))
-    
+
     if reduction_db > max_power_reduction_db:
         # Cleanup would cause too much collateral damage
         return data
-    
+
     return filtered
+
 
 # -----------------------------------------------------------------------------
 # 2. Detection & Segmentation Components
 # -----------------------------------------------------------------------------
+
 
 def find_noise_freqs(
     data: np.ndarray,
@@ -186,7 +185,7 @@ def find_noise_freqs(
     fmax: float = 99.0,
     window_length: float = 6.0,
     threshold_factor: float = 4.0,
-) -> List[float]:
+) -> list[float]:
     """Detect noise frequencies using Welch PSD and outlier detection.
 
     Analyzes the power spectral density to find frequencies with abnormally
@@ -218,62 +217,57 @@ def find_noise_freqs(
     >>> print(f"Detected: {freqs}")  # e.g., [50.0, 60.0]
     """
     n_channels, n_times = data.shape
-    
+
     n_fft = min(n_times, int(sfreq * 4))
     if n_fft < 1024:
         n_fft = 1024
-        
+
     freqs, psd = welch(
-        data, 
-        fs=sfreq, 
-        window='hann', 
-        nperseg=n_fft, 
-        axis=-1, 
-        average='mean'
+        data, fs=sfreq, window="hann", nperseg=n_fft, axis=-1, average="mean"
     )
-    
+
     psd_log = 10 * np.log10(np.clip(psd, 1e-20, None))
     # Geometric mean over channels (mean in log space)
     mean_log_psd = np.mean(psd_log, axis=0)
-    
+
     mask = (freqs >= fmin) & (freqs <= fmax)
     search_freqs = freqs[mask]
     search_psd = mean_log_psd[mask]
-    
+
     if len(search_freqs) == 0:
         return []
 
     # Moving window outlier detection
     detected_freqs = []
-    
+
     freq_res = freqs[1] - freqs[0]
     win_samples = int(window_length / freq_res)
     half_win = win_samples // 2
-    
+
     peak_indices, _ = find_peaks(search_psd)
-    
+
     for idx_rel in peak_indices:
         idx_full = np.where(freqs == search_freqs[idx_rel])[0][0]
-        
+
         start_idx = max(0, idx_full - half_win)
         end_idx = min(len(freqs), idx_full + half_win)
-        
+
         window_psd = mean_log_psd[start_idx:end_idx]
-        
+
         n_win = len(window_psd)
         if n_win < 3:
             continue
-            
+
         n_third = n_win // 3
         left_third = window_psd[:n_third]
         right_third = window_psd[-n_third:]
-        
+
         center_level = np.mean(np.concatenate([left_third, right_third]))
         peak_val = mean_log_psd[idx_full]
-        
+
         if peak_val > center_level + threshold_factor:
             detected_freqs.append(freqs[idx_full])
-            
+
     return detected_freqs
 
 
@@ -283,7 +277,7 @@ def segment_data(
     target_freq: float,
     min_chunk_len: float = 30.0,
     cov_win_len: float = 1.0,
-) -> List[Tuple[int, int]]:
+) -> list[tuple[int, int]]:
     """Segment data into chunks based on covariance stationarity.
 
     Identifies boundaries where the noise characteristics change significantly
@@ -308,21 +302,21 @@ def segment_data(
         List of ``(start_sample, end_sample)`` tuples defining segment boundaries.
     """
     n_channels, n_times = data.shape
-    
+
     # 1. Filter around target freq
     f_low = target_freq - 3
     f_high = target_freq + 3
-    
-    sos = signal.butter(4, [f_low, f_high], btype='bandpass', fs=sfreq, output='sos')
+
+    sos = signal.butter(4, [f_low, f_high], btype="bandpass", fs=sfreq, output="sos")
     data_filt = signal.sosfiltfilt(sos, data, axis=1)
-    
+
     # 2. Compute covariance series
     n_win = int(cov_win_len * sfreq)
     if n_win > n_times:
         return [(0, n_times)]
-        
+
     n_steps = n_times // n_win
-    
+
     covs = []
     for i in range(n_steps):
         start = i * n_win
@@ -333,52 +327,48 @@ def segment_data(
         if tr > 1e-20:
             cov = cov / tr
         covs.append(cov)
-        
+
     covs = np.array(covs)
-    
+
     # 3. Successive distances
     dists = []
     for i in range(len(covs) - 1):
-        d = np.linalg.norm(covs[i] - covs[i+1], ord='fro')
+        d = np.linalg.norm(covs[i] - covs[i + 1], ord="fro")
         dists.append(d)
-        
+
     dists = np.array(dists)
-    
+
     if len(dists) == 0:
         return [(0, n_times)]
-        
+
     # 4. Detect peaks (boundaries)
-    peak_indices, _ = find_peaks(dists, prominence=np.std(dists)*0.5)
+    peak_indices, _ = find_peaks(dists, prominence=np.std(dists) * 0.5)
     boundary_indices = (peak_indices + 1) * n_win
-    
+
     # 5. Enforce min length
     valid_boundaries = [0]
     last_boundary = 0
     min_samples = int(min_chunk_len * sfreq)
-    
+
     for b in boundary_indices:
         if (b - last_boundary) >= min_samples:
             valid_boundaries.append(b)
             last_boundary = b
-            
-    if (n_times - last_boundary) < min_samples:
-        if len(valid_boundaries) > 1:
-            valid_boundaries.pop()
-            
+
+    if (n_times - last_boundary) < min_samples and len(valid_boundaries) > 1:
+        valid_boundaries.pop()
+
     valid_boundaries.append(n_times)
-    
+
     segments = []
     for i in range(len(valid_boundaries) - 1):
-        segments.append((valid_boundaries[i], valid_boundaries[i+1]))
-        
+        segments.append((valid_boundaries[i], valid_boundaries[i + 1]))
+
     return segments
 
 
 def find_fine_peak(
-    data: np.ndarray,
-    sfreq: float,
-    coarse_freq: float,
-    search_width: float = 0.05
+    data: np.ndarray, sfreq: float, coarse_freq: float, search_width: float = 0.05
 ) -> float:
     """Find the exact peak frequency within a narrow band.
 
@@ -406,19 +396,21 @@ def find_fine_peak(
     f_high = coarse_freq + search_width
     n_times = data.shape[1]
     n_fft = max(n_times, int(sfreq / 0.01))
-    
-    freqs, psd = welch(data, fs=sfreq, nperseg=min(n_times, 4*int(sfreq)), nfft=n_fft, axis=-1)
-    
+
+    freqs, psd = welch(
+        data, fs=sfreq, nperseg=min(n_times, 4 * int(sfreq)), nfft=n_fft, axis=-1
+    )
+
     psd_log = 10 * np.log10(np.clip(psd, 1e-20, None))
     mean_log_psd = np.mean(psd_log, axis=0)
-    
+
     mask = (freqs >= f_low) & (freqs <= f_high)
     search_freqs = freqs[mask]
     search_psd = mean_log_psd[mask]
-    
+
     if len(search_freqs) == 0:
         return coarse_freq
-        
+
     idx_max = np.argmax(search_psd)
     return search_freqs[idx_max]
 
@@ -450,37 +442,38 @@ def check_artifact_presence(
     n_times = data.shape[1]
     n_fft = min(n_times, int(sfreq * 4))
     freqs, psd = welch(data, fs=sfreq, nperseg=n_fft, axis=-1)
-    
+
     psd_log = 10 * np.log10(np.clip(psd, 1e-20, None))
     mean_log_psd = np.mean(psd_log, axis=0)
-    
+
     f_low = target_freq - 3
     f_high = target_freq + 3
-    
+
     idx_start = np.argmax(freqs >= f_low)
     idx_end = np.argmax(freqs > f_high)
-    if idx_end == 0: idx_end = len(freqs)
-    
+    if idx_end == 0:
+        idx_end = len(freqs)
+
     window_psd = mean_log_psd[idx_start:idx_end]
     if len(window_psd) < 3:
         return False
-        
+
     n_third = len(window_psd) // 3
     left_third = window_psd[:n_third]
     right_third = window_psd[-n_third:]
-    
+
     flanks = np.concatenate([left_third, right_third])
     center_power = np.mean(flanks)
-    
+
     q_left = np.percentile(left_third, 5)
     q_right = np.percentile(right_third, 5)
-    
+
     deviation = center_power - np.mean([q_left, q_right])
     threshold = center_power + 2 * deviation
-    
+
     idx_target = np.argmin(np.abs(freqs - target_freq))
     peak_val = mean_log_psd[idx_target]
-    
+
     return peak_val > threshold
 
 
@@ -488,10 +481,10 @@ def detect_harmonics(
     data: np.ndarray,
     sfreq: float,
     fundamental: float,
-    max_harmonics: Optional[int] = None,
+    max_harmonics: int | None = None,
     threshold_factor: float = 4.0,
     window_length: float = 6.0,
-) -> List[float]:
+) -> list[float]:
     """Detect harmonics of a fundamental frequency.
 
     Searches for spectral peaks at integer multiples of the fundamental
@@ -519,48 +512,48 @@ def detect_harmonics(
         List of detected harmonic frequencies in Hz.
     """
     nyquist = sfreq / 2
-    
+
     if max_harmonics is None:
         max_harmonics = int(np.floor(nyquist / fundamental)) - 1
-    
+
     detected = []
-    
+
     n_times = data.shape[1]
     n_fft = min(n_times, int(sfreq * 4))
     if n_fft < 1024:
         n_fft = 1024
-        
-    freqs, psd = welch(data, fs=sfreq, window='hann', nperseg=n_fft, axis=-1)
+
+    freqs, psd = welch(data, fs=sfreq, window="hann", nperseg=n_fft, axis=-1)
     psd_log = 10 * np.log10(np.clip(psd, 1e-20, None))
     mean_log_psd = np.mean(psd_log, axis=0)
-    
+
     freq_res = freqs[1] - freqs[0]
     win_samples = int(window_length / freq_res)
     half_win = win_samples // 2
-    
+
     for h in range(2, max_harmonics + 2):
         harmonic_freq = fundamental * h
         if harmonic_freq >= nyquist:
             break
-            
+
         idx_center = np.argmin(np.abs(freqs - harmonic_freq))
         start_idx = max(0, idx_center - half_win)
         end_idx = min(len(freqs), idx_center + half_win)
-        
+
         window_psd = mean_log_psd[start_idx:end_idx]
         if len(window_psd) < 3:
             continue
-            
+
         n_third = len(window_psd) // 3
         left_third = window_psd[:n_third]
         right_third = window_psd[-n_third:]
-        
+
         center_level = np.mean(np.concatenate([left_third, right_third]))
         peak_val = mean_log_psd[idx_center]
-        
+
         if peak_val > center_level + threshold_factor:
             detected.append(harmonic_freq)
-            
+
     return detected
 
 
@@ -592,45 +585,45 @@ def check_spectral_qa(data: np.ndarray, sfreq: float, target_freq: float) -> str
     n_times = data.shape[1]
     n_fft = min(n_times, int(sfreq * 4))
     freqs, psd = welch(data, fs=sfreq, nperseg=n_fft, axis=-1)
-    
+
     psd_log = 10 * np.log10(np.clip(psd, 1e-20, None))
     mean_log_psd = np.mean(psd_log, axis=0)
-    
+
     f_win_low = target_freq - 3
     f_win_high = target_freq + 3
-    
+
     mask_win = (freqs >= f_win_low) & (freqs <= f_win_high)
     win_psd = mean_log_psd[mask_win]
     if len(win_psd) < 3:
         return "ok"
-    
+
     n_third = len(win_psd) // 3
     left = win_psd[:n_third]
     right = win_psd[-n_third:]
     center_power = np.mean(np.concatenate([left, right]))
-    
+
     q_left = np.percentile(left, 5)
     q_right = np.percentile(right, 5)
     deviation = center_power - np.mean([q_left, q_right])
-    
+
     # Weak check
     f_tight_low = target_freq - 0.05
     f_tight_high = target_freq + 0.05
     mask_tight = (freqs >= f_tight_low) & (freqs <= f_tight_high)
     tight_psd = mean_log_psd[mask_tight]
     thresh_weak = center_power + 2 * deviation
-    
+
     if np.any(tight_psd > thresh_weak):
         return "weak"
-    
+
     # Strong check
     f_notch_low = target_freq - 0.4
     f_notch_high = target_freq + 0.1
     mask_notch = (freqs >= f_notch_low) & (freqs <= f_notch_high)
     notch_psd = mean_log_psd[mask_notch]
     thresh_strong = center_power - 2 * deviation
-    
+
     if np.any(notch_psd < thresh_strong):
         return "strong"
-    
+
     return "ok"

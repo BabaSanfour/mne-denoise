@@ -220,6 +220,7 @@ def test_dct_denoiser():
     residual_rms = np.std(denoised - signal_low)
     assert residual_rms < noise_rms * 0.1
 
+
 def test_dct_denoiser_2d_data():
     """Test DCTDenoiser with 2D epoched data."""
     rng = np.random.default_rng(42)

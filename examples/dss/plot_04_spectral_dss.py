@@ -213,7 +213,7 @@ print(f"Added {line_freq} Hz line noise + harmonics")
 # ---------------------------------------------
 
 # We use method='iir' to replicate a traditional Notch filter approach
-notch_bias_60 = LineNoiseBias(freq=60, sfreq=sfreq, method='iir', bandwidth=2)
+notch_bias_60 = LineNoiseBias(freq=60, sfreq=sfreq, method="iir", bandwidth=2)
 dss_notch = DSS(n_components=3, bias=notch_bias_60)
 dss_notch.fit(raw_noisy)
 

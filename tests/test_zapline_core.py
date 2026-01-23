@@ -9,6 +9,7 @@ from scipy import signal
 
 from mne_denoise.zapline.core import ZapLine
 
+
 @pytest.fixture
 def line_noise_data():
     """Generate synthetic data with 50 Hz line noise."""
@@ -20,7 +21,9 @@ def line_noise_data():
 
     # Clean brain-like signal (alpha oscillation + noise)
     brain_signal = np.sin(2 * np.pi * 10 * times) * 0.5  # 10 Hz alpha
-    brain_signal = brain_signal[np.newaxis, :] + rng.normal(0, 0.2, (n_channels, n_times))
+    brain_signal = brain_signal[np.newaxis, :] + rng.normal(
+        0, 0.2, (n_channels, n_times)
+    )
 
     # Line noise (50 Hz + harmonics) - STRONG and uniform spatial distribution
     line_50hz = np.sin(2 * np.pi * 50 * times) * 10.0  # Much stronger!
@@ -149,7 +152,7 @@ def test_dss_zapline_closed_sum_property(minimal_data):
     est = ZapLine(line_freq=50.0, sfreq=minimal_data["sfreq"])
     est = ZapLine(line_freq=50.0, sfreq=minimal_data["sfreq"])
     est.fit(data)
-    
+
     cleaned = est.transform(data)
     removed = data - cleaned
 
@@ -169,9 +172,7 @@ def test_zapline_n_remove_fixed(minimal_data):
 def test_zapline_n_remove_auto(minimal_data):
     """ZapLine auto should work (may remove 0 or more components)."""
     data = minimal_data["data"]
-    est = ZapLine(
-        line_freq=50.0, sfreq=minimal_data["sfreq"], n_remove="auto"
-    )
+    est = ZapLine(line_freq=50.0, sfreq=minimal_data["sfreq"], n_remove="auto")
     est.fit(data)
     cleaned = est.transform(data)
 
@@ -204,9 +205,7 @@ def test_zapline_with_harmonics(line_noise_data):
 def test_zapline_with_nkeep(minimal_data):
     """ZapLine should work with nkeep parameter."""
     data = minimal_data["data"]
-    est = ZapLine(
-        line_freq=50.0, sfreq=minimal_data["sfreq"], nkeep=2
-    )
+    est = ZapLine(line_freq=50.0, sfreq=minimal_data["sfreq"], nkeep=2)
     est.fit(data)
     cleaned = est.transform(data)
 
@@ -235,7 +234,6 @@ def test_zapline_60hz(minimal_data):
         f, psd = signal.welch(d, fs=fs, nperseg=int(fs), axis=-1)
         idx = np.argmin(np.abs(f - freq))
         return np.mean(psd[:, idx])
-
 
     power_before = get_power_at(data, 60.0, sfreq)
     power_after = get_power_at(cleaned, 60.0, sfreq)
@@ -267,9 +265,7 @@ def test_zapline_rank_parameter(minimal_data):
     """ZapLine should accept rank parameter."""
     data = minimal_data["data"]
     # Limit DSS rank to 2
-    est = ZapLine(
-        line_freq=50.0, sfreq=minimal_data["sfreq"], rank=2
-    )
+    est = ZapLine(line_freq=50.0, sfreq=minimal_data["sfreq"], rank=2)
     est.fit(data)
     cleaned = est.transform(data)
 
@@ -281,8 +277,8 @@ def test_zapline_error_1d_data():
     """ZapLine should raise error for 1D data."""
     data = np.random.randn(1000)
     est = ZapLine(line_freq=50.0, sfreq=250)
-    
-    with pytest.raises(Exception): 
+
+    with pytest.raises(Exception):
         est.fit(data)
 
 
@@ -320,7 +316,7 @@ def test_zapline_adaptive_fit_error():
     """ZapLine adaptive mode should raise error on fit()."""
     data = np.random.randn(4, 1000)
     est = ZapLine(line_freq=50.0, sfreq=250, adaptive=True)
-    
+
     with pytest.raises(RuntimeError, match="Adaptive mode requires"):
         est.fit(data)
 
@@ -330,20 +326,23 @@ def test_zapline_adaptive_transform_error():
     data = np.random.randn(4, 1000)
     est = ZapLine(line_freq=50.0, sfreq=250, adaptive=True)
     est.filters_ = np.eye(4)  # Fake fitted state
-    
+
     with pytest.raises(RuntimeError, match="Adaptive mode requires"):
         est.transform(data)
 
 
 def test_zapline_sfreq_mismatch_warning_fit():
     """ZapLine should warn on sfreq mismatch during fit."""
-    import mne    
+    import mne
+
     data = np.random.randn(4, 1000)
-    info = mne.create_info(ch_names=['EEG1', 'EEG2', 'EEG3', 'EEG4'], sfreq=500, ch_types='eeg')
+    info = mne.create_info(
+        ch_names=["EEG1", "EEG2", "EEG3", "EEG4"], sfreq=500, ch_types="eeg"
+    )
     raw = mne.io.RawArray(data, info)
-    
+
     est = ZapLine(line_freq=50.0, sfreq=250)  # Different sfreq
-    
+
     with pytest.warns(UserWarning, match="Input data sfreq"):
         est.fit(raw)
 
@@ -351,16 +350,18 @@ def test_zapline_sfreq_mismatch_warning_fit():
 def test_zapline_sfreq_mismatch_warning_transform():
     """ZapLine should warn on sfreq mismatch during transform."""
     import mne
-    
+
     # Fit on array first
     data = np.random.randn(4, 1000)
     est = ZapLine(line_freq=50.0, sfreq=250)
     est.fit(data)
-    
+
     # Transform with Raw that has different sfreq
-    info = mne.create_info(ch_names=['EEG1', 'EEG2', 'EEG3', 'EEG4'], sfreq=500, ch_types='eeg')
+    info = mne.create_info(
+        ch_names=["EEG1", "EEG2", "EEG3", "EEG4"], sfreq=500, ch_types="eeg"
+    )
     raw = mne.io.RawArray(data, info)
-    
+
     with pytest.warns(UserWarning, match="Input data sfreq"):
         est.transform(raw)
 
@@ -368,13 +369,15 @@ def test_zapline_sfreq_mismatch_warning_transform():
 def test_zapline_sfreq_mismatch_warning_fit_transform():
     """ZapLine should warn on sfreq mismatch during fit_transform."""
     import mne
-    
+
     data = np.random.randn(4, 1000)
-    info = mne.create_info(ch_names=['EEG1', 'EEG2', 'EEG3', 'EEG4'], sfreq=500, ch_types='eeg')
+    info = mne.create_info(
+        ch_names=["EEG1", "EEG2", "EEG3", "EEG4"], sfreq=500, ch_types="eeg"
+    )
     raw = mne.io.RawArray(data, info)
-    
+
     est = ZapLine(line_freq=50.0, sfreq=250)  # Different sfreq
-    
+
     with pytest.warns(UserWarning, match="Input data sfreq"):
         est.fit_transform(raw)
 
@@ -383,7 +386,7 @@ def test_zapline_fit_none_line_freq_error():
     """ZapLine fit() should raise error if line_freq is None."""
     data = np.random.randn(4, 1000)
     est = ZapLine(line_freq=None, sfreq=250)
-    
+
     with pytest.raises(ValueError, match="line_freq required"):
         est.fit(data)
 
@@ -392,7 +395,7 @@ def test_zapline_transform_not_fitted_error():
     """ZapLine transform() should raise error if not fitted."""
     data = np.random.randn(4, 1000)
     est = ZapLine(line_freq=50.0, sfreq=250)
-    
+
     with pytest.raises(RuntimeError, match="Not fitted"):
         est.transform(data)
 
@@ -404,15 +407,15 @@ def test_zapline_3d_data_fit_transform():
     n_epochs, n_ch, n_times = 5, 4, 500
     sfreq = 250
     times = np.arange(n_times) / sfreq
-    
+
     data = rng.normal(0, 1, (n_epochs, n_ch, n_times))
     # Add line noise
     data += np.sin(2 * np.pi * 50 * times) * 2.0
-    
+
     est = ZapLine(line_freq=50.0, sfreq=sfreq, n_remove=1)
     est.fit(data)
     cleaned = est.transform(data)
-    
+
     assert cleaned.shape == data.shape
 
 
@@ -422,20 +425,20 @@ def test_zapline_adaptive_3d_data():
     n_epochs, n_ch, n_times = 3, 4, 2500
     sfreq = 250
     times = np.arange(n_times) / sfreq
-    
+
     data = rng.normal(0, 0.5, (n_epochs, n_ch, n_times))
     data += np.sin(2 * np.pi * 50 * times) * 5.0
-    
+
     est = ZapLine(
         sfreq=sfreq,
         line_freq=50.0,
         adaptive=True,
-        adaptive_params={'min_chunk_len': 5.0}
+        adaptive_params={"min_chunk_len": 5.0},
     )
     cleaned = est.fit_transform(data)
-    
+
     assert cleaned.shape == data.shape
-    assert hasattr(est, 'adaptive_results_')
+    assert hasattr(est, "adaptive_results_")
 
 
 def test_zapline_adaptive_auto_detection():
@@ -444,19 +447,19 @@ def test_zapline_adaptive_auto_detection():
     sfreq = 250
     n_times = 7500  # 30s
     times = np.arange(n_times) / sfreq
-    
+
     data = rng.normal(0, 0.5, (4, n_times))
     # Add strong 50 Hz line noise
     data += np.sin(2 * np.pi * 50 * times) * 10.0
-    
+
     est = ZapLine(
         sfreq=sfreq,
         line_freq=None,  # Auto-detect
         adaptive=True,
-        adaptive_params={'fmin': 45, 'fmax': 55, 'min_chunk_len': 10.0}
+        adaptive_params={"fmin": 45, "fmax": 55, "min_chunk_len": 10.0},
     )
     cleaned = est.fit_transform(data)
-    
+
     assert cleaned.shape == data.shape
     assert est.adaptive_results_ is not None
 
@@ -466,18 +469,18 @@ def test_zapline_adaptive_no_detection():
     rng = np.random.default_rng(42)
     sfreq = 250
     n_times = 7500
-    
+
     # Clean data with no line noise
     data = rng.normal(0, 1, (4, n_times))
-    
+
     est = ZapLine(
         sfreq=sfreq,
         line_freq=None,
         adaptive=True,
-        adaptive_params={'fmin': 45, 'fmax': 55, 'min_chunk_len': 10.0}
+        adaptive_params={"fmin": 45, "fmax": 55, "min_chunk_len": 10.0},
     )
     cleaned = est.fit_transform(data)
-    
+
     # Should return data mostly unchanged
     assert cleaned.shape == data.shape
 
@@ -488,24 +491,24 @@ def test_zapline_adaptive_with_harmonics():
     sfreq = 500
     n_times = 15000  # 30s
     times = np.arange(n_times) / sfreq
-    
+
     data = rng.normal(0, 0.5, (4, n_times))
     # Add 50 Hz and 100 Hz harmonics
     data += np.sin(2 * np.pi * 50 * times) * 10.0
     data += np.sin(2 * np.pi * 100 * times) * 5.0
-    
+
     est = ZapLine(
         sfreq=sfreq,
         line_freq=50.0,
         adaptive=True,
         adaptive_params={
-            'process_harmonics': True,
-            'max_harmonics': 2,
-            'min_chunk_len': 10.0
-        }
+            "process_harmonics": True,
+            "max_harmonics": 2,
+            "min_chunk_len": 10.0,
+        },
     )
     cleaned = est.fit_transform(data)
-    
+
     assert cleaned.shape == data.shape
 
 
@@ -515,19 +518,16 @@ def test_zapline_adaptive_hybrid_fallback():
     sfreq = 250
     n_times = 7500
     times = np.arange(n_times) / sfreq
-    
+
     data = rng.normal(0, 0.5, (4, n_times))
     data += np.sin(2 * np.pi * 50 * times) * 2.0  # Moderate noise
-    
+
     est = ZapLine(
         sfreq=sfreq,
         line_freq=50.0,
         adaptive=True,
-        adaptive_params={
-            'hybrid_fallback': True,
-            'min_chunk_len': 10.0
-        }
+        adaptive_params={"hybrid_fallback": True, "min_chunk_len": 10.0},
     )
     cleaned = est.fit_transform(data)
-    
+
     assert cleaned.shape == data.shape

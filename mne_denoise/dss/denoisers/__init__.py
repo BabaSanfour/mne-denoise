@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from .artifact import CycleAverageBias
-from .base import LinearDenoiser, NonlinearDenoiser
 from .averaging import AverageBias
+from .base import LinearDenoiser, NonlinearDenoiser
 from .ica import (
     GaussDenoiser,
     KurtosisDenoiser,

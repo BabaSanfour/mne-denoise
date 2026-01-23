@@ -118,7 +118,7 @@ def plot_score_curve(estimator, mode="raw", ax=None, show=True):
     Examples
     --------
     >>> from mne_denoise.viz import plot_score_curve
-    >>> plot_score_curve(dss, mode='cumulative')
+    >>> plot_score_curve(dss, mode="cumulative")
     """
     scores = _get_scores(estimator)
     if scores is None:

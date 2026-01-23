@@ -6,7 +6,7 @@
 
 Computation times
 =================
-**04:50.250** total execution time for 12 files **from all galleries**:
+**00:03.356** total execution time for 17 files **from all galleries**:
 
 .. container::
 
@@ -32,16 +32,28 @@ Computation times
    * - Example
      - Time
      - Mem (MB)
-   * - :ref:`sphx_glr_auto_examples_dss_plot_03_evoked_responses.py` (``../examples/dss/plot_03_evoked_responses.py``)
-     - 02:09.226
+   * - :ref:`sphx_glr_auto_examples_zapline_plot_05_adaptive_advanced.py` (``../examples/zapline/plot_05_adaptive_advanced.py``)
+     - 00:01.770
      - 0.0
-   * - :ref:`sphx_glr_auto_examples_dss_plot_04_spectral_dss.py` (``../examples/dss/plot_04_spectral_dss.py``)
-     - 01:58.524
+   * - :ref:`sphx_glr_auto_examples_zapline_plot_02_parameter_tuning.py` (``../examples/zapline/plot_02_parameter_tuning.py``)
+     - 00:01.176
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_zapline_plot_03_epoched_data.py` (``../examples/zapline/plot_03_epoched_data.py``)
+     - 00:00.404
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_dss_plot_12_joint_dss.py` (``../examples/dss/plot_12_joint_dss.py``)
+     - 00:00.006
      - 0.0
    * - :ref:`sphx_glr_auto_examples_dss_plot_01_dss_fundamentals.py` (``../examples/dss/plot_01_dss_fundamentals.py``)
-     - 00:42.500
+     - 00:00.000
      - 0.0
    * - :ref:`sphx_glr_auto_examples_dss_plot_02_artifact_correction.py` (``../examples/dss/plot_02_artifact_correction.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_dss_plot_03_evoked_responses.py` (``../examples/dss/plot_03_evoked_responses.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_dss_plot_04_spectral_dss.py` (``../examples/dss/plot_04_spectral_dss.py``)
      - 00:00.000
      - 0.0
    * - :ref:`sphx_glr_auto_examples_dss_plot_05_periodic_dss.py` (``../examples/dss/plot_05_periodic_dss.py``)
@@ -65,6 +77,9 @@ Computation times
    * - :ref:`sphx_glr_auto_examples_dss_plot_11_wiener_masking.py` (``../examples/dss/plot_11_wiener_masking.py``)
      - 00:00.000
      - 0.0
-   * - :ref:`sphx_glr_auto_examples_robust_dss_tutorial.py` (``../examples/robust_dss_tutorial.py``)
+   * - :ref:`sphx_glr_auto_examples_zapline_plot_01_basic_usage.py` (``../examples/zapline/plot_01_basic_usage.py``)
+     - 00:00.000
+     - 0.0
+   * - :ref:`sphx_glr_auto_examples_zapline_plot_04_adaptive_mode.py` (``../examples/zapline/plot_04_adaptive_mode.py``)
      - 00:00.000
      - 0.0

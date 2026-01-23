@@ -46,7 +46,9 @@ def test_average_bias_epochs_errors():
     # 2D input should fail (expects epoched)
     data = np.zeros((2, 10))
     # Note: Error message changed to "AverageBias(axis='epochs') requires 3D data" in source
-    with pytest.raises(ValueError, match="AverageBias.*axis='epochs'.*requires 3D data"):
+    with pytest.raises(
+        ValueError, match="AverageBias.*axis='epochs'.*requires 3D data"
+    ):
         bias.apply(data)
 
 
@@ -58,4 +60,3 @@ def test_average_bias_weight_mismatch():
     bias = AverageBias(axis="epochs", weights=weights)
     with pytest.raises(ValueError, match="weights length.*must match"):
         bias.apply(data)
-

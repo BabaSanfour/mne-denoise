@@ -9,8 +9,6 @@ Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 
 
@@ -18,8 +16,8 @@ def compute_covariance(
     data: np.ndarray,
     *,
     method: str = "empirical",
-    shrinkage: Optional[float] = None,
-    weights: Optional[np.ndarray] = None,
+    shrinkage: float | None = None,
+    weights: np.ndarray | None = None,
 ) -> np.ndarray:
     """Compute covariance matrix.
 

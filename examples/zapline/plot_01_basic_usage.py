@@ -29,12 +29,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal
 
-from mne_denoise.zapline import ZapLine
 from mne_denoise.viz.zapline import (
-    plot_psd_comparison,
-    plot_component_scores,
     plot_cleaning_summary,
+    plot_component_scores,
+    plot_psd_comparison,
 )
+from mne_denoise.zapline import ZapLine
 
 # %%
 # Part 1: Synthetic Data
@@ -64,7 +64,7 @@ rng = np.random.RandomState(42)
 neural_pattern = rng.randn(n_channels)
 neural_pattern /= np.linalg.norm(neural_pattern)
 
-# Line noise has a different spatial pattern  
+# Line noise has a different spatial pattern
 line_pattern = rng.randn(n_channels)
 line_pattern /= np.linalg.norm(line_pattern)
 
@@ -82,7 +82,7 @@ for i in range(n_channels):
     )
 
 print(f"Data shape: {data.shape}")
-print(f"Signal: 10 Hz neural + 50 Hz line noise + white noise")
+print("Signal: 10 Hz neural + 50 Hz line noise + white noise")
 
 # %%
 # Visualize Original Data
@@ -162,7 +162,11 @@ plot_cleaning_summary(data, cleaned, est, sfreq, line_freq=50, show=True)
 # Measure the power reduction at 50 Hz.
 
 idx_50 = np.argmin(np.abs(freqs - 50))
+idx_50 = np.argmin(np.abs(freqs - 50))
 idx_10 = np.argmin(np.abs(freqs - 10))
+
+_, psd_orig = signal.welch(data, sfreq, nperseg=sfreq)
+_, psd_clean = signal.welch(cleaned, sfreq, nperseg=sfreq)
 
 power_50_orig = np.mean(psd_orig[:, idx_50])
 power_50_clean = np.mean(psd_clean[:, idx_50])
@@ -172,7 +176,7 @@ power_10_clean = np.mean(psd_clean[:, idx_10])
 reduction_50_db = 10 * np.log10(power_50_orig / power_50_clean)
 preservation_10 = power_10_clean / power_10_orig * 100
 
-print(f"\n=== Results ===")
+print("\n=== Results ===")
 print(f"50 Hz power reduction: {reduction_50_db:.1f} dB")
 print(f"10 Hz power preserved: {preservation_10:.1f}%")
 
@@ -186,9 +190,9 @@ print("\n\nPart 2: Multi-Harmonic Line Noise")
 
 # Add harmonics
 line_source_harmonics = (
-    2.0 * np.sin(2 * np.pi * 50 * t)       # 50 Hz
-    + 1.0 * np.sin(2 * np.pi * 100 * t)    # 100 Hz (2nd harmonic)
-    + 0.5 * np.sin(2 * np.pi * 150 * t)    # 150 Hz (3rd harmonic)
+    2.0 * np.sin(2 * np.pi * 50 * t)  # 50 Hz
+    + 1.0 * np.sin(2 * np.pi * 100 * t)  # 100 Hz (2nd harmonic)
+    + 0.5 * np.sin(2 * np.pi * 150 * t)  # 150 Hz (3rd harmonic)
 )
 
 data_harmonics = np.zeros((n_channels, n_times))

@@ -16,8 +16,8 @@ The adaptive mode (ZapLine-plus) extends this with:
 - Data segmentation based on covariance stationarity
 - Per-segment adaptive parameter tuning
 
-Authors Sina Esmaeili (sina.esmaeili@umontreal.ca)
-        Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
+Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
+         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
 
 References
 ----------
@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import logging
 import warnings
-from typing import Any, Dict, Optional, Union
 
 import numpy as np
 
@@ -160,7 +159,7 @@ class ZapLine(DSS):
 
     Using automatic component selection:
 
-    >>> zapline = ZapLine(sfreq=1000, line_freq=60.0, n_remove='auto')
+    >>> zapline = ZapLine(sfreq=1000, line_freq=60.0, n_remove="auto")
     >>> zapline.fit(data)
     >>> print(f"Removed {zapline.n_removed_} components")
     >>> cleaned = zapline.transform(data)
@@ -178,20 +177,20 @@ class ZapLine(DSS):
            for automatic and adaptive removal of frequency-specific noise artifacts
            in M/EEG. Human Brain Mapping, 43(9), 2743-2758.
     """
-    
+
     def __init__(
         self,
         sfreq: float,
-        line_freq: Optional[float] = 60.0,
-        n_remove: Union[int, str] = "auto",
-        n_harmonics: Optional[int] = None,
+        line_freq: float | None = 60.0,
+        n_remove: int | str = "auto",
+        n_harmonics: int | None = None,
         nfft: int = 1024,
-        nkeep: Optional[int] = None,
-        rank: Optional[int] = None,
+        nkeep: int | None = None,
+        rank: int | None = None,
         reg: float = 1e-9,
         threshold: float = 3.0,
         adaptive: bool = False,
-        adaptive_params: Optional[dict] = None,
+        adaptive_params: dict | None = None,
     ):
         self.sfreq = float(sfreq)
         self.line_freq = float(line_freq) if line_freq is not None else None
@@ -202,7 +201,7 @@ class ZapLine(DSS):
         self.threshold = threshold
         self.adaptive = adaptive
         self.adaptive_params = adaptive_params if adaptive_params is not None else {}
-        
+
         # Initialize DSS Bias immediately if line_freq is known and valid
         if self.line_freq is not None and self.line_freq > 0:
             self.bias = LineNoiseBias(
@@ -220,13 +219,9 @@ class ZapLine(DSS):
 
         # Initialize DSS parent with our bias
         super().__init__(
-            bias=self.bias, 
-            n_components=None, 
-            rank=rank, 
-            reg=reg, 
-            normalize_input=False
+            bias=self.bias, n_components=None, rank=rank, reg=reg, normalize_input=False
         )
-        
+
         self.n_removed_ = None
         self.adaptive_results_ = None
 
@@ -272,13 +267,14 @@ class ZapLine(DSS):
             )
 
         data, extracted_sfreq, _, _ = extract_data_from_mne(X)
-        
+
         # Validate sfreq consistency
         if extracted_sfreq is not None and not np.isclose(extracted_sfreq, self.sfreq):
-             warnings.warn(
-                  f"Input data sfreq ({extracted_sfreq}) differs from init sfreq ({self.sfreq}). "
-                  "Using init sfreq. Please verify your data or init parameters."
-             )
+            warnings.warn(
+                f"Input data sfreq ({extracted_sfreq}) differs from init sfreq ({self.sfreq}). "
+                "Using init sfreq. Please verify your data or init parameters.",
+                stacklevel=2,
+            )
 
         # Confirm line_freq is set
         if self.line_freq is None:
@@ -286,11 +282,11 @@ class ZapLine(DSS):
 
         # Handle 3D
         if data.ndim == 3:
-             n_ep, n_ch, n_t = data.shape
-             data_cont = np.transpose(data, (1, 0, 2)).reshape(n_ch, -1)
+            n_ep, n_ch, n_t = data.shape
+            data_cont = np.transpose(data, (1, 0, 2)).reshape(n_ch, -1)
         else:
-             data_cont = data
-        
+            data_cont = data
+
         # Run core fitting logic
         self._fit_dss(data_cont)
 
@@ -326,7 +322,7 @@ class ZapLine(DSS):
         fit_transform : Fit and transform in one step.
         """
         if self.adaptive:
-             raise RuntimeError(
+            raise RuntimeError(
                 "Adaptive mode requires simultaneous fit and transform (local chunks). "
                 "Use fit_transform() instead."
             )
@@ -334,16 +330,17 @@ class ZapLine(DSS):
         # Check if fitted
         if self.filters_ is None:
             raise RuntimeError("Not fitted")
-            
+
         data, extracted_sfreq, mne_type, orig_inst = extract_data_from_mne(X)
-        
+
         # Validate sfreq consistency
         if extracted_sfreq is not None and not np.isclose(extracted_sfreq, self.sfreq):
-             warnings.warn(
-                  f"Input data sfreq ({extracted_sfreq}) differs from init sfreq ({self.sfreq}). "
-                  "Using init sfreq."
-             )
-        
+            warnings.warn(
+                f"Input data sfreq ({extracted_sfreq}) differs from init sfreq ({self.sfreq}). "
+                "Using init sfreq.",
+                stacklevel=2,
+            )
+
         # Standard Transform
         if data.ndim == 3:
             n_ep, n_ch, n_t = data.shape
@@ -352,7 +349,7 @@ class ZapLine(DSS):
             cleaned = cleaned_cont.reshape(n_ch, n_ep, n_t).transpose(1, 0, 2)
         else:
             cleaned = self._apply_standard_cleaning(data)
-            
+
         return reconstruct_mne_object(cleaned, orig_inst, mne_type)
 
     def fit_transform(self, X, y=None, **fit_params):
@@ -392,35 +389,36 @@ class ZapLine(DSS):
         - ``chunk_info``: List of per-chunk processing information
         """
         data, extracted_sfreq, mne_type, orig_inst = extract_data_from_mne(X)
-        
+
         if extracted_sfreq is not None and not np.isclose(extracted_sfreq, self.sfreq):
-             warnings.warn(
-                  f"Input data sfreq ({extracted_sfreq}) differs from init sfreq ({self.sfreq}). "
-                  "Using init sfreq."
-             )
-        
+            warnings.warn(
+                f"Input data sfreq ({extracted_sfreq}) differs from init sfreq ({self.sfreq}). "
+                "Using init sfreq.",
+                stacklevel=2,
+            )
+
         if self.adaptive:
-             # Adaptive logic (ZapLine-plus)
+            # Adaptive logic (ZapLine-plus)
             if data.ndim == 3:
-                 n_ep, n_ch, n_t = data.shape
-                 data_cont = np.transpose(data, (1, 0, 2)).reshape(n_ch, -1)
+                n_ep, n_ch, n_t = data.shape
+                data_cont = np.transpose(data, (1, 0, 2)).reshape(n_ch, -1)
             else:
-                 n_ch, n_t = data.shape
-                 data_cont = data
+                n_ch, n_t = data.shape
+                data_cont = data
 
             # Run adaptive orchestration as instance method
             res = self._run_adaptive(data_cont)
-            
+
             self.adaptive_results_ = res
             cleaned = res["cleaned"]
-            
+
             if data.ndim == 3:
-                 cleaned = cleaned.reshape(n_ch, n_ep, n_t).transpose(1, 0, 2)
-            
+                cleaned = cleaned.reshape(n_ch, n_ep, n_t).transpose(1, 0, 2)
+
             return reconstruct_mne_object(cleaned, orig_inst, mne_type)
         else:
-             # Standard logic
-             return super().fit_transform(X, y=y, **fit_params)
+            # Standard logic
+            return super().fit_transform(X, y=y, **fit_params)
 
     def _fit_dss(self, data: np.ndarray):
         """Fit DSS spatial filters to residual data.
@@ -442,7 +440,7 @@ class ZapLine(DSS):
         # 2. Setup (Rank)
         dss_rank = self.nkeep if self.nkeep is not None else self.rank
         self.rank = dss_rank
-        
+
         # 3. Call DSS fit on Residual
         if self.bias is None:
             self.filters_ = np.zeros((0, data.shape[0]))
@@ -452,17 +450,19 @@ class ZapLine(DSS):
             return
 
         super().fit(data_residual)
-        
+
         # 4. Determine n_remove
         if self.n_remove == "auto":
-            self.n_removed_ = iterative_outlier_removal(self.eigenvalues_, self.threshold)
+            self.n_removed_ = iterative_outlier_removal(
+                self.eigenvalues_, self.threshold
+            )
         else:
             self.n_removed_ = min(int(self.n_remove), len(self.eigenvalues_))
 
         # 5. Truncate filters to keep ONLY the noise components
         # Note: we discard self.patterns_ from DSS and compute strictly using filters
         if self.n_removed_ > 0:
-            self.filters_ = self.filters_[:self.n_removed_]
+            self.filters_ = self.filters_[: self.n_removed_]
             # Use pseudo-inverse for robust reconstruction projection
             # ZapLine strategy: project OUT the subspace spanned by filters
             self.patterns_ = np.linalg.pinv(self.filters_)
@@ -491,7 +491,7 @@ class ZapLine(DSS):
 
         # 1. Smooth
         data_smooth, data_residual = self._get_smooth_residual(data, warn=False)
-        
+
         # 2. Extract artifact sources using fitted filters (manual to avoid recentering)
         # DSS filters are spatial (n_comp, n_ch).
         # data_residual is (n_ch, n_times).
@@ -500,12 +500,12 @@ class ZapLine(DSS):
         # 3. Project back to artifact
         # patterns_ is (n_ch, n_comp).
         artifact = self.patterns_ @ sources
-        
+
         # 4. Subtract artifact from residual, add back smooth
         cleaned = data_smooth + (data_residual - artifact)
-        
+
         return cleaned
-        
+
     def _get_smooth_residual(self, data: np.ndarray, warn: bool = False):
         """Decompose data into smooth and residual components.
 
@@ -531,16 +531,17 @@ class ZapLine(DSS):
         # Check integrity
         if self.line_freq is None or self.line_freq == 0:
             # Should not happen in standard mode, effectively no cleaning
-             return data, np.zeros_like(data)
+            return data, np.zeros_like(data)
 
         period = int(round(self.sfreq / self.line_freq))
         if warn and abs(self.sfreq / self.line_freq - period) > 0.1:
             warnings.warn(
-                f"sfreq/line_freq = {self.sfreq/self.line_freq:.2f} is not close to an integer. "
+                f"sfreq/line_freq = {self.sfreq / self.line_freq:.2f} is not close to an integer. "
                 f"Smoothing will use period={period} samples.",
                 UserWarning,
+                stacklevel=2,
             )
-        
+
         smoother = SmoothingBias(window=period, iterations=1)
         data_smooth = smoother.apply(data)
         data_residual = data - data_smooth
@@ -552,17 +553,17 @@ class ZapLine(DSS):
 
     def _run_adaptive(self, data: np.ndarray) -> dict:
         """Run ZapLine-plus adaptive algorithm.
-        
+
         Orchestrates:
         1. Noise frequency detection (if line_freq is None)
         2. Data segmentation based on covariance stationarity
         3. Per-chunk processing with QA loop
-        
+
         Parameters
         ----------
         data : ndarray (n_channels, n_times)
             Continuous data.
-            
+
         Returns
         -------
         results : dict
@@ -570,30 +571,30 @@ class ZapLine(DSS):
         """
         n_channels, n_times = data.shape
         params = self.adaptive_params.copy()
-        
+
         # Extract params with defaults
-        fmin = params.get('fmin', 17.0)
-        fmax = params.get('fmax', 99.0)
-        n_remove_params = params.get('n_remove_params', {})
-        qa_params = params.get('qa_params', {})
-        process_harmonics = params.get('process_harmonics', False)
-        max_harmonics = params.get('max_harmonics', None)
-        hybrid_fallback = params.get('hybrid_fallback', False)
-        min_chunk_len = params.get('min_chunk_len', 30.0)
-        
-        sigma_init = n_remove_params.get('sigma', 3.0)
-        min_remove = n_remove_params.get('min_remove', 1)
-        max_prop_remove = n_remove_params.get('max_prop', 0.2)
-        
+        fmin = params.get("fmin", 17.0)
+        fmax = params.get("fmax", 99.0)
+        n_remove_params = params.get("n_remove_params", {})
+        qa_params = params.get("qa_params", {})
+        process_harmonics = params.get("process_harmonics", False)
+        max_harmonics = params.get("max_harmonics", None)
+        hybrid_fallback = params.get("hybrid_fallback", False)
+        min_chunk_len = params.get("min_chunk_len", 30.0)
+
+        sigma_init = n_remove_params.get("sigma", 3.0)
+        min_remove = n_remove_params.get("min_remove", 1)
+        max_prop_remove = n_remove_params.get("max_prop", 0.2)
+
         # 1. Automatic frequency detection
         line_freqs = self.line_freq
         if line_freqs is None:
             logger.info("Detecting line noise frequencies...")
             line_freqs = find_noise_freqs(data, self.sfreq, fmin=fmin, fmax=fmax)
             logger.info(f"Detected: {line_freqs}")
-        elif isinstance(line_freqs, (int, float)):
+        elif isinstance(line_freqs, int | float):
             line_freqs = [float(line_freqs)]
-        
+
         # Quick exit if nothing to clean
         if not line_freqs:
             return {
@@ -603,57 +604,70 @@ class ZapLine(DSS):
                 "line_freq": 0.0,
                 "chunk_info": [],
             }
-        
+
         current_data = data.copy()
         all_chunk_metadata = []
-        
+
         # Collect all target frequencies
         all_freqs_to_process = []
         for lfreq in line_freqs:
             all_freqs_to_process.append(lfreq)
             if process_harmonics:
-                harmonics = detect_harmonics(current_data, self.sfreq, lfreq, max_harmonics)
+                harmonics = detect_harmonics(
+                    current_data, self.sfreq, lfreq, max_harmonics
+                )
                 all_freqs_to_process.extend(harmonics)
-        
+
         # Process each frequency sequentially
         for target_freq in all_freqs_to_process:
-            segments = segment_data(current_data, self.sfreq, target_freq=target_freq, 
-                                   min_chunk_len=min_chunk_len)
-            
+            segments = segment_data(
+                current_data,
+                self.sfreq,
+                target_freq=target_freq,
+                min_chunk_len=min_chunk_len,
+            )
+
             # Process each segment
             cleaned_chunks = []
-            for seg_idx, (start, end) in enumerate(segments):
+            for _seg_idx, (start, end) in enumerate(segments):
                 chunk = current_data[:, start:end]
-                
+
                 res = self._process_chunk(
-                    chunk, target_freq, sigma_init, min_remove, 
-                    max_prop_remove, qa_params, hybrid_fallback
+                    chunk,
+                    target_freq,
+                    sigma_init,
+                    min_remove,
+                    max_prop_remove,
+                    qa_params,
+                    hybrid_fallback,
                 )
-                
+
                 cleaned_chunks.append(res["cleaned"])
-                all_chunk_metadata.append({
-                    'frequency': target_freq,
-                    'fine_freq': res["fine_freq"],
-                    'start': start,
-                    'end': end,
-                    'n_removed': res["n_removed"],
-                    'artifact_present': res["present"],
-                })
-            
+                all_chunk_metadata.append(
+                    {
+                        "frequency": target_freq,
+                        "fine_freq": res["fine_freq"],
+                        "start": start,
+                        "end": end,
+                        "n_removed": res["n_removed"],
+                        "artifact_present": res["present"],
+                    }
+                )
+
             if cleaned_chunks:
                 current_data = np.concatenate(cleaned_chunks, axis=1)
-        
+
         return {
             "cleaned": current_data,
             "removed": data - current_data,
-            "n_removed": sum(c.get('n_removed', 0) for c in all_chunk_metadata),
+            "n_removed": sum(c.get("n_removed", 0) for c in all_chunk_metadata),
             "line_freq": line_freqs[0] if line_freqs else 0,
             "chunk_info": all_chunk_metadata,
         }
 
     def _process_chunk(
-        self, 
-        chunk: np.ndarray, 
+        self,
+        chunk: np.ndarray,
         target_freq: float,
         sigma_init: float,
         min_remove: int,
@@ -662,7 +676,7 @@ class ZapLine(DSS):
         hybrid_fallback: bool,
     ) -> dict:
         """Process a single chunk with QA loop.
-        
+
         Parameters
         ----------
         chunk : ndarray (n_channels, n_times)
@@ -679,63 +693,63 @@ class ZapLine(DSS):
             QA parameters (max_sigma, min_sigma).
         hybrid_fallback : bool
             Whether to use notch fallback for weak cleaning.
-            
+
         Returns
         -------
         result : dict
             Contains 'cleaned', 'n_removed', 'fine_freq', 'present'.
         """
-        max_sigma = qa_params.get('max_sigma', 4.0)
-        min_sigma = qa_params.get('min_sigma', 2.5)
-        
+        max_sigma = qa_params.get("max_sigma", 4.0)
+        min_sigma = qa_params.get("min_sigma", 2.5)
+
         n_channels = chunk.shape[0]
         fine_freq = find_fine_peak(chunk, self.sfreq, target_freq)
         present = check_artifact_presence(chunk, self.sfreq, fine_freq)
-        
+
         current_sigma = sigma_init
         current_min_remove = min_remove if present else 0
-        
+
         best_chunk_clean = None
         is_too_strong = False
         status = "ok"
-        
+
         max_retries = 5
         res_n_removed = 0
         res_cleaned = chunk.copy()
-        
-        for retry in range(max_retries):
+
+        for _retry in range(max_retries):
             # Create fresh ZapLine for this chunk
             est = ZapLine(
                 sfreq=self.sfreq,
                 line_freq=fine_freq,
-                n_remove='auto',
+                n_remove="auto",
                 threshold=current_sigma,
-                adaptive=False
+                adaptive=False,
             )
-            
+
             est.fit(chunk)
             res_cleaned = est.transform(chunk)
             res_n_removed = est.n_removed_
-            
+
             # Apply constraints
             max_rem_cap = int(n_channels * max_prop_remove)
             n_rem = min(res_n_removed, max_rem_cap)
             n_rem = max(n_rem, current_min_remove)
-            
+
             # Refit if constraints changed n_removed
             if n_rem != res_n_removed:
                 est = ZapLine(
                     sfreq=self.sfreq,
                     line_freq=fine_freq,
                     n_remove=int(n_rem),
-                    adaptive=False
+                    adaptive=False,
                 )
                 est.fit(chunk)
                 res_cleaned = est.transform(chunk)
                 res_n_removed = est.n_removed_
-            
+
             status = check_spectral_qa(res_cleaned, self.sfreq, fine_freq)
-            
+
             if status == "ok":
                 best_chunk_clean = res_cleaned
                 break
@@ -750,13 +764,15 @@ class ZapLine(DSS):
                 is_too_strong = True
                 current_sigma = min(current_sigma + 0.25, max_sigma)
                 current_min_remove = max(current_min_remove - 1, 0)
-        
+
         if best_chunk_clean is None:
             best_chunk_clean = res_cleaned
-        
+
         if hybrid_fallback and status == "weak":
-            best_chunk_clean = apply_hybrid_cleanup(best_chunk_clean, self.sfreq, fine_freq)
-        
+            best_chunk_clean = apply_hybrid_cleanup(
+                best_chunk_clean, self.sfreq, fine_freq
+            )
+
         return {
             "cleaned": best_chunk_clean,
             "n_removed": res_n_removed,

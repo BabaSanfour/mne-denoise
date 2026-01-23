@@ -23,10 +23,12 @@ from .components import (
 from .zapline import (
     plot_cleaning_summary,
     plot_component_scores,
-    plot_spatial_patterns as plot_zapline_patterns,
     plot_zapline_analytics,
 )
 from .zapline import plot_psd_comparison as plot_zapline_psd_comparison
+from .zapline import (
+    plot_spatial_patterns as plot_zapline_patterns,
+)
 
 __all__ = [
     # Component plots
@@ -54,4 +56,3 @@ __all__ = [
     "plot_zapline_patterns",
     "plot_zapline_psd_comparison",
 ]
-

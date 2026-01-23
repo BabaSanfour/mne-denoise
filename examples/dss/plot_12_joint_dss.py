@@ -32,8 +32,8 @@ Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
 # %%
 # Imports
 # -------
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from scipy import signal as sig
 
 from mne_denoise.dss import DSS
@@ -76,10 +76,10 @@ for subj in range(n_subjects):
     # Slightly perturb topography per subject (realistic)
     topo = base_topo + 0.1 * rng.randn(n_channels)
     topo /= np.linalg.norm(topo)
-    
+
     # Signal component
     signal_part = np.outer(topo, common_source) * 1.0  # SNR ~ 1
-    
+
     # Subject-specific noise (pink, strong)
     noise_topo = rng.randn(n_channels)
     noise_topo /= np.linalg.norm(noise_topo)
@@ -89,16 +89,16 @@ for subj in range(n_subjects):
     noise_source = sig.filtfilt(b, a, noise_source)
     noise_source /= np.std(noise_source)
     noise_part = np.outer(noise_topo, noise_source) * 3.0  # 3x signal
-    
+
     # Sensor noise
     sensor_noise = 0.3 * rng.randn(n_channels, n_times)
-    
+
     data = signal_part + noise_part + sensor_noise
     datasets.append(data)
 
 datasets = np.array(datasets)  # (n_subjects, n_channels, n_times)
 print(f"Created {n_subjects} datasets of shape {datasets[0].shape}")
-print(f"Signal amplitude: 1.0, Noise amplitude: 3.0 (SNR ~ 0.33)")
+print("Signal amplitude: 1.0, Noise amplitude: 3.0 (SNR ~ 0.33)")
 
 # %%
 # Apply Joint DSS
@@ -108,7 +108,7 @@ print(f"Signal amplitude: 1.0, Noise amplitude: 3.0 (SNR ~ 0.33)")
 
 print("\nApplying JDSS (via DSS with group averaging)...")
 jdss = DSS(bias=AverageBias(axis="datasets"), n_components=3)
-jdss.fit(list(datasets))
+jdss.fit(np.array(list(datasets)))
 
 print(f"Eigenvalues (repeatability scores): {jdss.eigenvalues_}")
 print("  -> Score near 1.0 = highly reproducible.")
@@ -188,7 +188,7 @@ for i, ax in enumerate(axes.flat):
             src = -src
         ax.plot(times, src, "b", alpha=0.7)
         ax.plot(times, common_source, "k--", alpha=0.5, lw=1)
-        ax.set_title(f"Subject {i+1}")
+        ax.set_title(f"Subject {i + 1}")
         ax.set_xlabel("Time (s)")
         ax.grid(True, alpha=0.3)
     else:

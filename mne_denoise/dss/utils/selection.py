@@ -71,9 +71,7 @@ def iterative_outlier_removal(scores: np.ndarray, sigma: float = 3.0) -> int:
     return n_outliers
 
 
-def auto_select_components(
-    eigenvalues: np.ndarray, threshold: float = 3.0
-) -> int:
+def auto_select_components(eigenvalues: np.ndarray, threshold: float = 3.0) -> int:
     """Select number of components using outlier detection.
 
     Convenience wrapper around `iterative_outlier_removal` for DSS eigenvalues.

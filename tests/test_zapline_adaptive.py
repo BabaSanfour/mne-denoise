@@ -1,16 +1,17 @@
 import numpy as np
 import pytest
 from scipy import signal
+
 from mne_denoise.zapline import ZapLine
 from mne_denoise.zapline.adaptive import (
+    apply_cleanline_notch,
+    apply_hybrid_cleanup,
+    check_artifact_presence,
+    check_spectral_qa,
+    detect_harmonics,
+    find_fine_peak,
     find_noise_freqs,
     segment_data,
-    find_fine_peak,
-    check_artifact_presence,
-    detect_harmonics,
-    check_spectral_qa,
-    apply_cleanline_notch,
-    apply_hybrid_cleanup
 )
 
 
@@ -18,22 +19,22 @@ def test_adaptive_components():
     # Synthetic data
     rng = np.random.default_rng(42)
     sfreq = 1000
-    times = np.arange(10000) / sfreq # 10s
+    times = np.arange(10000) / sfreq  # 10s
     data = rng.standard_normal((4, 10000)) * 0.1
-    
+
     # 50 Hz noise
     noise = np.sin(2 * np.pi * 50 * times) * 2.0
     data[:, :] += noise
-    
+
     # Test frequency detection
     freqs = find_noise_freqs(data, sfreq, fmin=45, fmax=55)
     assert len(freqs) > 0
     assert np.isclose(freqs[0], 50, atol=1.0)
-    
+
     # Test artifact presence
     present = check_artifact_presence(data, sfreq, target_freq=50)
     assert present
-    
+
     present_wrong = check_artifact_presence(data, sfreq, target_freq=60)
     assert not present_wrong
 
@@ -42,71 +43,71 @@ def test_zapline_plus_pipeline():
     # Long data with shifting noise
     rng = np.random.default_rng(42)
     sfreq = 250
-    duration = 120 # 2 minutes
+    duration = 120  # 2 minutes
     n_times = int(duration * sfreq)
     times = np.arange(n_times) / sfreq
     n_ch = 4
-    data = rng.standard_normal((n_ch, n_times)) * 0.05 # Low background noise
-    
+    data = rng.standard_normal((n_ch, n_times)) * 0.05  # Low background noise
+
     # 0-40s: 50Hz strong
     # 40-80s: 50.1Hz weak
     # 80-120s: No noise
-    
+
     t1 = int(sfreq * 40)
     t2 = int(sfreq * 80)
-    
+
     # Noise 1
     noise1 = np.sin(2 * np.pi * 50.0 * times[:t1]) * 10.0
     # Noise 2 (slightly shifted)
     noise2 = np.sin(2 * np.pi * 50.1 * times[t1:t2]) * 2.0
-    
+
     # Apply strongly to ch 0, weakly to ch 1
     data[0, :t1] += noise1
     data[1, :t1] += noise1 * 0.5
-    
+
     data[0, t1:t2] += noise2
     data[1, t1:t2] += noise2 * 0.5
-    
+
     # Run Zapline Plus
     zl = ZapLine(
         sfreq=sfreq,
-        line_freq=None, # Auto detect
+        line_freq=None,  # Auto detect
         adaptive=True,
         adaptive_params={
-            'fmin': 45, 
-            'fmax': 55,
-            'n_remove_params': {'sigma': 3.0},
-            'qa_params': {'max_sigma': 4.0}
-        }
+            "fmin": 45,
+            "fmax": 55,
+            "n_remove_params": {"sigma": 3.0},
+            "qa_params": {"max_sigma": 4.0},
+        },
     )
-    
+
     cleaned = zl.fit_transform(data)
-    
+
     # Check if lines removed
     assert hasattr(zl, "adaptive_results_")
-    
+
     # PSD function helper
     def get_power_at(d, freq, fs):
         f, p = signal.welch(d, fs=fs, nperseg=int(fs), axis=-1)
         idx = np.argmin(np.abs(f - freq))
         return np.mean(p[:, idx])
-        
+
     # Check 50Hz power in first segment
     p_orig_1 = get_power_at(data[:, :t1], 50.0, sfreq)
     p_clean_1 = get_power_at(cleaned[:, :t1], 50.0, sfreq)
-    
-    assert p_clean_1 < p_orig_1 * 0.1 # 90% reduction
-    
+
+    assert p_clean_1 < p_orig_1 * 0.1  # 90% reduction
+
     # Check 50.1Hz power in second segment
     p_orig_2 = get_power_at(data[:, t1:t2], 50.1, sfreq)
     p_clean_2 = get_power_at(cleaned[:, t1:t2], 50.1, sfreq)
-    
-    assert p_clean_2 < p_orig_2 * 0.5 # significant reduction
-    
+
+    assert p_clean_2 < p_orig_2 * 0.5  # significant reduction
+
     # Check no-noise segment preservation
     p_orig_3 = np.var(data[:, t2:])
     p_clean_3 = np.var(cleaned[:, t2:])
-    
+
     # Allow small reduction due to random chance correlations
     assert np.isclose(p_clean_3, p_orig_3, rtol=0.2)
 
@@ -395,10 +396,10 @@ def test_cleanline_notch_low_ge_high():
     rng = np.random.default_rng(42)
     data = rng.normal(0, 1, (4, 100))
     sfreq = 100  # Nyquist = 50 Hz
-    
+
     # Extremely narrow bandwidth at edge where low >= high after clamping
     result = apply_cleanline_notch(data, sfreq=sfreq, freq=49.99, bandwidth=0.001)
-    
+
     assert result.shape == data.shape
 
 
@@ -408,15 +409,16 @@ def test_hybrid_cleanup_rejects_due_to_power_loss():
     sfreq = 250
     n_times = 2000
     times = np.arange(n_times) / sfreq
-    
-    # Create broadband signal near target frequency 
+
+    # Create broadband signal near target frequency
     data = np.sin(2 * np.pi * 48 * times) + np.sin(2 * np.pi * 52 * times)
     data = data[np.newaxis, :] + rng.normal(0, 0.01, (1, n_times))
-    
+
     # Very strict threshold
-    cleaned = apply_hybrid_cleanup(data, sfreq=sfreq, freq=50.0, 
-                                   bandwidth=5.0, max_power_reduction_db=0.001)
-    
+    cleaned = apply_hybrid_cleanup(
+        data, sfreq=sfreq, freq=50.0, bandwidth=5.0, max_power_reduction_db=0.001
+    )
+
     assert cleaned.shape == data.shape
 
 
@@ -425,7 +427,7 @@ def test_find_noise_freqs_empty_range():
     rng = np.random.default_rng(42)
     data = rng.normal(0, 1, (4, 1000))
     sfreq = 250
-    
+
     result = find_noise_freqs(data, sfreq, fmin=200, fmax=250)
     assert result == []
 
@@ -435,7 +437,7 @@ def test_find_noise_freqs_small_window():
     rng = np.random.default_rng(42)
     data = rng.normal(0, 1, (4, 256))
     sfreq = 256
-    
+
     result = find_noise_freqs(data, sfreq, fmin=50, fmax=51, window_length=0.1)
     assert isinstance(result, list)
 
@@ -445,7 +447,7 @@ def test_segment_data_short():
     rng = np.random.default_rng(42)
     data = rng.normal(0, 1, (4, 2000))
     sfreq = 250
-    
+
     result = segment_data(data, sfreq, target_freq=50.0, min_chunk_len=10.0)
     assert len(result) >= 1
 
@@ -456,7 +458,7 @@ def test_segment_data_window_too_large():
     # Large cov_win_len relative to data
     data = rng.normal(0, 1, (4, 2000))
     sfreq = 250
-    
+
     result = segment_data(data, sfreq, target_freq=50.0, cov_win_len=20.0)
     assert result == [(0, 2000)]
 
@@ -466,7 +468,7 @@ def test_find_fine_peak_empty():
     rng = np.random.default_rng(42)
     data = rng.normal(0, 1, (4, 1000))
     sfreq = 250
-    
+
     result = find_fine_peak(data, sfreq, coarse_freq=200, search_width=0.05)
     assert result == 200
 
@@ -477,11 +479,11 @@ def test_detect_harmonics_basic():
     sfreq = 500
     n_times = 5000
     times = np.arange(n_times) / sfreq
-    
+
     data = rng.normal(0, 0.1, (4, n_times))
     data += np.sin(2 * np.pi * 50 * times) * 10.0
     data += np.sin(2 * np.pi * 100 * times) * 8.0
-    
+
     result = detect_harmonics(data, sfreq, fundamental=50.0, max_harmonics=3)
     assert isinstance(result, list)
 
@@ -491,7 +493,7 @@ def test_detect_harmonics_none():
     rng = np.random.default_rng(42)
     data = rng.normal(0, 1, (4, 5000))
     sfreq = 500
-    
+
     result = detect_harmonics(data, sfreq, fundamental=50.0, max_harmonics=3)
     assert isinstance(result, list)
 
@@ -501,7 +503,7 @@ def test_detect_harmonics_near_nyquist():
     rng = np.random.default_rng(42)
     data = rng.normal(0, 1, (4, 1000))
     sfreq = 250
-    
+
     result = detect_harmonics(data, sfreq, fundamental=60.0, max_harmonics=5)
     assert all(h < 125 for h in result)
 
@@ -511,7 +513,7 @@ def test_check_spectral_qa_short():
     rng = np.random.default_rng(42)
     data = rng.normal(0, 1, (4, 50))
     sfreq = 100
-    
+
     result = check_spectral_qa(data, sfreq, target_freq=50.0)
     assert result == "ok"
 
@@ -522,9 +524,9 @@ def test_check_spectral_qa_scenarios():
     sfreq = 250
     n_times = 2000
     times = np.arange(n_times) / sfreq
-    
+
     data = rng.normal(0, 0.1, (4, n_times))
     data += np.sin(2 * np.pi * 50 * times) * 20.0
-    
+
     result = check_spectral_qa(data, sfreq, target_freq=50.0)
     assert result in ["weak", "ok", "strong"]

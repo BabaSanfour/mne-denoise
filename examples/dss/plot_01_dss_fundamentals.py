@@ -33,6 +33,7 @@ Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
 # %%
 # Imports
 # -------
+import contextlib
 import os
 
 import mne
@@ -252,10 +253,8 @@ print("\nLoading MNE Sample data...")
 home = os.path.expanduser("~")
 mne_data_path = os.path.join(home, "mne_data")
 if not os.path.exists(mne_data_path):
-    try:
+    with contextlib.suppress(OSError):
         os.makedirs(mne_data_path)
-    except OSError:
-        pass
 
 data_path = sample.data_path()
 raw_fname = data_path / "MEG" / "sample" / "sample_audvis_raw.fif"

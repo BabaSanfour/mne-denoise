@@ -31,6 +31,17 @@ from mne_denoise.viz._utils import (
     _get_patterns,
     _get_scores,
 )
+from mne_denoise.viz.zapline import (
+    plot_cleaning_summary,
+    plot_component_scores,
+)
+from mne_denoise.viz.zapline import (
+    plot_psd_comparison as plot_zapline_psd,
+)
+from mne_denoise.viz.zapline import (
+    plot_spatial_patterns as plot_zapline_patterns,
+)
+from mne_denoise.zapline import ZapLine
 
 
 # Close all figures after each test to save memory
@@ -140,7 +151,7 @@ def test_viz_utils(fitted_dss, synthetic_data):
     # Test cached sources
     est_cached = MockEst()
     est_cached.sources_ = np.zeros((3, 200, 10))
-    # Passing data=None should retrive cached
+    # Passing data=None should retrieve cached
     assert _get_components(est_cached, data=None) is est_cached.sources_
 
     # Test error w/o data
@@ -482,14 +493,6 @@ def test_plot_component_spectrogram():
 # ZapLine Visualization Tests
 # =============================================================================
 
-from mne_denoise.viz.zapline import (
-    plot_psd_comparison as plot_zapline_psd,
-    plot_component_scores,
-    plot_spatial_patterns as plot_zapline_patterns,
-    plot_cleaning_summary,
-)
-from mne_denoise.zapline import ZapLine
-
 
 @pytest.fixture(scope="module")
 def zapline_data():
@@ -499,13 +502,13 @@ def zapline_data():
     n_channels = 8
     n_times = 2500
     t = np.arange(n_times) / sfreq
-    
+
     # Neural signal + line noise
     data = rng.standard_normal((n_channels, n_times)) * 0.5
     line_noise = 2.0 * np.sin(2 * np.pi * 50 * t)
     for i in range(n_channels):
         data[i] += line_noise * (i + 1) / n_channels
-    
+
     return data, sfreq
 
 
@@ -522,20 +525,20 @@ def test_plot_zapline_psd_comparison(zapline_data, fitted_zapline):
     """Test ZapLine PSD comparison plot."""
     data, sfreq = zapline_data
     cleaned = fitted_zapline.transform(data)
-    
+
     # Basic call
     ax = plot_zapline_psd(data, cleaned, sfreq, show=False)
     assert isinstance(ax, plt.Axes)
-    
+
     # With line frequency marker
     ax = plot_zapline_psd(data, cleaned, sfreq, line_freq=50.0, show=False)
     assert isinstance(ax, plt.Axes)
-    
+
     # With custom axes
     fig, custom_ax = plt.subplots()
     ret_ax = plot_zapline_psd(data, cleaned, sfreq, ax=custom_ax, show=False)
     assert ret_ax is custom_ax
-    
+
     # With fmax
     ax = plot_zapline_psd(data, cleaned, sfreq, fmax=150.0, show=False)
     assert isinstance(ax, plt.Axes)
@@ -546,7 +549,7 @@ def test_plot_component_scores(fitted_zapline):
     # Basic call
     ax = plot_component_scores(fitted_zapline, show=False)
     assert isinstance(ax, plt.Axes)
-    
+
     # With custom axes
     fig, custom_ax = plt.subplots()
     ret_ax = plot_component_scores(fitted_zapline, ax=custom_ax, show=False)
@@ -555,9 +558,10 @@ def test_plot_component_scores(fitted_zapline):
 
 def test_plot_component_scores_empty():
     """Test component scores with missing eigenvalues."""
+
     class MockEstimator:
         eigenvalues_ = np.array([])
-    
+
     ax = plot_component_scores(MockEstimator(), show=False)
     assert isinstance(ax, plt.Axes)
 
@@ -567,11 +571,11 @@ def test_plot_zapline_patterns(fitted_zapline):
     # Basic call
     ax = plot_zapline_patterns(fitted_zapline, show=False)
     assert isinstance(ax, plt.Axes)
-    
+
     # With n_patterns
     ax = plot_zapline_patterns(fitted_zapline, n_patterns=2, show=False)
     assert isinstance(ax, plt.Axes)
-    
+
     # With custom axes
     fig, custom_ax = plt.subplots()
     ret_ax = plot_zapline_patterns(fitted_zapline, ax=custom_ax, show=False)
@@ -580,9 +584,10 @@ def test_plot_zapline_patterns(fitted_zapline):
 
 def test_plot_zapline_patterns_empty():
     """Test patterns with missing patterns."""
+
     class MockEstimator:
         patterns_ = np.array([])
-    
+
     ax = plot_zapline_patterns(MockEstimator(), show=False)
     assert isinstance(ax, plt.Axes)
 
@@ -591,11 +596,11 @@ def test_plot_cleaning_summary(zapline_data, fitted_zapline):
     """Test ZapLine cleaning summary plot."""
     data, sfreq = zapline_data
     cleaned = fitted_zapline.transform(data)
-    
+
     # Basic call
     fig = plot_cleaning_summary(data, cleaned, fitted_zapline, sfreq, show=False)
     assert isinstance(fig, plt.Figure)
-    
+
     # With line frequency
     fig = plot_cleaning_summary(
         data, cleaned, fitted_zapline, sfreq, line_freq=50.0, show=False
@@ -607,11 +612,10 @@ def test_zapline_viz_show(zapline_data, fitted_zapline):
     """Test show=True for ZapLine viz functions."""
     data, sfreq = zapline_data
     cleaned = fitted_zapline.transform(data)
-    
+
     with pytest.MonkeyPatch.context() as m:
         m.setattr(plt, "show", lambda *args, **kwargs: None)
         plot_zapline_psd(data, cleaned, sfreq, show=True)
         plot_component_scores(fitted_zapline, show=True)
         plot_zapline_patterns(fitted_zapline, show=True)
         plot_cleaning_summary(data, cleaned, fitted_zapline, sfreq, show=True)
-

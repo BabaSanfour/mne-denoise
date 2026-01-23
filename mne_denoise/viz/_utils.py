@@ -38,7 +38,7 @@ def _get_filters(estimator):
 
 def _get_scores(estimator):
     """Extract scores (eigenvalues or similar) from estimator.
-    
+
     Checks for both eigenvalues_ (DSS) and scores_ (ZapLine).
     """
     # Check for eigenvalues_ (LinearDSS)
@@ -89,11 +89,13 @@ def _get_components(estimator, data=None):
     # LinearDSS with MNE Epochs input returns (n_epochs, n_components, n_times)
     # We want dimension 0 to be components for easier plotting.
 
-    if isinstance(data, (mne.BaseEpochs, mne.epochs.BaseEpochs)):  # Explicit check
-        # Expected shape from transform: (n_epochs, n_comp, n_times)
-        if sources.ndim == 3 and sources.shape[1] == _get_filters(estimator).shape[0]:
-            # Transpose to (n_comp, n_times, n_epochs)
-            sources = np.transpose(sources, (1, 2, 0))
+    if (
+        isinstance(data, mne.BaseEpochs | mne.epochs.BaseEpochs)
+        and sources.ndim == 3
+        and sources.shape[1] == _get_filters(estimator).shape[0]
+    ):
+        # Transpose to (n_comp, n_times, n_epochs)
+        sources = np.transpose(sources, (1, 2, 0))
 
     return sources
 
@@ -110,7 +112,7 @@ def _handle_picks(info, picks=None):
             return np.arange(len(info["ch_names"]))
         # Use pick_types for string type specifiers
         return mne.pick_types(info, **{picks: True}, exclude="bads")
-    elif isinstance(picks, (list, np.ndarray)):
+    elif isinstance(picks, list | np.ndarray):
         # Could be channel names or indices
         if len(picks) > 0 and isinstance(picks[0], str):
             return mne.pick_channels(info["ch_names"], include=picks)

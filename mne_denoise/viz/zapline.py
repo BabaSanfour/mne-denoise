@@ -21,24 +21,23 @@ Authors Sina Esmaeili (sina.esmaeili@umontreal.ca)
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal
 
 if TYPE_CHECKING:
-    from matplotlib.axes import Axes
-    from matplotlib.figure import Figure
+    pass
 
 
 def plot_psd_comparison(
     data_before: np.ndarray,
     data_after: np.ndarray,
     sfreq: float,
-    line_freq: Optional[float] = None,
+    line_freq: float | None = None,
     fmax: float = 100.0,
-    ax: Optional[plt.Axes] = None,
+    ax: plt.Axes | None = None,
     show: bool = True,
 ) -> plt.Axes:
     """Compare power spectral density before and after cleaning.
@@ -81,7 +80,9 @@ def plot_psd_comparison(
     ax.semilogy(freqs, np.mean(psd_after, axis=0), "g-", label="After")
 
     if line_freq is not None:
-        ax.axvline(line_freq, color="r", linestyle="--", alpha=0.7, label=f"{line_freq} Hz")
+        ax.axvline(
+            line_freq, color="r", linestyle="--", alpha=0.7, label=f"{line_freq} Hz"
+        )
         # Mark harmonics if within range
         for h in range(2, 5):
             if line_freq * h < fmax:
@@ -102,7 +103,7 @@ def plot_psd_comparison(
 
 def plot_component_scores(
     estimator,
-    ax: Optional[plt.Axes] = None,
+    ax: plt.Axes | None = None,
     show: bool = True,
 ) -> plt.Axes:
     """Visualize DSS component eigenvalues with removal threshold.
@@ -132,17 +133,31 @@ def plot_component_scores(
 
     scores = getattr(estimator, "eigenvalues_", None)
     if scores is None or len(scores) == 0:
-        ax.text(0.5, 0.5, "No scores available", ha="center", va="center",
-                transform=ax.transAxes, fontsize=12)
+        ax.text(
+            0.5,
+            0.5,
+            "No scores available",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=12,
+        )
         return ax
 
     ax.bar(range(len(scores)), scores, color="steelblue", edgecolor="navy", alpha=0.8)
-    ax.axhline(np.mean(scores), color="red", linestyle="--", linewidth=1.5, label="Mean")
+    ax.axhline(
+        np.mean(scores), color="red", linestyle="--", linewidth=1.5, label="Mean"
+    )
 
     n_removed = getattr(estimator, "n_removed_", 0)
     if n_removed > 0:
-        ax.axvline(n_removed - 0.5, color="green", linestyle="--", linewidth=2,
-                   label=f"Removed: {n_removed}")
+        ax.axvline(
+            n_removed - 0.5,
+            color="green",
+            linestyle="--",
+            linewidth=2,
+            label=f"Removed: {n_removed}",
+        )
 
     ax.set_xlabel("Component")
     ax.set_ylabel("Score (eigenvalue)")
@@ -159,7 +174,7 @@ def plot_component_scores(
 def plot_spatial_patterns(
     estimator,
     n_patterns: int = 3,
-    ax: Optional[plt.Axes] = None,
+    ax: plt.Axes | None = None,
     show: bool = True,
 ) -> plt.Axes:
     """Display spatial patterns of noise components.
@@ -191,16 +206,29 @@ def plot_spatial_patterns(
 
     patterns = getattr(estimator, "patterns_", None)
     if patterns is None or patterns.size == 0:
-        ax.text(0.5, 0.5, "No patterns available", ha="center", va="center",
-                transform=ax.transAxes, fontsize=12)
+        ax.text(
+            0.5,
+            0.5,
+            "No patterns available",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            fontsize=12,
+        )
         return ax
 
     n_show = min(n_patterns, patterns.shape[1])
     colors = plt.cm.tab10(np.linspace(0, 1, n_show))
 
     for i in range(n_show):
-        ax.plot(patterns[:, i], label=f"Component {i}", marker="o",
-                markersize=4, alpha=0.8, color=colors[i])
+        ax.plot(
+            patterns[:, i],
+            label=f"Component {i}",
+            marker="o",
+            markersize=4,
+            alpha=0.8,
+            color=colors[i],
+        )
 
     ax.set_xlabel("Channel")
     ax.set_ylabel("Pattern weight")
@@ -220,7 +248,7 @@ def plot_cleaning_summary(
     data_after: np.ndarray,
     estimator,
     sfreq: float,
-    line_freq: Optional[float] = None,
+    line_freq: float | None = None,
     show: bool = True,
 ) -> plt.Figure:
     """Create a combined multi-panel cleaning summary.
@@ -255,8 +283,9 @@ def plot_cleaning_summary(
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 
     # PSD comparison
-    plot_psd_comparison(data_before, data_after, sfreq, line_freq=line_freq,
-                        ax=axes[0, 0], show=False)
+    plot_psd_comparison(
+        data_before, data_after, sfreq, line_freq=line_freq, ax=axes[0, 0], show=False
+    )
 
     # Component scores
     plot_component_scores(estimator, ax=axes[0, 1], show=False)
@@ -291,9 +320,16 @@ def plot_cleaning_summary(
             reduction_db = 10 * np.log10(power_before / power_after)
             stats.append(f"Power Reduction: {reduction_db:.1f} dB")
 
-    ax.text(0.1, 0.8, "\n".join(stats), transform=ax.transAxes,
-            fontsize=12, verticalalignment="top", fontfamily="monospace",
-            bbox=dict(boxstyle="round", facecolor="lightgray", alpha=0.5))
+    ax.text(
+        0.1,
+        0.8,
+        "\n".join(stats),
+        transform=ax.transAxes,
+        fontsize=12,
+        verticalalignment="top",
+        fontfamily="monospace",
+        bbox={"boxstyle": "round", "facecolor": "lightgray", "alpha": 0.5},
+    )
     ax.set_title("Summary Statistics")
 
     plt.suptitle("ZapLine Cleaning Summary", fontsize=14, fontweight="bold")
@@ -345,27 +381,40 @@ def plot_zapline_analytics(result, sfreq=None, show=True):
             n_rem = result.n_removed
 
         if n_rem > 0:
-            ax.axvline(n_rem - 0.5, color="green", linestyle="--",
-                       label=f"Removed: {n_rem}")
+            ax.axvline(
+                n_rem - 0.5, color="green", linestyle="--", label=f"Removed: {n_rem}"
+            )
         ax.set_xlabel("Component")
         ax.set_ylabel("Score (eigenvalue)")
         ax.set_title("Component Scores")
         ax.legend()
     else:
-        ax.text(0.5, 0.5, "No scores available", ha="center", va="center",
-                transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "No scores available",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+        )
 
     # Plot 2: Removed signal power
     ax = axes[1]
     if hasattr(result, "removed") and result.removed is not None:
-        removed_power = np.mean(result.removed ** 2, axis=1)
+        removed_power = np.mean(result.removed**2, axis=1)
         ax.bar(range(len(removed_power)), removed_power, color="salmon")
         ax.set_xlabel("Channel")
         ax.set_ylabel("Mean Squared Amplitude")
         ax.set_title("Removed Power per Channel")
     else:
-        ax.text(0.5, 0.5, "No removal data", ha="center", va="center",
-                transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "No removal data",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+        )
 
     # Plot 3: Summary stats
     ax = axes[2]
@@ -388,8 +437,15 @@ def plot_zapline_analytics(result, sfreq=None, show=True):
             pct_removed = 100 * removed_var / total_var
             stats_text.append(f"Variance Removed: {pct_removed:.2f}%")
 
-    ax.text(0.1, 0.8, "\n".join(stats_text), transform=ax.transAxes,
-            fontsize=11, verticalalignment="top", fontfamily="monospace")
+    ax.text(
+        0.1,
+        0.8,
+        "\n".join(stats_text),
+        transform=ax.transAxes,
+        fontsize=11,
+        verticalalignment="top",
+        fontfamily="monospace",
+    )
     ax.set_title("Summary")
 
     plt.tight_layout()
