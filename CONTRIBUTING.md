@@ -7,7 +7,7 @@ Thank you for your interest in contributing to `mne-denoise`! This guide will he
 - [Code of Conduct](#code-of-conduct)
 - [Getting Started](#getting-started)
 - [Development Environment](#development-environment)
-- [Development Workflow](#development-workflow)
+- [Workflow](#workflow)
 - [Code Style](#code-style)
 - [Testing](#testing)
 - [Documentation](#documentation)
@@ -81,7 +81,7 @@ pip install -e ".[dev,docs]"
 pre-commit install
 ```
 
-## Development Workflow
+## Workflow
 
 ### 1. Create a Branch
 
