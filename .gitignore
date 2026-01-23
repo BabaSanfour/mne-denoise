@@ -14,3 +14,28 @@ coverage.xml
 .idea/
 .vscode/
 .venv*/
+
+# External reference directories (not part of package)
+matlab_repos/
+zapline-plus/
+
+# Generated files (allow docs images)
+*.png
+*.jpg
+!docs/**/*.png
+!docs/**/*.jpg
+
+# Documentation
+docs/_build/
+docs/auto_examples/
+docs/generated/
+
+# Coverage
+htmlcov/
+
+.DS_Store
+
+/data/
+/figures/
+/outputs/
+/scratch/

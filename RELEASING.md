@@ -1,21 +1,24 @@
 # Release checklist
 
-This project uses `setuptools_scm` to derive versions from Git tags. Create
-annotated tags in the form ``vX.Y.Z``.
+This project uses manual versioning in `pyproject.toml`.
 
-1. Ensure `main` is up to date and the changelog documents the release.
-2. Run the full quality suite locally: `pre-commit run --all-files`, `pytest`,
-   and `make -C docs html`.
-3. Update `CHANGELOG.md` and commit with the release notes.
-4. Tag the release:
+1.  **Bump Version**:
 
-   ```bash
-   git tag -a vX.Y.Z -m "Release vX.Y.Z"
-   git push origin vX.Y.Z
-   ```
+    - Update `version` in `pyproject.toml`.
+    - Update `CHANGELOG.md`.
 
-5. GitHub Actions will build and publish wheels and source distributions to
-   PyPI via OpenID Connect.
+2.  **Tag Release**:
 
-If a release needs to be yanked, use the PyPI interface and create a follow-up
-patch release (e.g. `vX.Y.(Z+1)`) with the fix.
+    - Commit changes: `git commit -am "Release vX.Y.Z"`
+    - Tag: `git tag vX.Y.Z`
+    - Push: `git push && git push --tags`
+
+3.  **Build and Publish**:
+
+    - Clean: `rm -rf dist/`
+    - Build: `python -m build`
+    - Check: `twine check dist/*`
+    - Upload: `twine upload dist/*`
+
+4.  **Post-Release**:
+    - Update version to next dev cycle (e.g. `X.Y.Z+1.dev0`) in `pyproject.toml`.
