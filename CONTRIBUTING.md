@@ -133,7 +133,7 @@ git rebase upstream/main
 
 We use [towncrier](https://towncrier.readthedocs.io/) to manage our changelog. This prevents merge conflicts and ensures standardized release notes.
 
-When you create a Pull Request, please add a changelog entry file in `docs/changes/devel/`. The file name should correspond to your PR number and change type (e.g., `42.feature.md`).
+When you create a Pull Request, please add a changelog entry file in `docs/changes/devel/`. The file name should be the change type (e.g., `feature.rst`, `bugfix.rst`).
 
 For detailed instructions and available types, see [docs/changes/README.md](https://github.com/mne-tools/mne-denoise/blob/main/docs/changes/README.md).
 

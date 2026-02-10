@@ -2,6 +2,7 @@ import mne
 import numpy as np
 import pytest
 from scipy import signal
+from unittest.mock import patch
 
 from mne_denoise.zapline import ZapLine
 from mne_denoise.zapline.adaptive import (
@@ -582,3 +583,96 @@ def test_zapline_adaptive_sfreq_mismatch():
     clean_var_tricky = np.var(raw_clean_tricky.get_data(), axis=1).mean()
     orig_var_tricky = np.var(raw_tricky.get_data(), axis=1).mean()
     assert clean_var_tricky < orig_var_tricky
+
+
+def test_adaptive_explicit_line_freq():
+    """Test adaptive mode with explicit scalar line_freq."""
+    zap = ZapLine(
+        sfreq=500,
+        line_freq=None,
+        adaptive=True,
+        adaptive_params={"min_chunk_len": 0.1},
+    )
+    zap.line_freq = 50.0
+    data = np.random.randn(1, 1000)
+    res = zap._run_adaptive(data)
+    assert res["line_freq"] == 50.0
+
+
+def test_adaptive_qa_branches():
+    """Test weak/strong branches in _process_chunk."""
+    zap = ZapLine(sfreq=1000, line_freq=None, adaptive=True)
+    chunk = np.random.randn(1, 1000)
+
+    with patch("mne_denoise.zapline.core.find_fine_peak", return_value=50.0), patch(
+        "mne_denoise.zapline.core.check_artifact_presence", return_value=True
+    ):
+
+        # Scenario 1: Returns "weak" once, then "ok"
+        # Triggers: current_sigma -= 0.25, current_min_remove += 1
+        with patch(
+            "mne_denoise.zapline.core.check_spectral_qa", side_effect=["weak", "ok"]
+        ) as mock_qa:
+            res = zap._process_chunk(
+                chunk,
+                50.0,
+                sigma_init=3.0,
+                min_remove=1,
+                max_prop_remove=0.5,
+                qa_params={},
+                hybrid_fallback=False,
+            )
+            assert mock_qa.call_count == 2
+
+        # Scenario 2: Returns "strong" once, then "ok"
+        # Triggers: current_sigma += 0.25, current_min_remove -= 1
+        with patch(
+            "mne_denoise.zapline.core.check_spectral_qa", side_effect=["strong", "ok"]
+        ) as mock_qa:
+            res = zap._process_chunk(
+                chunk,
+                50.0,
+                sigma_init=3.0,
+                min_remove=1,
+                max_prop_remove=0.5,
+                qa_params={},
+                hybrid_fallback=False,
+            )
+            assert mock_qa.call_count == 2
+
+        # Scenario 3: Hybrid fallback
+        # Always "weak", should trigger hybrid fallback
+        with patch(
+            "mne_denoise.zapline.core.check_spectral_qa", return_value="weak"
+        ), patch(
+            "mne_denoise.zapline.core.apply_hybrid_cleanup", return_value=chunk
+        ) as mock_hybrid:
+            res = zap._process_chunk(
+                chunk,
+                50.0,
+                sigma_init=3.0,
+                min_remove=1,
+                max_prop_remove=0.5,
+                qa_params={},
+                hybrid_fallback=True,
+            )
+            mock_hybrid.assert_called_once()
+
+
+def test_hybrid_cleanup_protection():
+    """Test that hybrid cleanup returns original data if signal loss is too high."""
+    sfreq = 1000
+    t = np.arange(1000) / sfreq
+    signal_50 = np.sin(2 * np.pi * 50 * t)
+    data = signal_50[None, :]
+
+    with patch("mne_denoise.zapline.adaptive.welch") as mock_welch:
+        freqs = np.linspace(0, 100, 100)
+        psd_orig = np.ones((1, 100))
+        psd_filt = np.zeros((1, 100)) + 1e-10
+
+        mock_welch.side_effect = [(freqs, psd_orig), (freqs, psd_filt)]
+
+        cleaned = apply_hybrid_cleanup(data, sfreq=1000, freq=50.0)
+        assert np.array_equal(cleaned, data)
+

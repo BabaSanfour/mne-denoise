@@ -45,7 +45,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 dependencies = [
-  "mne>=1.0",
+  "mne>=1.6",
   "numpy>=1.22",
   "scipy>=1.8",
   "matplotlib>=3.5",
@@ -76,7 +76,7 @@ dev = [
   "towncrier",
 ]
 docs = [
-  "mne>=1.0",
+  "mne>=1.6",
   "numpydoc>=1.6.0",
   "pydata-sphinx-theme>=0.15.2",
   "sphinx>=7.2.0",
@@ -174,7 +174,7 @@ ignore-words-list = "nd,ot,fro"
 [tool.towncrier]
 package = "mne_denoise"
 filename = "CHANGELOG.md"
-directory = "docs/changes/devel"
+directory = "docs/changes/devel/"
 title_format = "## [{version}] - {project_date}"
 issue_format = "[#{issue}](https://github.com/mne-tools/mne-denoise/issues/{issue})"
 template = "docs/changes/template.jinja"

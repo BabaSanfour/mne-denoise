@@ -6,9 +6,9 @@ We use `towncrier` to manage our changelog. This ensures that changes are docume
 
 When you make a change (feature, bugfix, documentation update), you should add a fragment file to the `docs/changes/devel/` directory.
 
-The filename should be your **PR number** (or Issue number if no PR yet) followed by the type of change and the extension `.md`.
+The filename should be the type of change and the extension `.rst`. The PR number will be added automatically.
 
-Format: `<ISSUE_OR_PR_NUMBER>.<TYPE>.md`
+Format: `<TYPE>.rst`
 
 ### Available types:
 
@@ -20,9 +20,9 @@ Format: `<ISSUE_OR_PR_NUMBER>.<TYPE>.md`
 
 ## Example
 
-If you fixed a bug in PR #42, create a file `docs/changes/devel/42.bugfix.md`:
+If you fixed a bug in a PR, create a file `docs/changes/devel/bugfix.rst`:
 
-```markdown
+```rst
 Fixed a bug where the ZapLine algorithm would crash on empty data.
 ```
 

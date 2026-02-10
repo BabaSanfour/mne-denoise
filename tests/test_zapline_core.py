@@ -8,6 +8,8 @@ from numpy.testing import assert_allclose
 from scipy import signal
 
 from mne_denoise.zapline.core import ZapLine
+from mne_denoise.dss.denoisers.spectral import LineNoiseBias
+from unittest.mock import patch
 
 
 @pytest.fixture
@@ -512,22 +514,73 @@ def test_zapline_adaptive_with_harmonics():
     assert cleaned.shape == data.shape
 
 
-def test_zapline_adaptive_hybrid_fallback():
-    """ZapLine adaptive mode with hybrid fallback."""
-    rng = np.random.default_rng(42)
-    sfreq = 250
-    n_times = 7500
-    times = np.arange(n_times) / sfreq
+def test_smoothing_warnings():
+    """Test that warnings are issued for bad sfreq/line_freq ratios."""
+    with pytest.warns(UserWarning):
+        zap = ZapLine(sfreq=100, line_freq=70)
+        data = np.random.randn(1, 100)
+        zap._get_smooth_residual(data, warn=True)
 
-    data = rng.normal(0, 0.5, (4, n_times))
-    data += np.sin(2 * np.pi * 50 * times) * 2.0  # Moderate noise
 
-    est = ZapLine(
-        sfreq=sfreq,
-        line_freq=50.0,
-        adaptive=True,
-        adaptive_params={"hybrid_fallback": True, "min_chunk_len": 10.0},
-    )
-    cleaned = est.fit_transform(data)
+def test_smoothing_warning_integer_mismatch():
+    """Test warning when period is not exactly integer but close enough for standard."""
+    sfreq = 10000
+    period = 2000.15
+    line_freq = sfreq / period
 
-    assert cleaned.shape == data.shape
+    with pytest.warns(UserWarning, match="is not exactly an integer"):
+        zap = ZapLine(sfreq=sfreq, line_freq=line_freq)
+        data = np.random.randn(1, 2500)
+        zap._get_smooth_residual(data, warn=True)
+
+
+def test_fractional_smooth_period_le_1():
+    """Test fractional smooth when period <= 1."""
+    zap = ZapLine(sfreq=100, line_freq=150)  # period < 1
+    data = np.random.randn(1, 100)
+    data_smooth = zap._fractional_smooth(data, period=0.5)
+    assert np.array_equal(data_smooth, data)
+
+
+def test_fractional_smooth_integ_equals_ntimes():
+    """Test fractional smooth when smoothing period >= n_times."""
+    zap = ZapLine(sfreq=100, line_freq=1) 
+    data = np.random.randn(1, 50) 
+
+    smooth = zap._fractional_smooth(data, period=100.0)
+    assert np.allclose(smooth, np.mean(data))
+
+
+def test_fractional_smooth_integer_period():
+    """Test fast path for integer period in fractional smooth."""
+    zap = ZapLine(sfreq=100, line_freq=50)
+    data = np.random.randn(1, 100)
+
+    smooth = zap._fractional_smooth(data, period=2.0)
+    assert smooth.shape == data.shape
+
+
+def test_linenoise_bias_3d():
+    """Test LineNoiseBias with 3D data."""
+    bias = LineNoiseBias(freq=50, sfreq=1000, method="fft")
+    data = np.random.randn(2, 100, 3)  # ch, time, ep
+
+    biased = bias.apply(data)
+    assert biased.shape == data.shape
+
+    with pytest.raises(ValueError):
+        bias._apply_fft(np.zeros((2,)))  # 1D data
+
+
+def test_linenoise_bias_method_errors():
+    """Test LineNoiseBias error handling for invalid methods."""
+    # Init validation
+    with pytest.raises(ValueError, match="Unknown method"):
+        LineNoiseBias(freq=50, sfreq=1000, method="invalid")
+
+    # Apply fallback
+    bias = LineNoiseBias(freq=50, sfreq=1000, method="fft")
+    bias.method = "invalid" 
+    # Should return data unchanged
+    data = np.random.randn(1, 100)
+    assert np.array_equal(bias.apply(data), data)
