@@ -3,7 +3,7 @@
 # Authors: The MNE-Python contributors.
 # License: BSD-3-Clause
 # Copyright the MNE-Python contributors.
-# Copied from mne-python: 
+# Copied from mne-python:
 # https://github.com/mne-tools/mne-python/blob/main/.github/actions/rename_towncrier/rename_towncrier.py
 
 import json

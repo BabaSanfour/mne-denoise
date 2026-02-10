@@ -1,8 +1,9 @@
+from unittest.mock import patch
+
 import mne
 import numpy as np
 import pytest
 from scipy import signal
-from unittest.mock import patch
 
 from mne_denoise.zapline import ZapLine
 from mne_denoise.zapline.adaptive import (
@@ -613,7 +614,7 @@ def test_adaptive_qa_branches():
         with patch(
             "mne_denoise.zapline.core.check_spectral_qa", side_effect=["weak", "ok"]
         ) as mock_qa:
-            res = zap._process_chunk(
+            zap._process_chunk(
                 chunk,
                 50.0,
                 sigma_init=3.0,
@@ -629,7 +630,7 @@ def test_adaptive_qa_branches():
         with patch(
             "mne_denoise.zapline.core.check_spectral_qa", side_effect=["strong", "ok"]
         ) as mock_qa:
-            res = zap._process_chunk(
+            zap._process_chunk(
                 chunk,
                 50.0,
                 sigma_init=3.0,
@@ -647,7 +648,7 @@ def test_adaptive_qa_branches():
         ), patch(
             "mne_denoise.zapline.core.apply_hybrid_cleanup", return_value=chunk
         ) as mock_hybrid:
-            res = zap._process_chunk(
+            zap._process_chunk(
                 chunk,
                 50.0,
                 sigma_init=3.0,

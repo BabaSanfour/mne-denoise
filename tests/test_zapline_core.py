@@ -7,9 +7,8 @@ import pytest
 from numpy.testing import assert_allclose
 from scipy import signal
 
-from mne_denoise.zapline.core import ZapLine
 from mne_denoise.dss.denoisers.spectral import LineNoiseBias
-from unittest.mock import patch
+from mne_denoise.zapline.core import ZapLine
 
 
 @pytest.fixture
@@ -544,8 +543,8 @@ def test_fractional_smooth_period_le_1():
 
 def test_fractional_smooth_integ_equals_ntimes():
     """Test fractional smooth when smoothing period >= n_times."""
-    zap = ZapLine(sfreq=100, line_freq=1) 
-    data = np.random.randn(1, 50) 
+    zap = ZapLine(sfreq=100, line_freq=1)
+    data = np.random.randn(1, 50)
 
     smooth = zap._fractional_smooth(data, period=100.0)
     assert np.allclose(smooth, np.mean(data))
@@ -580,7 +579,7 @@ def test_linenoise_bias_method_errors():
 
     # Apply fallback
     bias = LineNoiseBias(freq=50, sfreq=1000, method="fft")
-    bias.method = "invalid" 
+    bias.method = "invalid"
     # Should return data unchanged
     data = np.random.randn(1, 100)
     assert np.array_equal(bias.apply(data), data)
