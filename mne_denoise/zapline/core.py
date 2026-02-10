@@ -669,7 +669,7 @@ class ZapLine(DSS):
             logger.info("Detecting line noise frequencies...")
             line_freqs = find_noise_freqs(data, self.sfreq, fmin=fmin, fmax=fmax)
             logger.info(f"Detected: {line_freqs}")
-        elif isinstance(line_freqs, (int, float)):
+        elif isinstance(line_freqs, int | float):
             line_freqs = [float(line_freqs)]
 
         # Quick exit if nothing to clean

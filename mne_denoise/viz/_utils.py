@@ -112,7 +112,7 @@ def _handle_picks(info, picks=None):
             return np.arange(len(info["ch_names"]))
         # Use pick_types for string type specifiers
         return mne.pick_types(info, **{picks: True}, exclude="bads")
-    elif isinstance(picks, (list, np.ndarray)):
+    elif isinstance(picks, list | np.ndarray):
         # Could be channel names or indices
         if len(picks) > 0 and isinstance(picks[0], str):
             return mne.pick_channels(info["ch_names"], include=picks)
