@@ -719,6 +719,12 @@ class ZapLine(DSS):
                     hybrid_fallback,
                 )
 
+                # Store representative attributes for plotting
+                if res.get("eigenvalues") is not None:
+                    self.eigenvalues_ = res["eigenvalues"]
+                if res.get("patterns") is not None:
+                    self.patterns_ = res["patterns"]
+
                 cleaned_chunks.append(res["cleaned"])
                 all_chunk_metadata.append(
                     {
@@ -866,4 +872,6 @@ class ZapLine(DSS):
             "n_removed": res_n_removed,
             "fine_freq": fine_freq,
             "present": present,
+            "eigenvalues": est.eigenvalues_ if hasattr(est, "eigenvalues_") else None,
+            "patterns": est.patterns_ if hasattr(est, "patterns_") else None,
         }
