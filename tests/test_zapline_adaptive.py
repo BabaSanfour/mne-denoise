@@ -605,10 +605,10 @@ def test_adaptive_qa_branches():
     zap = ZapLine(sfreq=1000, line_freq=None, adaptive=True)
     chunk = np.random.randn(1, 1000)
 
-    with patch("mne_denoise.zapline.core.find_fine_peak", return_value=50.0), patch(
-        "mne_denoise.zapline.core.check_artifact_presence", return_value=True
+    with (
+        patch("mne_denoise.zapline.core.find_fine_peak", return_value=50.0),
+        patch("mne_denoise.zapline.core.check_artifact_presence", return_value=True),
     ):
-
         # Scenario 1: Returns "weak" once, then "ok"
         # Triggers: current_sigma -= 0.25, current_min_remove += 1
         with patch(
@@ -643,11 +643,12 @@ def test_adaptive_qa_branches():
 
         # Scenario 3: Hybrid fallback
         # Always "weak", should trigger hybrid fallback
-        with patch(
-            "mne_denoise.zapline.core.check_spectral_qa", return_value="weak"
-        ), patch(
-            "mne_denoise.zapline.core.apply_hybrid_cleanup", return_value=chunk
-        ) as mock_hybrid:
+        with (
+            patch("mne_denoise.zapline.core.check_spectral_qa", return_value="weak"),
+            patch(
+                "mne_denoise.zapline.core.apply_hybrid_cleanup", return_value=chunk
+            ) as mock_hybrid,
+        ):
             zap._process_chunk(
                 chunk,
                 50.0,
@@ -676,4 +677,3 @@ def test_hybrid_cleanup_protection():
 
         cleaned = apply_hybrid_cleanup(data, sfreq=1000, freq=50.0)
         assert np.array_equal(cleaned, data)
-

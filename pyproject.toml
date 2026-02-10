@@ -45,7 +45,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 dependencies = [
-  "mne>=1.6",
+  "mne>=1.8",
   "numpy>=1.22",
   "scipy>=1.8",
   "matplotlib>=3.5",
@@ -76,7 +76,7 @@ dev = [
   "towncrier",
 ]
 docs = [
-  "mne>=1.6",
+  "mne>=1.8",
   "numpydoc>=1.6.0",
   "pydata-sphinx-theme>=0.15.2",
   "sphinx>=7.2.0",
