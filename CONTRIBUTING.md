@@ -129,6 +129,16 @@ git fetch upstream
 git rebase upstream/main
 ```
 
+### 5. Add Changelog Entry
+
+We use [towncrier](https://towncrier.readthedocs.io/) to manage our changelog. This prevents merge conflicts and ensures standardized release notes.
+
+When you create a Pull Request, please add a changelog entry file in `docs/changes/devel/`. The file name should correspond to your PR number and change type (e.g., `42.feature.md`).
+
+For detailed instructions and available types, see [docs/changes/README.md](https://github.com/mne-tools/mne-denoise/blob/main/docs/changes/README.md).
+
+**Author Attribution**: We encourage contributors to include their name in the changelog entry if they wish to be highlighted. In Markdown, you can link to your GitHub profile (e.g., `... (by [@YourUser](...))`).
+
 ## Code Style
 
 We use **Ruff** for linting and formatting, configured to follow PEP 8 with NumPy docstring conventions.

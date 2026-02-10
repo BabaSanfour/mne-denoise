@@ -1,3 +1,4 @@
+import mne
 import numpy as np
 import pytest
 from scipy import signal
@@ -530,3 +531,54 @@ def test_check_spectral_qa_scenarios():
 
     result = check_spectral_qa(data, sfreq, target_freq=50.0)
     assert result in ["weak", "ok", "strong"]
+
+
+def test_zapline_adaptive_sfreq_mismatch():
+    """Test ZapLine robustness against sampling rate mismatch.
+
+    Ensures that line frequency detection works correctly even when the
+    data sampling rate is not a nice integer (e.g. 1000 Hz vs 50 Hz line noise).
+    """
+    sfreq = 1000.0
+    line_freq = 50.0
+    n_times = 2000
+    n_ch = 3
+
+    # Create synthetic data: signal + line noise
+    rng = np.random.default_rng(42)
+    times = np.arange(n_times) / sfreq
+    signal = rng.standard_normal((n_ch, n_times)) * 0.1
+
+    # Add strong line noise at 50 Hz
+    noise = np.sin(2 * np.pi * line_freq * times)
+    data = signal + 0.5 * noise
+
+    info = mne.create_info(n_ch, sfreq, "eeg")
+    raw = mne.io.RawArray(data, info)
+
+    # 1. Test basic ZapLine execution
+    zap = ZapLine(sfreq=sfreq, line_freq=line_freq, n_remove=1)
+    raw_clean = zap.fit_transform(raw)
+
+    # Check that noise variance is reduced
+    orig_var = np.var(raw.get_data(), axis=1).mean()
+    clean_var = np.var(raw_clean.get_data(), axis=1).mean()
+    assert clean_var < orig_var
+
+    # 2. Test with tricky sampling rate (e.g. 512 Hz)
+    sfreq_tricky = 512.0
+    times_tricky = np.arange(n_times) / sfreq_tricky
+    data_tricky = rng.standard_normal((n_ch, n_times)) * 0.1
+    noise_tricky = np.sin(2 * np.pi * line_freq * times_tricky)
+    data_tricky += 0.5 * noise_tricky
+
+    raw_tricky = mne.io.RawArray(
+        data_tricky, mne.create_info(n_ch, sfreq_tricky, "eeg")
+    )
+
+    zap_tricky = ZapLine(sfreq=sfreq_tricky, line_freq=line_freq, n_remove=1)
+    raw_clean_tricky = zap_tricky.fit_transform(raw_tricky)
+
+    clean_var_tricky = np.var(raw_clean_tricky.get_data(), axis=1).mean()
+    orig_var_tricky = np.var(raw_tricky.get_data(), axis=1).mean()
+    assert clean_var_tricky < orig_var_tricky

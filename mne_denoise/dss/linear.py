@@ -209,7 +209,7 @@ def compute_dss(
     # =========================================================================
     dss_filters = unmixing_matrix.T
 
-    # DSS patterns: for interpretation
+    # DSS patterns: L2-normalized for topographic visualization (Haufe et al. 2014)
     dss_patterns = covariance_baseline @ unmixing_matrix
     pattern_norms = np.sqrt(np.sum(dss_patterns**2, axis=0))
     pattern_norms = np.where(pattern_norms > 1e-15, pattern_norms, 1.0)
@@ -349,7 +349,7 @@ class DSS(BaseEstimator, TransformerMixin):
         else:
             X_norm = X
 
-        if mne is not None and isinstance(X_norm, BaseRaw | BaseEpochs | Evoked):
+        if mne is not None and isinstance(X_norm, (BaseRaw, BaseEpochs, Evoked)):
             self._fit_mne(X_norm, weights=weights)
         elif isinstance(X_norm, np.ndarray):
             self._fit_numpy(X_norm, weights=weights)
@@ -372,7 +372,7 @@ class DSS(BaseEstimator, TransformerMixin):
         # Helper to get numpy data
         is_mne = False
         mne_type = None
-        if mne is not None and isinstance(X, BaseRaw | BaseEpochs | Evoked):
+        if mne is not None and isinstance(X, (BaseRaw, BaseEpochs, Evoked)):
             data = X.get_data()
             is_mne = True
             if isinstance(X, BaseEpochs):

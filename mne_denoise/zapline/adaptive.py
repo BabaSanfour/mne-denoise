@@ -341,8 +341,11 @@ def segment_data(
     if len(dists) == 0:
         return [(0, n_times)]
 
-    # 4. Detect peaks (boundaries)
-    peak_indices, _ = find_peaks(dists, prominence=np.std(dists) * 0.5)
+    # 4. Detect peaks (boundaries) - use distance.
+    min_distance = max(1, int(min_chunk_len * sfreq / n_win))
+    peak_indices, _ = find_peaks(
+        dists, prominence=np.std(dists) * 0.5, distance=min_distance
+    )
     boundary_indices = (peak_indices + 1) * n_win
 
     # 5. Enforce min length
@@ -557,12 +560,22 @@ def detect_harmonics(
     return detected
 
 
-def check_spectral_qa(data: np.ndarray, sfreq: float, target_freq: float) -> str:
+def check_spectral_qa(
+    data: np.ndarray,
+    sfreq: float,
+    target_freq: float,
+    max_prop_above: float = 0.005,
+    max_prop_below: float = 0.005,
+    freq_detect_mult: float = 2.0,
+) -> str:
     """Assess quality of noise cleaning using spectral analysis.
 
     Analyzes the power spectrum around the target frequency to determine
     if cleaning was appropriate, too weak (residual noise), or too strong
     (over-cleaning causing spectral notch).
+
+    This implementation uses proportion-based thresholds rather than binary
+    checks.
 
     Parameters
     ----------
@@ -572,6 +585,14 @@ def check_spectral_qa(data: np.ndarray, sfreq: float, target_freq: float) -> str
         Sampling frequency in Hz.
     target_freq : float
         Target noise frequency (Hz).
+    max_prop_above : float, default=0.005
+        Maximum proportion of frequency samples that may be above the upper
+        threshold before cleaning is considered too weak. Default is 0.5%.
+    max_prop_below : float, default=0.005
+        Maximum proportion of frequency samples that may be below the lower
+        threshold before cleaning is considered too strong. Default is 0.5%.
+    freq_detect_mult : float, default=2.0
+        Multiplier for the 5% quantile deviation detector. Default is 2.
 
     Returns
     -------
@@ -602,28 +623,38 @@ def check_spectral_qa(data: np.ndarray, sfreq: float, target_freq: float) -> str
     right = win_psd[-n_third:]
     center_power = np.mean(np.concatenate([left, right]))
 
+    # Use lower quantile as indicator of variability
     q_left = np.percentile(left, 5)
     q_right = np.percentile(right, 5)
-    deviation = center_power - np.mean([q_left, q_right])
+    mean_lower_quantile = np.mean([q_left, q_right])
+    deviation = center_power - mean_lower_quantile
 
-    # Weak check
+    # Threshold calculation
+    thresh_upper = center_power + freq_detect_mult * deviation
+    thresh_lower = center_power - freq_detect_mult * deviation
+
+    # Weak check - detailedFreqBoundsUpper = [-0.05, 0.05]
     f_tight_low = target_freq - 0.05
     f_tight_high = target_freq + 0.05
     mask_tight = (freqs >= f_tight_low) & (freqs <= f_tight_high)
     tight_psd = mean_log_psd[mask_tight]
-    thresh_weak = center_power + 2 * deviation
 
-    if np.any(tight_psd > thresh_weak):
-        return "weak"
+    # Proportion-based check
+    if len(tight_psd) > 0:
+        prop_above = np.sum(tight_psd > thresh_upper) / len(tight_psd)
+        if prop_above > max_prop_above:
+            return "weak"
 
-    # Strong check
+    # Strong check - detailedFreqBoundsLower = [-0.4, 0.1]
     f_notch_low = target_freq - 0.4
     f_notch_high = target_freq + 0.1
     mask_notch = (freqs >= f_notch_low) & (freqs <= f_notch_high)
     notch_psd = mean_log_psd[mask_notch]
-    thresh_strong = center_power - 2 * deviation
 
-    if np.any(notch_psd < thresh_strong):
-        return "strong"
+    # Proportion-based check
+    if len(notch_psd) > 0:
+        prop_below = np.sum(notch_psd < thresh_lower) / len(notch_psd)
+        if prop_below > max_prop_below:
+            return "strong"
 
     return "ok"

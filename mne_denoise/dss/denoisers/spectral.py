@@ -223,60 +223,56 @@ class LineNoiseBias(LinearDenoiser):
             raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
 
     def _get_target_indices(self, nfft: int) -> list:
-        """Get FFT bin indices for target frequencies."""
-        freq_bins = np.fft.fftfreq(nfft, 1 / self.sfreq)
+        """Get FFT bin indices for target frequencies.
+
+        Selects exactly one bin per harmonic (no neighbor padding).
+        Negative-frequency conjugates are included automatically for
+        real-valued IFFT reconstruction.
+        """
         target_indices = []
 
         for f in self._harmonic_freqs:
-            idx = np.argmin(np.abs(freq_bins - f))
-            if idx not in target_indices:
+            # Positive-frequency bin: round(f / sfreq * nfft)
+            idx = int(round(f / self.sfreq * nfft))
+            if 0 <= idx < nfft and idx not in target_indices:
                 target_indices.append(idx)
-            # Negative frequency
-            idx_neg = np.argmin(np.abs(freq_bins + f))
-            if idx_neg not in target_indices:
+
+            # Negative-frequency (conjugate symmetric) bin
+            idx_neg = nfft - idx
+            if 0 <= idx_neg < nfft and idx_neg not in target_indices:
                 target_indices.append(idx_neg)
 
         return target_indices
 
     def _apply_fft_2d(self, data: np.ndarray) -> np.ndarray:
-        """Apply bias to 2D data using FFT."""
+        """Apply bias to 2D data using FFT.
+
+        Process the data in non-overlapping rectangular blocks of length
+        *nfft* (no windowing, no overlap-add). Short trailing blocks are
+        zero-padded to *nfft* and the output is truncated to the true block
+        length.
+        """
         n_channels, n_times = data.shape
 
         # Use data length or nfft, whichever is smaller
         actual_nfft = min(self.nfft, n_times)
         target_indices = self._get_target_indices(actual_nfft)
 
-        # If data is shorter than nfft, process as single block
-        if n_times <= actual_nfft:
-            X = fft(data, n=actual_nfft, axis=1)
-            X_bias = np.zeros_like(X)
-            for idx in target_indices:
-                X_bias[:, idx] = X[:, idx]
-            biased = np.real(ifft(X_bias, axis=1))[:, :n_times]
-            return biased
-
-        # Welch-style block processing
-        step = int(actual_nfft * (1 - self.overlap))
-        step = max(step, 1)
-
         biased = np.zeros_like(data)
-        counts = np.zeros(n_times)
+        pos = 0
 
-        for start in range(0, n_times - actual_nfft + 1, step):
-            end = start + actual_nfft
-            segment = data[:, start:end]
+        while pos < n_times:
+            end = min(pos + actual_nfft, n_times)
+            block_len = end - pos
 
-            X = fft(segment, axis=1)
+            # FFT (zero-pads short blocks automatically)
+            X = fft(data[:, pos:end], n=actual_nfft, axis=1)
             X_bias = np.zeros_like(X)
             for idx in target_indices:
                 X_bias[:, idx] = X[:, idx]
+            y = np.real(ifft(X_bias, axis=1))
 
-            segment_biased = np.real(ifft(X_bias, axis=1))
-            biased[:, start:end] += segment_biased
-            counts[start:end] += 1
-
-        # Normalize by overlap counts
-        counts = np.maximum(counts, 1)
-        biased /= counts
+            biased[:, pos:end] = y[:, :block_len]
+            pos = end
 
         return biased
