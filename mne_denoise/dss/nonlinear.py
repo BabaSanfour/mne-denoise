@@ -475,7 +475,6 @@ def _iterative_dss_deflation(
         # Orthogonalize against previous components (vectorized)
         if i > 0:
             W_prev = W[:i]  # (i, n_whitened)
-            # w = w - sum( (w @ w_prev.T) * w_prev )
             # Vectorized: w - W_prev.T @ (W_prev @ w)
             w = w - W_prev.T @ (W_prev @ w)
             norm = np.linalg.norm(w)

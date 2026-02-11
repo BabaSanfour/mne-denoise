@@ -1016,8 +1016,9 @@ def test_dss_cov_method_options():
         n_components=2,
         bias=lambda x: x,
         cov_method="auto",
-        cov_kws={"return_estimators": False},
+        cov_kws=None,
     )
+    dss_mne.cov_method = "empirical"
     dss_mne.fit(raw)
     assert dss_mne.filters_.shape == (2, 3)
 

@@ -7,6 +7,8 @@ import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 
+from unittest.mock import patch
+
 from mne_denoise.dss import IterativeDSS, iterative_dss
 from mne_denoise.dss.denoisers import KurtosisDenoiser, VarianceMaskDenoiser
 from mne_denoise.dss.nonlinear import _symmetric_orthogonalize, iterative_dss_one
@@ -844,3 +846,67 @@ def test_iterative_dss_mne_normalization():
     assert dss.channel_norms_.shape == (n_channels,)
     # Norms should reflect the scales
     assert dss.channel_norms_[0] > dss.channel_norms_[1]
+
+
+def test_iterative_dss_one_degenerate_signal():
+    """iterative_dss_one should handle signal killing (norm < 1e-12)."""
+    rng = np.random.default_rng(42)
+    n_ch, n_times = 3, 100
+    X = rng.standard_normal((n_ch, n_times))
+
+    # Stateful denoiser that kills the signal once then works
+    class FlakyDenoiser:
+        def __init__(self):
+            self.killed = False
+
+        def __call__(self, data):
+            if not self.killed:
+                self.killed = True
+                return np.zeros_like(data)
+            return data  # Identity map otherwise
+
+    denoiser = FlakyDenoiser()
+    w_init = np.array([1.0, 0.0, 0.0])
+
+    w, source, n_iter, converged = iterative_dss_one(
+        X, denoiser, w_init=w_init, max_iter=10, random_state=rng
+    )
+
+    # It should have reinitialized w (randomly) and then converged
+    assert denoiser.killed
+    assert not np.allclose(w, w_init)  # Should have changed
+
+
+def test_iterative_dss_degenerate_orthogonalization():
+    """iterative_dss should handle degenerate components during orthogonalization."""
+    rng = np.random.default_rng(42)
+    n_samples = 100
+    # Create rank-deficient data where components are identical
+    v = rng.standard_normal(n_samples)
+    X = np.vstack([v, v, v])  # Rank 1 data
+
+    # Use a simple identity denoiser
+    def identity_denoiser(data):
+        return data
+
+    # Mock whitening step to ensure it returns 2 components despite rank 1 data
+    X_white_mock = np.zeros((2, n_samples))
+    X_white_mock[0] = v
+
+    # Initialize BOTH components to the SAME vector to force collapse after orthogonalization
+    w_init_force = np.array([[1.0, 0.0], [1.0, 0.0]])
+
+    with patch("mne_denoise.dss.nonlinear.whiten_data") as mock_whiten:
+        mock_whiten.return_value = (
+            X_white_mock,
+            np.eye(2, 3),  # Fake whitener
+            np.eye(3, 2),  # Fake dewhitener
+        )
+
+        filters, _, _, _ = iterative_dss(
+            X, identity_denoiser, n_components=2, w_init=w_init_force, random_state=rng
+        )
+
+    # Should stay at 2 components and re-initialize the degenerate one
+    assert filters.shape == (2, 3)
+    assert not np.allclose(filters[1], 0)
