@@ -90,6 +90,8 @@ def compute_dss(
     dss_patterns : ndarray, shape (n_channels, n_components)
         DSS spatial patterns (mixing matrix).
         Corresponds to the projection matrix **P**.
+        Note: These are returned in original sensor units (not normalized),
+        satisfying the identity :math:`X_{rec} = Patterns \times Sources`.
     eigenvalues : ndarray, shape (n_components,)
         DSS eigenvalues (ratio of biased power to baseline power).
 
@@ -186,10 +188,13 @@ def compute_dss(
     unmixing_matrix = eigenvectors_white @ W_white @ eigenvectors_biased
 
     # =========================================================================
-    # STEP 5: Normalize so components have unit variance
+    # STEP 5: Normalize so components have unit variance on baseline
     # =========================================================================
     norm_factor = np.diag(unmixing_matrix.T @ covariance_baseline @ unmixing_matrix)
-    norm_factor = np.where(norm_factor > 1e-15, norm_factor, 1.0)
+    # Use a relative threshold for robustness across physical units (MEG/EEG)
+    max_norm = np.max(norm_factor)
+    threshold = 1e-18 * max_norm if max_norm > 0 else 1e-30
+    norm_factor = np.where(norm_factor > threshold, norm_factor, 1.0)
     unmixing_matrix = unmixing_matrix @ np.diag(1.0 / np.sqrt(norm_factor))
 
     # =========================================================================
@@ -209,11 +214,8 @@ def compute_dss(
     # =========================================================================
     dss_filters = unmixing_matrix.T
 
-    # DSS patterns: for interpretation
+    # DSS patterns (mixing matrix)
     dss_patterns = covariance_baseline @ unmixing_matrix
-    pattern_norms = np.sqrt(np.sum(dss_patterns**2, axis=0))
-    pattern_norms = np.where(pattern_norms > 1e-15, pattern_norms, 1.0)
-    dss_patterns = dss_patterns / pattern_norms
 
     return dss_filters, dss_patterns, eigenvalues
 
@@ -307,14 +309,14 @@ class DSS(BaseEstimator, TransformerMixin):
         self.cov_kws = cov_kws
         self.return_type = return_type
 
-        # Fit attributes
-        self.filters_ = None
-        self.patterns_ = None
-        self.mixing_ = None
-        self.eigenvalues_ = None
-        self.explained_variance_ = None
-        self.info_ = None
-        self.channel_norms_ = None
+        # Fitted attributes
+        self.filters_: np.ndarray | None = None
+        self.patterns_: np.ndarray | None = None
+        self.mixing_: np.ndarray | None = None
+        self.eigenvalues_: np.ndarray | None = None
+        self.explained_variance_: np.ndarray | None = None
+        self.channel_norms_: np.ndarray | None = None
+        self._mne_info = None
 
     def fit(
         self,
@@ -356,8 +358,9 @@ class DSS(BaseEstimator, TransformerMixin):
         else:
             raise TypeError(f"Unsupported input type: {type(X_norm)}")
 
-        # Compute mixing matrix (pseudoinverse of filters)
-        self.mixing_ = np.linalg.pinv(self.filters_)
+        # Compute mixing matrix
+        # self.patterns_ from compute_dss already satisfy X = P @ S
+        self.mixing_ = self.patterns_
 
         return self
 
@@ -396,8 +399,8 @@ class DSS(BaseEstimator, TransformerMixin):
             data_2d = data
 
         if fit:
-            # unique norms per channel
-            self.channel_norms_ = np.linalg.norm(data_2d, axis=1)
+            # unique std per channel
+            self.channel_norms_ = np.std(data_2d, axis=1)
             # Avoid division by zero
             self.channel_norms_ = np.where(
                 self.channel_norms_ > 0, self.channel_norms_, 1.0
@@ -697,3 +700,21 @@ class DSS(BaseEstimator, TransformerMixin):
                 rec = rec * self.channel_norms_[:, np.newaxis]
 
         return rec
+
+    def get_normalized_patterns(self) -> np.ndarray:
+        """Get L2-normalized spatial patterns for visualization.
+
+        Returns
+        -------
+        patterns_norm : ndarray, shape (n_channels, n_components)
+            L2-normalized spatial patterns.
+        """
+        if self.patterns_ is None:
+            raise RuntimeError("DSS not fitted. Call fit() first.")
+
+        norms = np.linalg.norm(self.patterns_, axis=0)
+        # Use relative threshold for physical units
+        max_norm = np.max(norms)
+        threshold = 1e-15 * max_norm if max_norm > 0 else 1e-30
+        norms = np.where(norms > threshold, norms, 1.0)
+        return self.patterns_ / norms

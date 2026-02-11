@@ -183,7 +183,7 @@ plot_component_summary(dss_evoked, data=epochs, n_components=[0], show=False)
 print("Reconstructing data from first component...")
 sources = dss_evoked.transform(epochs)
 # To reconstruct using only specific components, we zero out the others
-sources[1:, :, :] = 0
+sources[:, 1:, :] = 0
 epochs_denoised = dss_evoked.inverse_transform(sources)
 epochs_denoised = mne.EpochsArray(epochs_denoised, info)
 
@@ -231,7 +231,7 @@ print("Reconstructing data from oscillatory component...")
 # We concatenate epochs for continuous reconstruction if desired, or keep as epochs
 # Here we keep as epochs to use plot_psd_comparison
 sources = dss_osc.transform(epochs)
-sources[1:, :, :] = 0
+sources[:, 1:, :] = 0
 epochs_osc = dss_osc.inverse_transform(sources)
 epochs_osc = mne.EpochsArray(epochs_osc, info)
 
@@ -347,7 +347,7 @@ plot_component_summary(dss_m100, data=epochs_real, n_components=[0], show=False)
 # 5. Denoising Comparison
 print("Reconstructing M100 component...")
 sources = dss_m100.transform(epochs_real)
-sources[1:, :, :] = 0
+sources[:, 1:, :] = 0
 epochs_m100 = dss_m100.inverse_transform(sources)
 epochs_m100 = mne.EpochsArray(epochs_m100, epochs_real.info)
 

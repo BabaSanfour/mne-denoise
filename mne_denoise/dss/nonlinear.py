@@ -286,7 +286,8 @@ def iterative_dss(
         Extracted source time series.
     patterns : ndarray, shape (n_channels, n_components)
         Spatial patterns for visualization / reconstruction.
-        Reconstruct as: ``data_recon = patterns @ sources``.
+        Note: These are returned in original sensor units (not normalized),
+        satisfying the identity :math:`X_{recon} = patterns @ sources`.
     convergence_info : ndarray, shape (n_components, 2)
         ``[n_iterations, converged]`` for each component.
 
@@ -374,13 +375,9 @@ def iterative_dss(
     # sensor_filter = whitened_filter @ whitener
     filters = filters_whitened @ whitener  # (n_components, n_channels)
 
-    # Compute patterns using covariance of CENTERED data
-    # patterns = C @ filters.T, normalized
+    # patterns = C @ filters.T
     C = data_centered @ data_centered.T / n_samples
     patterns = C @ filters.T
-    pattern_norms = np.linalg.norm(patterns, axis=0)
-    pattern_norms = np.where(pattern_norms > 1e-12, pattern_norms, 1.0)
-    patterns = patterns / pattern_norms
 
     return filters, sources, patterns, convergence_info
 
@@ -732,6 +729,7 @@ class IterativeDSS:
         method: str = "deflation",
         rank: int | None = None,
         reg: float = 1e-9,
+        normalize_input: bool = True,
         max_iter: int = 100,
         tol: float = 1e-6,
         verbose: bool = False,
@@ -745,6 +743,7 @@ class IterativeDSS:
         self.method = method
         self.rank = rank
         self.reg = reg
+        self.normalize_input = normalize_input
         self.max_iter = max_iter
         self.tol = tol
         self.verbose = verbose
@@ -787,6 +786,24 @@ class IterativeDSS:
             and hasattr(mne_info, "info")
         ):
             self._mne_info = mne_info.info
+
+        if self.normalize_input:
+            # Flatten for std calculation: (n_ch, n_times * n_epochs)
+            d_flat = (
+                data.transpose(1, 0, 2).reshape(data.shape[1], -1)
+                if data.ndim == 3
+                else data
+            )
+            self.channel_norms_ = np.std(d_flat, axis=1)
+            self.channel_norms_ = np.where(
+                self.channel_norms_ > 0, self.channel_norms_, 1.0
+            )
+
+            # Apply to data
+            if data.ndim == 3:
+                data = data / self.channel_norms_[np.newaxis, :, np.newaxis]
+            else:
+                data = data / self.channel_norms_[:, np.newaxis]
 
         filters, sources, patterns, conv_info = iterative_dss(
             data,
@@ -838,7 +855,12 @@ class IterativeDSS:
         else:
             data_2d = data
 
-        n_times = data_2d.shape[1]
+        if self.normalize_input:
+            if self.channel_norms_ is None:
+                raise RuntimeError(
+                    "IterativeDSS not fitted with normalize_input=True. Call fit() first."
+                )
+            data_2d = data_2d / self.channel_norms_[:, np.newaxis]
 
         # Center
         data_centered = data_2d - data_2d.mean(axis=1, keepdims=True)
@@ -874,10 +896,46 @@ class IterativeDSS:
         if self.patterns_ is None:
             raise RuntimeError("IterativeDSS not fitted. Call fit() first.")
 
-        n_sources = sources.shape[0]
-        patterns = self.patterns_[:, :n_sources]
+        n_comp_sources = sources.shape[1] if sources.ndim == 3 else sources.shape[0]
+        patterns = self.patterns_[:, :n_comp_sources]
 
-        return patterns @ sources
+        if sources.ndim == 3:
+            # Assume MNE format (n_epochs, n_comp, n_times)
+            rec = np.tensordot(sources, patterns.T, axes=(1, 1)).transpose(0, 2, 1)
+            if self.normalize_input:
+                if self.channel_norms_ is None:
+                    raise RuntimeError(
+                        "IterativeDSS not fitted with normalize_input=True. Call fit() first."
+                    )
+                rec *= self.channel_norms_[np.newaxis, :, np.newaxis]
+        else:
+            rec = patterns @ sources
+            if self.normalize_input:
+                if self.channel_norms_ is None:
+                    raise RuntimeError(
+                        "IterativeDSS not fitted with normalize_input=True. Call fit() first."
+                    )
+                rec *= self.channel_norms_[:, np.newaxis]
+
+        return rec
+
+    def get_normalized_patterns(self) -> np.ndarray:
+        """Get L2-normalized spatial patterns for visualization.
+
+        Returns
+        -------
+        patterns_norm : ndarray, shape (n_channels, n_components)
+            L2-normalized spatial patterns.
+        """
+        if self.patterns_ is None:
+            raise RuntimeError("IterativeDSS not fitted. Call fit() first.")
+
+        norms = np.linalg.norm(self.patterns_, axis=0)
+        # Use relative threshold for physical units
+        max_norm = np.max(norms)
+        threshold = 1e-15 * max_norm if max_norm > 0 else 1e-30
+        norms = np.where(norms > threshold, norms, 1.0)
+        return self.patterns_ / norms
 
     def fit_transform(self, X) -> np.ndarray:
         """Fit and transform in one step.
