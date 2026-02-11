@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import mne
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose
-
-from unittest.mock import patch
 
 from mne_denoise.dss import IterativeDSS, iterative_dss
 from mne_denoise.dss.denoisers import KurtosisDenoiser, VarianceMaskDenoiser
