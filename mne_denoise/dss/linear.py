@@ -209,7 +209,7 @@ def compute_dss(
     # =========================================================================
     dss_filters = unmixing_matrix.T
 
-    # DSS patterns: for interpretation
+    # DSS patterns: L2-normalized for topographic visualization (Haufe et al. 2014)
     dss_patterns = covariance_baseline @ unmixing_matrix
     pattern_norms = np.sqrt(np.sum(dss_patterns**2, axis=0))
     pattern_norms = np.where(pattern_norms > 1e-15, pattern_norms, 1.0)
