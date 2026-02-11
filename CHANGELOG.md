@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Fix DSS pattern normalization to preserve physical signal scaling in `compute_dss` and `iterative_dss`, and added `get_normalized_patterns()` to `DSS` and `IterativeDSS` for standard visualization. ([#18](https://github.com/mne-tools/mne-denoise/issues/18))
-
 ## [0.0.1] - 2026-01-23
 
 ### Added
