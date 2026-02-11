@@ -224,6 +224,7 @@ class ZapLine(DSS):
 
         self.n_removed_ = None
         self.adaptive_results_ = None
+        self._artifact_mixing_ = None
 
     def fit(self, X, y=None):
         """Fit ZapLine spatial filters to data.
@@ -410,6 +411,7 @@ class ZapLine(DSS):
             res = self._run_adaptive(data_cont)
 
             self.adaptive_results_ = res
+            self.n_removed_ = res["n_removed"]
             cleaned = res["cleaned"]
 
             if data.ndim == 3:
@@ -445,11 +447,16 @@ class ZapLine(DSS):
         if self.bias is None:
             self.filters_ = np.zeros((0, data.shape[0]))
             self.patterns_ = np.zeros((data.shape[0], 0))
+            self._artifact_mixing_ = np.zeros((data.shape[0], 0))
             self.eigenvalues_ = np.array([])
             self.n_removed_ = 0
             return
 
         super().fit(data_residual)
+
+        # Keep full DSS solution before truncating to removed components.
+        full_filters = self.filters_.copy()
+        full_mixing = self.mixing_.copy()
 
         # 4. Determine n_remove
         if self.n_remove == "auto":
@@ -459,16 +466,16 @@ class ZapLine(DSS):
         else:
             self.n_removed_ = min(int(self.n_remove), len(self.eigenvalues_))
 
-        # 5. Truncate filters to keep ONLY the noise components
-        # Note: we discard self.patterns_ from DSS and compute strictly using filters
+        # 5. Truncate to line-dominated DSS components.
+        # Use DSS mixing from the full decomposition to reconstruct artifacts.
         if self.n_removed_ > 0:
-            self.filters_ = self.filters_[: self.n_removed_]
-            # Use pseudo-inverse for robust reconstruction projection
-            # ZapLine strategy: project OUT the subspace spanned by filters
-            self.patterns_ = np.linalg.pinv(self.filters_)
+            self.filters_ = full_filters[: self.n_removed_]
+            self._artifact_mixing_ = full_mixing[:, : self.n_removed_]
+            self.patterns_ = self._artifact_mixing_
         else:
             self.filters_ = np.zeros((0, data.shape[0]))
             self.patterns_ = np.zeros((data.shape[0], 0))
+            self._artifact_mixing_ = np.zeros((data.shape[0], 0))
 
     def _apply_standard_cleaning(self, data: np.ndarray) -> np.ndarray:
         """Apply noise cleaning using fitted DSS filters.
@@ -497,9 +504,8 @@ class ZapLine(DSS):
         # data_residual is (n_ch, n_times).
         sources = self.filters_ @ data_residual
 
-        # 3. Project back to artifact
-        # patterns_ is (n_ch, n_comp).
-        artifact = self.patterns_ @ sources
+        # 3. Project back to artifact using full DSS mixing for selected components.
+        artifact = self._artifact_mixing_ @ sources
 
         # 4. Subtract artifact from residual, add back smooth
         cleaned = data_smooth + (data_residual - artifact)
@@ -533,19 +539,90 @@ class ZapLine(DSS):
             # Should not happen in standard mode, effectively no cleaning
             return data, np.zeros_like(data)
 
-        period = int(round(self.sfreq / self.line_freq))
-        if warn and abs(self.sfreq / self.line_freq - period) > 0.1:
-            warnings.warn(
-                f"sfreq/line_freq = {self.sfreq / self.line_freq:.2f} is not close to an integer. "
-                f"Smoothing will use period={period} samples.",
-                UserWarning,
-                stacklevel=2,
-            )
+        # Calculate exact period (may be non-integer)
+        exact_period = self.sfreq / self.line_freq
+        int_period = int(round(exact_period))
 
-        smoother = SmoothingBias(window=period, iterations=1)
-        data_smooth = smoother.apply(data)
+        # Check if period is close to an integer (within 5%)
+        period_error = abs(exact_period - int_period) / exact_period
+
+        if period_error > 1e-4:
+            # Significant mismatch - use fractional smoothing
+            if warn and period_error > 0.05:
+                warnings.warn(
+                    f"sfreq/line_freq = {exact_period:.2f} is not close to an integer. "
+                    f"Using fractional-period smoothing for accuracy.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            data_smooth = self._fractional_smooth(data, exact_period)
+        else:
+            # Period is close to integer - use standard smoothing
+            if warn and abs(exact_period - int_period) > 0.1:
+                warnings.warn(
+                    f"sfreq/line_freq = {exact_period:.2f} is not exactly an integer. "
+                    f"Smoothing will use period={int_period} samples.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            smoother = SmoothingBias(window=int_period, iterations=1)
+            data_smooth = smoother.apply(data)
+
         data_residual = data - data_smooth
         return data_smooth, data_residual
+
+    def _fractional_smooth(self, data: np.ndarray, period: float) -> np.ndarray:
+        """Apply fractional-period smoothing with a boxcar kernel.
+
+        This mirrors NoiseTools ``nt_smooth`` behavior used by ``nt_zapline``:
+        for non-integer period ``T``, the kernel is ``[1 ... 1 frac] / T``
+        where ``frac = T - floor(T)``. This preserves the period-locked
+        decomposition used by ZapLine and avoids switching to a generic
+        highpass/lowpass split.
+
+        Parameters
+        ----------
+        data : ndarray, shape (n_channels, n_times)
+            Input data.
+        period : float
+            Exact (possibly non-integer) smoothing period in samples.
+
+        Returns
+        -------
+        smoothed : ndarray, shape (n_channels, n_times)
+            Smoothed (baseline) component.
+        """
+        from scipy.signal import lfilter
+
+        n_times = data.shape[-1]
+        period = float(period)
+
+        if period <= 1:
+            # Degenerate case (should not occur for valid line frequencies).
+            return data.copy()
+
+        integ = int(np.floor(period))
+        frac = period - integ
+
+        if integ >= n_times:
+            mean = np.mean(data, axis=-1, keepdims=True)
+            return np.repeat(mean, n_times, axis=-1)
+
+        # remove onset step, filter, then restore DC.
+        mean_head = np.mean(data[..., : integ + 1], axis=-1, keepdims=True)
+        centered = data - mean_head
+
+        if np.isclose(frac, 0.0):
+            # Fast path for integer period using cumulative sums.
+            smoothed = np.cumsum(centered, axis=-1)
+            smoothed[..., integ:] = smoothed[..., integ:] - smoothed[..., :-integ]
+            smoothed = smoothed / float(integ)
+        else:
+            kernel = np.concatenate([np.ones(integ), [frac]]) / period
+            smoothed = lfilter(kernel, [1.0], centered, axis=-1)
+
+        smoothed += mean_head
+        return smoothed
 
     # =========================================================================
     # Adaptive Mode (ZapLine-plus) Methods
@@ -642,6 +719,12 @@ class ZapLine(DSS):
                     hybrid_fallback,
                 )
 
+                # Store representative attributes for plotting
+                if res.get("eigenvalues") is not None:
+                    self.eigenvalues_ = res["eigenvalues"]
+                if res.get("patterns") is not None:
+                    self.patterns_ = res["patterns"]
+
                 cleaned_chunks.append(res["cleaned"])
                 all_chunk_metadata.append(
                     {
@@ -701,6 +784,10 @@ class ZapLine(DSS):
         """
         max_sigma = qa_params.get("max_sigma", 4.0)
         min_sigma = qa_params.get("min_sigma", 2.5)
+        # New QA parameters
+        max_prop_above = qa_params.get("max_prop_above_upper", 0.005)
+        max_prop_below = qa_params.get("max_prop_below_lower", 0.005)
+        freq_detect_mult = qa_params.get("freq_detect_mult_fine", 2.0)
 
         n_channels = chunk.shape[0]
         fine_freq = find_fine_peak(chunk, self.sfreq, target_freq)
@@ -748,7 +835,14 @@ class ZapLine(DSS):
                 res_cleaned = est.transform(chunk)
                 res_n_removed = est.n_removed_
 
-            status = check_spectral_qa(res_cleaned, self.sfreq, fine_freq)
+            status = check_spectral_qa(
+                res_cleaned,
+                self.sfreq,
+                fine_freq,
+                max_prop_above=max_prop_above,
+                max_prop_below=max_prop_below,
+                freq_detect_mult=freq_detect_mult,
+            )
 
             if status == "ok":
                 best_chunk_clean = res_cleaned
@@ -778,4 +872,6 @@ class ZapLine(DSS):
             "n_removed": res_n_removed,
             "fine_freq": fine_freq,
             "present": present,
+            "eigenvalues": est.eigenvalues_ if hasattr(est, "eigenvalues_") else None,
+            "patterns": est.patterns_ if hasattr(est, "patterns_") else None,
         }

@@ -177,21 +177,34 @@ class SmoothingBias(LinearDenoiser):
         self.iterations = iterations
 
     def apply(self, data: np.ndarray) -> np.ndarray:
-        """Apply smoothing bias."""
-        from scipy.ndimage import uniform_filter1d
+        """Apply smoothing bias.
 
+        Uses a causal running-mean filter:
+        ``y[t] = mean(x[t-W+1 : t+1])`` for ``t >= W``, with an expanding
+        window for the first ``W`` samples.  Repeated ``iterations`` passes
+        approximate a Gaussian kernel.
+        """
         orig_shape = data.shape
         if data.ndim == 3:
             data_2d = data.reshape(data.shape[0], -1)
         else:
             data_2d = data
 
+        W = int(self.window)
         smoothed = data_2d.copy()
+
         for _ in range(self.iterations):
-            # Use axis=-1 to support 1D (n_times) and 2D (n_ch, n_times)
-            smoothed = uniform_filter1d(
-                smoothed, size=self.window, axis=-1, mode="reflect"
-            )
+            mean_head = np.mean(smoothed[..., : W + 1], axis=-1, keepdims=True)
+            centered = smoothed - mean_head
+
+            # Causal running mean via cumulative sums
+            cs = np.cumsum(centered, axis=-1)
+            out = np.empty_like(centered)
+            # First W samples: expanding window
+            out[..., :W] = cs[..., :W] / np.arange(1, W + 1)
+            # Remaining samples: fixed-width causal window
+            out[..., W:] = (cs[..., W:] - cs[..., :-W]) / W
+            smoothed = out + mean_head
 
         if data.ndim == 3:
             return smoothed.reshape(orig_shape)

@@ -215,6 +215,7 @@ def compute_dss(
     dss_filters = unmixing_matrix.T
 
     # DSS patterns (mixing matrix)
+    # Note: Patterns are in physical units. Use get_normalized_patterns() for visualization.
     dss_patterns = covariance_baseline @ unmixing_matrix
 
     return dss_filters, dss_patterns, eigenvalues
