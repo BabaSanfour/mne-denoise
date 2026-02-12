@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import mne
 import numpy as np
 import pytest
@@ -378,6 +380,62 @@ def test_iterative_dss_class_inverse_transform():
     assert reconstructed.shape == (8, 500)
 
 
+def test_iterative_dss_class_inverse_transform_3d():
+    """IterativeDSS inverse_transform should handle 3D data."""
+    rng = np.random.default_rng(42)
+    n_epochs, n_ch, n_times = 5, 8, 100
+    # MNE Standard: (n_epochs, n_channels, n_times)
+    data = rng.standard_normal((n_epochs, n_ch, n_times))
+
+    denoiser = KurtosisDenoiser()
+    it_dss = IterativeDSS(denoiser, n_components=3, max_iter=5)
+
+    sources = it_dss.fit_transform(data)
+    reconstructed = it_dss.inverse_transform(sources)
+
+    assert reconstructed.shape == (n_epochs, n_ch, n_times)
+
+
+def test_iterative_dss_class_inverse_transform_normalized():
+    """IterativeDSS inverse_transform should handle normalization correctly (2D and 3D)."""
+    rng = np.random.default_rng(42)
+    n_epochs, n_ch, n_times = 5, 4, 100
+
+    # 2D data with different channel scales
+    scales = np.array([1.0, 0.1, 0.01, 1e-3])
+    data_2d = rng.standard_normal((n_ch, n_times * n_epochs)) * scales[:, np.newaxis]
+    data_3d = data_2d.reshape(n_ch, n_epochs, n_times).transpose(1, 0, 2)
+
+    # Use identity denoiser to ensure perfect reconstruction (within iterative precision)
+    def identity_denoiser(data):
+        return data
+
+    # Center data for exact comparison as inverse_transform reconstructs centered data
+    data_2d_centered = data_2d - data_2d.mean(axis=1, keepdims=True)
+    data_3d_centered = data_3d - data_3d.mean(axis=(0, 2), keepdims=True)
+
+    # Test 2D
+    # Set reg to 1e-15 to ensure we don't truncate any components
+    it_dss_2d = IterativeDSS(
+        identity_denoiser, n_components=n_ch, normalize_input=True, reg=1e-15
+    )
+    sources_2d = it_dss_2d.fit_transform(data_2d)
+    reconstructed_2d = it_dss_2d.inverse_transform(sources_2d)
+
+    # Reconstructed should match original centered data (full rank)
+    assert_allclose(data_2d_centered, reconstructed_2d, rtol=1e-3, atol=1e-12)
+
+    # Test 3D
+    it_dss_3d = IterativeDSS(
+        identity_denoiser, n_components=n_ch, normalize_input=True, reg=1e-15
+    )
+    sources_3d = it_dss_3d.fit_transform(data_3d)
+    reconstructed_3d = it_dss_3d.inverse_transform(sources_3d)
+
+    # Needs to match 3D centered data
+    assert_allclose(data_3d_centered, reconstructed_3d, rtol=1e-3, atol=1e-12)
+
+
 def test_iterative_dss_class_transform_before_fit():
     """IterativeDSS should raise error when transform called before fit."""
     denoiser = KurtosisDenoiser()
@@ -740,7 +798,7 @@ def test_iterative_dss_class_equivalence():
         return np.tanh(x)
 
     # Class
-    dss = IterativeDSS(denoiser, n_components=3, random_state=42)
+    dss = IterativeDSS(denoiser, n_components=3, random_state=42, normalize_input=False)
     dss.fit(data)
     res_class = dss.transform(data)
 
@@ -751,3 +809,160 @@ def test_iterative_dss_class_equivalence():
 
     # Should be identical (using same seed)
     assert_allclose(res_class, res_func)
+
+
+def test_iterative_dss_preserves_scale():
+    """IterativeDSS reconstruction should preserve physical signal scale."""
+    sfreq = 1000
+    n_channels = 10
+    n_times = 2000
+    t = np.arange(n_times) / sfreq
+
+    signal_scale = 5e-6
+    data = np.random.randn(n_channels, n_times) * 1e-7
+    data[0:3, :] += signal_scale * np.sin(2 * np.pi * 10 * t)
+
+    from mne_denoise.dss.denoisers import TanhMaskDenoiser
+
+    idss = IterativeDSS(
+        denoiser=TanhMaskDenoiser(), n_components=n_channels, random_state=42
+    )
+    # Using inverse_transform directly here to verify patterns * sources
+    reconstructed = idss.fit(data).inverse_transform(idss.transform(data))
+
+    rms_orig = np.sqrt(np.mean(data**2))
+    rms_rec = np.sqrt(np.mean(reconstructed**2))
+    assert_allclose(rms_orig, rms_rec, rtol=0.05)
+
+
+def test_iterative_dss_get_normalized_patterns():
+    """Test the newly added get_normalized_patterns method in IterativeDSS."""
+    from mne_denoise.dss.denoisers import TanhMaskDenoiser
+
+    data = np.random.randn(10, 1000)
+    idss = IterativeDSS(denoiser=TanhMaskDenoiser(), n_components=2)
+    idss.fit(data)
+    norm_patterns = idss.get_normalized_patterns()
+    assert norm_patterns.shape == (10, 2)
+    assert_allclose(np.linalg.norm(norm_patterns, axis=0), 1.0)
+
+
+def test_iterative_dss_full_rank_reconstruction_exact_match():
+    """IterativeDSS with n_components=n_channels should reconstruct data exactly."""
+    rng = np.random.default_rng(42)
+    n_channels, n_samples = 4, 1000  # Small enough for quick convergence
+    data = rng.standard_normal((n_channels, n_samples)) * 1e-6  # uV scale
+
+    # Use Tanh denoiser
+    from mne_denoise.dss.denoisers import TanhMaskDenoiser
+
+    # We need tight convergence for exact reconstruction check
+    dss = IterativeDSS(
+        denoiser=TanhMaskDenoiser(),
+        n_components=n_channels,
+        normalize_input=True,
+        max_iter=1000,
+        tol=1e-12,
+        random_state=42,
+    )
+    dss.fit(data)
+    sources = dss.transform(data)
+    rec = dss.inverse_transform(sources)
+
+    # Comparison against centered data
+    data_centered = data - data.mean(axis=1, keepdims=True)
+
+    assert_allclose(rec, data_centered, rtol=1e-7, atol=1e-25)
+
+
+def test_iterative_dss_mne_normalization():
+    """IterativeDSS normalization should work with MNE objects."""
+    rng = np.random.default_rng(42)
+    n_channels, n_samples = 4, 1000
+    sfreq = 250.0
+
+    # Create data with different scales
+    data = rng.standard_normal((n_channels, n_samples))
+    data[0] *= 1e-6  # Simulate gradiometer scale
+    data[1] *= 1e-12  # Simulate magnetometer scale
+
+    info = mne.create_info(
+        ch_names=[f"EEG{i:03d}" for i in range(n_channels)], sfreq=sfreq, ch_types="eeg"
+    )
+    raw = mne.io.RawArray(data, info, verbose=False)
+
+    # IterativeDSS defaults to normalize_input=True
+    from mne_denoise.dss.denoisers import TanhMaskDenoiser
+
+    dss = IterativeDSS(denoiser=TanhMaskDenoiser(), n_components=3)
+    sources = dss.fit_transform(raw)
+
+    assert sources.shape == (3, n_samples)
+    assert dss.channel_norms_ is not None
+    assert dss.channel_norms_.shape == (n_channels,)
+    # Norms should reflect the scales
+    assert dss.channel_norms_[0] > dss.channel_norms_[1]
+
+
+def test_iterative_dss_one_degenerate_signal():
+    """iterative_dss_one should handle signal killing (norm < 1e-12)."""
+    rng = np.random.default_rng(42)
+    n_ch, n_times = 3, 100
+    X = rng.standard_normal((n_ch, n_times))
+
+    # Stateful denoiser that kills the signal once then works
+    class FlakyDenoiser:
+        def __init__(self):
+            self.killed = False
+
+        def __call__(self, data):
+            if not self.killed:
+                self.killed = True
+                return np.zeros_like(data)
+            return data  # Identity map otherwise
+
+    denoiser = FlakyDenoiser()
+    w_init = np.array([1.0, 0.0, 0.0])
+
+    w, source, n_iter, converged = iterative_dss_one(
+        X, denoiser, w_init=w_init, max_iter=10, random_state=rng
+    )
+
+    # It should have reinitialized w (randomly) and then converged
+    assert denoiser.killed
+    assert not np.allclose(w, w_init)  # Should have changed
+
+
+def test_iterative_dss_degenerate_orthogonalization():
+    """iterative_dss should handle degenerate components during orthogonalization."""
+    rng = np.random.default_rng(42)
+    n_samples = 100
+    # Create rank-deficient data where components are identical
+    v = rng.standard_normal(n_samples)
+    X = np.vstack([v, v, v])  # Rank 1 data
+
+    # Use a simple identity denoiser
+    def identity_denoiser(data):
+        return data
+
+    # Mock whitening step to ensure it returns 2 components despite rank 1 data
+    X_white_mock = np.zeros((2, n_samples))
+    X_white_mock[0] = v
+
+    # Initialize BOTH components to the SAME vector to force collapse after orthogonalization
+    w_init_force = np.array([[1.0, 0.0], [1.0, 0.0]])
+
+    with patch("mne_denoise.dss.nonlinear.whiten_data") as mock_whiten:
+        mock_whiten.return_value = (
+            X_white_mock,
+            np.eye(2, 3),  # Fake whitener
+            np.eye(3, 2),  # Fake dewhitener
+        )
+
+        filters, _, _, _ = iterative_dss(
+            X, identity_denoiser, n_components=2, w_init=w_init_force, random_state=rng
+        )
+
+    # Should stay at 2 components and re-initialize the degenerate one
+    assert filters.shape == (2, 3)
+    assert not np.allclose(filters[1], 0)

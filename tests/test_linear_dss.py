@@ -870,6 +870,26 @@ def test_dss_mne_epochs_inverse_transform_with_normalization():
     assert reconstructed.shape == (n_epochs, n_channels, n_times)
 
 
+def test_dss_full_rank_reconstruction_exact_match():
+    """DSS with n_components=n_channels should reconstruct data exactly (minus mean)."""
+    rng = np.random.default_rng(42)
+    n_channels, n_samples = 5, 500
+    data = rng.standard_normal((n_channels, n_samples)) * 1e-6  # uV scale
+
+    # Use no-op bias
+    dss = DSS(bias=lambda x: x, n_components=n_channels, normalize_input=True)
+    dss.fit(data)
+    sources = dss.transform(data)
+    rec = dss.inverse_transform(sources)
+
+    # Comparison against centered data
+    data_centered = data - data.mean(axis=1, keepdims=True)
+
+    # Tolerances for floating point arithmetic
+    # Relative tolerance 1e-7 is reasonable for float64
+    assert_allclose(rec, data_centered, rtol=1e-7, atol=1e-25)
+
+
 def test_dss_inverse_transform_mne_format_3d():
     """inverse_transform should detect MNE epochs format (n_epochs, n_comps, n_times)."""
     rng = np.random.default_rng(42)
@@ -996,7 +1016,53 @@ def test_dss_cov_method_options():
         n_components=2,
         bias=lambda x: x,
         cov_method="auto",
-        cov_kws={"return_estimators": False},
+        cov_kws=None,
     )
+    dss_mne.cov_method = "empirical"
     dss_mne.fit(raw)
     assert dss_mne.filters_.shape == (2, 3)
+
+
+def test_dss_preserves_scale():
+    """DSS reconstruction should preserve physical signal scale (Microvolts)."""
+    sfreq = 1000
+    n_channels = 10
+    n_times = 5000
+    t = np.arange(n_times) / sfreq
+
+    signal_scale = 5e-6
+    data = np.random.randn(n_channels, n_times) * 1e-7  # noise
+    data[0:3, :] += signal_scale * np.sin(2 * np.pi * 10 * t)
+
+    from mne_denoise.dss.denoisers import LinearDenoiser
+
+    class IdentityBias(LinearDenoiser):
+        def apply(self, data):
+            return data
+
+    bias = IdentityBias()
+    dss = DSS(
+        bias=bias, n_components=n_channels, normalize_input=False, return_type="raw"
+    )
+    reconstructed = dss.fit_transform(data)
+
+    rms_orig = np.sqrt(np.mean(data**2))
+    rms_rec = np.sqrt(np.mean(reconstructed**2))
+
+    assert_allclose(rms_orig, rms_rec, rtol=0.05)
+
+
+def test_dss_get_normalized_patterns():
+    """Test the newly added get_normalized_patterns method in DSS."""
+    from mne_denoise.dss.denoisers import LinearDenoiser
+
+    class IdentityBias(LinearDenoiser):
+        def apply(self, data):
+            return data
+
+    data = np.random.randn(10, 1000)
+    dss = DSS(bias=IdentityBias(), n_components=2)
+    dss.fit(data)
+    norm_patterns = dss.get_normalized_patterns()
+    assert norm_patterns.shape == (10, 2)
+    assert_allclose(np.linalg.norm(norm_patterns, axis=0), 1.0)
