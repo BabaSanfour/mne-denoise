@@ -380,6 +380,58 @@ def test_iterative_dss_class_inverse_transform():
     assert reconstructed.shape == (8, 500)
 
 
+def test_iterative_dss_class_inverse_transform_3d():
+    """IterativeDSS inverse_transform should handle 3D data."""
+    rng = np.random.default_rng(42)
+    n_epochs, n_ch, n_times = 5, 8, 100
+    # MNE Standard: (n_epochs, n_channels, n_times)
+    data = rng.standard_normal((n_epochs, n_ch, n_times))
+
+    denoiser = KurtosisDenoiser()
+    it_dss = IterativeDSS(denoiser, n_components=3, max_iter=5)
+
+    sources = it_dss.fit_transform(data)
+    reconstructed = it_dss.inverse_transform(sources)
+
+    assert reconstructed.shape == (n_epochs, n_ch, n_times)
+
+
+def test_iterative_dss_class_inverse_transform_normalized():
+    """IterativeDSS inverse_transform should handle normalization correctly (2D and 3D)."""
+    rng = np.random.default_rng(42)
+    n_epochs, n_ch, n_times = 5, 4, 100
+    
+    # 2D data with different channel scales
+    scales = np.array([1.0, 0.1, 0.01, 1e-3])
+    data_2d = rng.standard_normal((n_ch, n_times * n_epochs)) * scales[:, np.newaxis]
+    data_3d = data_2d.reshape(n_ch, n_epochs, n_times).transpose(1, 0, 2)
+
+    # Use identity denoiser to ensure perfect reconstruction (within iterative precision)
+    def identity_denoiser(data):
+        return data
+
+    # Center data for exact comparison as inverse_transform reconstructs centered data
+    data_2d_centered = data_2d - data_2d.mean(axis=1, keepdims=True)
+    data_3d_centered = data_3d - data_3d.mean(axis=(0, 2), keepdims=True)
+
+    # Test 2D
+    # Set reg to 1e-15 to ensure we don't truncate any components
+    it_dss_2d = IterativeDSS(identity_denoiser, n_components=n_ch, normalize_input=True, reg=1e-15)
+    sources_2d = it_dss_2d.fit_transform(data_2d)
+    reconstructed_2d = it_dss_2d.inverse_transform(sources_2d)
+    
+    # Reconstructed should match original centered data (full rank)
+    assert_allclose(data_2d_centered, reconstructed_2d, rtol=1e-3, atol=1e-12)
+
+    # Test 3D
+    it_dss_3d = IterativeDSS(identity_denoiser, n_components=n_ch, normalize_input=True, reg=1e-15)
+    sources_3d = it_dss_3d.fit_transform(data_3d)
+    reconstructed_3d = it_dss_3d.inverse_transform(sources_3d)
+    
+    # Needs to match 3D centered data
+    assert_allclose(data_3d_centered, reconstructed_3d, rtol=1e-3, atol=1e-12)
+
+
 def test_iterative_dss_class_transform_before_fit():
     """IterativeDSS should raise error when transform called before fit."""
     denoiser = KurtosisDenoiser()

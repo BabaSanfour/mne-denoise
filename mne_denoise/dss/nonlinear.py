@@ -900,7 +900,7 @@ class IterativeDSS:
 
         if sources.ndim == 3:
             # Assume MNE format (n_epochs, n_comp, n_times)
-            rec = np.tensordot(sources, patterns.T, axes=(1, 1)).transpose(0, 2, 1)
+            rec = np.tensordot(sources, patterns, axes=(1, 1)).transpose(0, 2, 1)
             if self.normalize_input:
                 if self.channel_norms_ is None:
                     raise RuntimeError(
