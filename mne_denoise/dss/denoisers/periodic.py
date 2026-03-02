@@ -140,6 +140,12 @@ class CombFilterBias(LinearDenoiser):
         Default 3.
     q_factor : float
         Quality factor for each peak. Default 30.
+    q_mode : ``"fixed"`` | ``"proportional"``
+        How Q scales across harmonics. ``"fixed"`` uses the same
+        ``q_factor`` for every harmonic (bandwidth narrows as frequency
+        increases). ``"proportional"`` scales Q as ``q_factor * h`` for
+        the *h*-th harmonic, maintaining approximately constant absolute
+        bandwidth across all harmonics. Default ``"fixed"``.
     weights : array-like, optional
         Weights for each harmonic. If None, uses 1/harmonic_number
         weighting (decreasing importance of higher harmonics).
@@ -153,6 +159,10 @@ class CombFilterBias(LinearDenoiser):
     >>> # Custom weighting (equal weight for all harmonics)
     >>> bias = CombFilterBias(
     ...     fundamental_freq=12, sfreq=500, n_harmonics=4, weights=[1.0, 1.0, 1.0, 1.0]
+    ... )
+    >>> # Adaptive Q for constant bandwidth across harmonics
+    >>> bias = CombFilterBias(
+    ...     fundamental_freq=50, sfreq=1000, n_harmonics=3, q_mode="proportional"
     ... )
 
     See Also
@@ -177,12 +187,21 @@ class CombFilterBias(LinearDenoiser):
         *,
         n_harmonics: int = 3,
         q_factor: float = 30.0,
+        q_mode: str = "fixed",
         weights: np.ndarray | None = None,
     ) -> None:
         self.fundamental_freq = fundamental_freq
         self.sfreq = sfreq
         self.n_harmonics = n_harmonics
         self.q_factor = q_factor
+
+        # Validate q_mode
+        allowed_q_modes = ("fixed", "proportional")
+        if q_mode not in allowed_q_modes:
+            raise ValueError(
+                f"q_mode must be one of {allowed_q_modes}, got {q_mode!r}"
+            )
+        self.q_mode = q_mode
 
         # Set up weights
         if weights is None:
@@ -212,7 +231,11 @@ class CombFilterBias(LinearDenoiser):
             w0 = freq / nyq
             weight = self.weights[h - 1]
 
-            b, a = signal.iirpeak(w0, self.q_factor)
+            # Proportional Q scales linearly with harmonic number,
+            # maintaining constant absolute bandwidth across harmonics
+            q = self.q_factor * h if self.q_mode == "proportional" else self.q_factor
+
+            b, a = signal.iirpeak(w0, q)
             sos = signal.tf2sos(b, a)
             self._peak_filters.append((sos, weight))
 

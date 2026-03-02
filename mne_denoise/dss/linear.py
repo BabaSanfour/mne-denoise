@@ -34,6 +34,7 @@ from .._logging import set_log_level_from_verbose
 from ..utils import extract_data_from_mne, reconstruct_mne_object
 from .denoisers import LinearDenoiser
 from .utils import compute_covariance
+from .utils.segmentation import CovarianceSegmenter, FixedWindowSegmenter
 from .utils.whitening import (
     apply_covariance_transform,
     apply_spatial_transform,
@@ -101,8 +102,6 @@ def compute_dss(
     dss_patterns : ndarray, shape (n_channels, n_components)
         DSS spatial patterns (mixing matrix).
         Corresponds to the projection matrix **P**.
-        Note: These are returned in original sensor units (not normalized),
-        satisfying the identity :math:`X_{rec} = Patterns \times Sources`.
     eigenvalues : ndarray, shape (n_components,)
         DSS eigenvalues (ratio of biased power to baseline power).
 
@@ -183,13 +182,10 @@ def compute_dss(
     unmixing_matrix = whitener.T @ eigenvectors_biased
 
     # =========================================================================
-    # STEP 5: Normalize so components have unit variance on baseline
+    # STEP 5: Normalize so components have unit variance
     # =========================================================================
     norm_factor = np.diag(unmixing_matrix.T @ covariance_baseline @ unmixing_matrix)
-    # Use a relative threshold for robustness across physical units (MEG/EEG)
-    max_norm = np.max(norm_factor)
-    threshold = 1e-18 * max_norm if max_norm > 0 else 1e-30
-    norm_factor = np.where(norm_factor > threshold, norm_factor, 1.0)
+    norm_factor = np.where(norm_factor > 1e-15, norm_factor, 1.0)
     unmixing_matrix = unmixing_matrix @ np.diag(1.0 / np.sqrt(norm_factor))
 
     # =========================================================================
@@ -209,9 +205,11 @@ def compute_dss(
     # =========================================================================
     dss_filters = unmixing_matrix.T
 
-    # DSS patterns (mixing matrix)
-    # Note: Patterns are in physical units. Use get_normalized_patterns() for visualization.
+    # DSS patterns: L2-normalized for topographic visualization (Haufe et al. 2014)
     dss_patterns = covariance_baseline @ unmixing_matrix
+    pattern_norms = np.sqrt(np.sum(dss_patterns**2, axis=0))
+    pattern_norms = np.where(pattern_norms > 1e-15, pattern_norms, 1.0)
+    dss_patterns = dss_patterns / pattern_norms
 
     return dss_filters, dss_patterns, eigenvalues
 
@@ -235,6 +233,34 @@ class DSS(BaseEstimator, TransformerMixin):
         Bias function to define the signal of interest. Must be an instance of
         `mne_denoise.dss.LinearDenoiser` (e.g. `BandpassBias`, `TrialAverageBias`)
         or a callable that takes data and returns biased data.
+    n_select : int | 'auto' | None, default=None
+        Number of significant components to auto-select after fitting.
+        If ``'auto'``, uses the method specified by ``selection_method``
+        to determine significant components. The result is stored
+        in :attr:`n_selected_`.
+        If ``int``, uses that exact number.
+        If ``None`` (default), no automatic selection is performed.
+    selection_method : {'combined', 'outlier', 'ratio', 'max_gap'}, default='combined'
+        Algorithm for automatic component selection when ``n_select='auto'``:
+
+        - ``'outlier'``: Iterative outlier removal (mean + sigma × std).
+          Works best when eigenvalue contrast is high (e.g., ZapLine with
+          smoothing). Uses ``selection_threshold`` as the sigma parameter.
+        - ``'ratio'``: Eigenvalue ratio test (scree test). Finds the first
+          drop ≥ ``selection_threshold`` between consecutive eigenvalues.
+          Works well for moderate eigenvalue contrast.
+        - ``'max_gap'``: Maximum gap method. Finds the position of the
+          biggest drop in the eigenvalue spectrum and uses it as the
+          cutpoint. Most lenient method; works for weak artifacts.
+        - ``'combined'`` (default): Cascade of all methods — outlier first,
+          then ratio, then max_gap — returning the first non-zero result.
+    selection_threshold : float, default=3.0
+        Threshold for automatic component selection.
+        For ``'outlier'`` method: sigma for outlier detection
+        (components with eigenvalue > mean + sigma × std).
+        For ``'ratio'`` method: minimum ratio between consecutive
+        eigenvalues (default 3.0 means a 3× drop).
+        For ``'combined'``: uses 3.0 for outlier, 2.0 for ratio fallback.
     rank : int or dict, optional
         Rank of the data for whitening. If None, rank is estimated automatically.
     reg : float
@@ -252,6 +278,37 @@ class DSS(BaseEstimator, TransformerMixin):
         Additional keywords options for covariance estimation.
         For MNE objects, passed to `mne.compute_covariance` (e.g. `{'tstep': 0.1, 'rank': 'info'}`).
         For NumPy arrays, passed to `mne_denoise.utils.compute_covariance` (e.g. `{'shrinkage': 0.1}`).
+    smooth : SmoothingBias | int | None, default=None
+        Optional smoothing decomposition before DSS, inspired by ZapLine.
+        When set, data is decomposed into ``smooth + residual`` and DSS
+        is fitted/applied on the **residual** only.  This dramatically
+        increases eigenvalue contrast for narrowband artifacts because
+        DSS no longer competes against broadband EEG variance.
+
+        - If ``SmoothingBias`` instance: used directly.
+        - If ``int``: interpreted as the smoothing window in samples
+          (e.g., ``int(sfreq / line_freq)`` for line noise).
+        - If ``None`` (default): no smoothing, DSS is applied to the
+          full data (original behavior).
+    segmented : bool, default=False
+        If ``True``, data is split into segments and DSS is fitted
+        independently per segment.  This handles **non-stationary**
+        artifacts whose spatial or spectral profile changes over
+        time.  Requires :meth:`fit_transform`; calling :meth:`fit`
+        alone raises an error.
+    segmenter : CovarianceSegmenter | FixedWindowSegmenter | None, default=None
+        Segmentation strategy.  If ``None`` and ``segmented=True``,
+        a :class:`CovarianceSegmenter` is created automatically
+        (requires ``sfreq`` to be determinable from the input or
+        from the bias function).
+    max_prop_remove : float | None, default=None
+        Maximum proportion of channels that can be removed per segment.
+        E.g. ``0.2`` caps ``n_selected`` at ``int(n_channels × 0.2)``.
+        Safety valve to prevent over-cleaning.
+    min_select : int, default=0
+        Minimum components to select when ``n_select='auto'`` and
+        the artifact is present.  Guarantees a floor on cleaning
+        strength.  Only effective when ``segmented=True``.
     return_type : {'sources', 'epochs', 'raw'}
         Type of object to return from `transform`. 'sources' returns a numpy array
         of DSS components. 'epochs'/'raw' returns the denoised input object.
@@ -276,6 +333,14 @@ class DSS(BaseEstimator, TransformerMixin):
         The spatial patterns (mixing matrix).
     eigenvalues_ : array, shape (n_components,)
         The power of each component in the biased data (bias score).
+    n_selected_ : int | None
+        Number of significant components detected by automatic selection.
+        Only set when ``n_select`` is not ``None``. Use this to determine
+        how many components to remove/keep in downstream processing.
+    segment_results_ : list of dict | None
+        Per-segment metadata when ``segmented=True``.  Each dict
+        contains ``'start'``, ``'end'``, ``'n_selected'``,
+        ``'eigenvalues'``, and ``'patterns'``.
 
     Examples
     --------
@@ -302,11 +367,19 @@ class DSS(BaseEstimator, TransformerMixin):
         self,
         bias: LinearDenoiser | Callable,
         n_components: int | None = None,
+        n_select: int | str | None = None,
+        selection_method: str = "combined",
+        selection_threshold: float = 3.0,
         rank: int | dict | None = None,
         reg: float = 1e-9,
         normalize_input: bool = True,
         cov_method: str = "empirical",
         cov_kws: dict | None = None,
+        smooth: LinearDenoiser | int | None = None,
+        segmented: bool = False,
+        segmenter: CovarianceSegmenter | FixedWindowSegmenter | None = None,
+        max_prop_remove: float | None = None,
+        min_select: int = 0,
         return_type: str = "sources",
         whiten: bool = False,
         noise_cov=None,
@@ -314,11 +387,19 @@ class DSS(BaseEstimator, TransformerMixin):
     ) -> None:
         self.n_components = n_components
         self.bias = bias
+        self.n_select = n_select
+        self.selection_method = selection_method
+        self.selection_threshold = selection_threshold
         self.rank = rank
         self.reg = reg
         self.normalize_input = normalize_input
         self.cov_method = cov_method
         self.cov_kws = cov_kws
+        self.smooth = smooth
+        self.segmented = segmented
+        self.segmenter = segmenter
+        self.max_prop_remove = max_prop_remove
+        self.min_select = min_select
         self.return_type = return_type
         self.whiten = whiten
         self.noise_cov = noise_cov
@@ -332,9 +413,53 @@ class DSS(BaseEstimator, TransformerMixin):
         self.eigenvalues_: np.ndarray | None = None
         self.explained_variance_: np.ndarray | None = None
         self.channel_norms_: np.ndarray | None = None
+        self.n_selected_: np.ndarray | None = None
+        self.segment_results_: list | None = None
         self._whitener_: np.ndarray | None = None
         self._dewhitener_: np.ndarray | None = None
+        self._smoother = None  # Resolved SmoothingBias instance
         self._mne_info = None
+
+    def _resolve_smoother(self):
+        """Resolve the ``smooth`` parameter to a ``SmoothingBias`` instance."""
+        from .denoisers.temporal import SmoothingBias
+
+        if self.smooth is None:
+            self._smoother = None
+        elif isinstance(self.smooth, int):
+            self._smoother = SmoothingBias(window=self.smooth, iterations=1)
+        elif isinstance(self.smooth, SmoothingBias):
+            self._smoother = self.smooth
+        elif hasattr(self.smooth, "apply"):
+            # Duck-type: any LinearDenoiser with .apply() method
+            self._smoother = self.smooth
+        else:
+            raise TypeError(
+                f"smooth must be SmoothingBias, int, or None, "
+                f"got {type(self.smooth)}"
+            )
+
+    def _decompose_smooth(self, data: np.ndarray):
+        """Decompose data into smooth and residual components.
+
+        Parameters
+        ----------
+        data : ndarray, shape (n_channels, n_times) or (n_ch, n_times, n_ep)
+            Input data.
+
+        Returns
+        -------
+        data_smooth : ndarray
+            Smoothed (low-frequency / broadband) component.
+        data_residual : ndarray
+            Residual (narrowband / artifact) component.
+        """
+        if self._smoother is None:
+            return None, data
+
+        data_smooth = self._smoother.apply(data)
+        data_residual = data - data_smooth
+        return data_smooth, data_residual
 
     def fit(
         self,
@@ -365,6 +490,12 @@ class DSS(BaseEstimator, TransformerMixin):
             The fitted transformer.
         """
         set_log_level_from_verbose(self.verbose)
+        if self.segmented:
+            raise RuntimeError(
+                "Segmented mode requires simultaneous fit and transform. "
+                "Use fit_transform() instead."
+            )
+
         if self.whiten:
             # Joint multi-sensor decomposition: the whitener replaces the
             # channel-wise normalization and the homogeneous-type isolation.
@@ -377,18 +508,117 @@ class DSS(BaseEstimator, TransformerMixin):
         else:
             X_norm = X
 
-        if mne is not None and isinstance(X_norm, BaseRaw | BaseEpochs | Evoked):
+        # Resolve smoothing (if configured)
+        self._resolve_smoother()
+
+        # If smoothing is enabled, decompose and fit on residual only
+        if self._smoother is not None:
+            data, _, mne_type, _ = extract_data_from_mne(X_norm)
+            if mne_type == "epochs":
+                data = np.transpose(data, (1, 2, 0))
+
+            _, data_residual = self._decompose_smooth(data)
+            # Fit DSS on residual (always numpy path)
+            self._fit_numpy(data_residual, weights=weights)
+        elif mne is not None and isinstance(X_norm, BaseRaw | BaseEpochs | Evoked):
             self._fit_mne(X_norm, weights=weights)
         elif isinstance(X_norm, np.ndarray):
             self._fit_numpy(X_norm, weights=weights)
         else:
             raise TypeError(f"Unsupported input type: {type(X_norm)}")
 
-        # Compute mixing matrix
-        # self.patterns_ from compute_dss already satisfy X = P @ S
-        self.mixing_ = self.patterns_
+        # Compute mixing matrix (pseudoinverse of filters)
+        self.mixing_ = np.linalg.pinv(self.filters_)
+
+        # Automatic component selection
+        if self.n_select is not None and self.eigenvalues_ is not None:
+            self.n_selected_ = self.auto_select()
 
         return self
+
+    def auto_select(self, threshold=None, method=None):
+        """Automatically determine the number of significant DSS components.
+
+        Supports multiple selection strategies:
+
+        - **outlier**: Iterative outlier removal (mean + sigma × std).
+          Best for high eigenvalue contrast (e.g., after smoothing).
+        - **ratio**: Eigenvalue ratio / scree test. Finds the first large
+          drop between consecutive eigenvalues. For moderate contrast.
+        - **max_gap**: Maximum gap method. Finds the *biggest* drop in
+          the eigenvalue spectrum. Most lenient; works for weak artifacts.
+        - **combined**: Cascade — outlier → ratio → max_gap — returns
+          the first non-zero result.
+
+        This method is called automatically during :meth:`fit` when
+        ``n_select`` is set. It can also be called manually after fitting
+        with a different threshold or method.
+
+        Parameters
+        ----------
+        threshold : float | None
+            Override the threshold.  If ``None``, uses
+            ``self.selection_threshold``.
+        method : {'outlier', 'ratio', 'max_gap', 'combined'} | None
+            Override the selection method.  If ``None``, uses
+            ``self.selection_method``.
+
+        Returns
+        -------
+        n_selected : int
+            Number of significant components detected.
+
+        Raises
+        ------
+        RuntimeError
+            If the estimator has not been fitted yet.
+
+        Examples
+        --------
+        >>> dss = DSS(bias=my_bias, n_components=30)
+        >>> dss.fit(raw)
+        >>> n = dss.auto_select(threshold=2.5, method='outlier')
+        >>> print(f"{n} significant components at sigma=2.5")
+        """
+        if self.eigenvalues_ is None:
+            raise RuntimeError("DSS not fitted. Call fit() first.")
+
+        from .utils.selection import (
+            eigenvalue_ratio_selection,
+            iterative_outlier_removal,
+            max_gap_selection,
+        )
+
+        threshold = threshold if threshold is not None else self.selection_threshold
+        method = method if method is not None else self.selection_method
+
+        if isinstance(self.n_select, int):
+            return min(self.n_select, len(self.eigenvalues_))
+
+        if method == "outlier":
+            return iterative_outlier_removal(self.eigenvalues_, threshold)
+        elif method == "ratio":
+            return eigenvalue_ratio_selection(self.eigenvalues_, threshold)
+        elif method == "max_gap":
+            return max_gap_selection(self.eigenvalues_, min_ratio=min(threshold, 1.2))
+        elif method == "combined":
+            # Tier 1: Outlier removal (strict — needs high contrast)
+            n = iterative_outlier_removal(self.eigenvalues_, threshold)
+            if n > 0:
+                return n
+            # Tier 2: Ratio test (moderate — needs a clear drop)
+            ratio_th = min(threshold, 2.0)
+            n = eigenvalue_ratio_selection(self.eigenvalues_, ratio_th)
+            if n > 0:
+                return n
+            # Tier 3: Max gap (lenient — finds the biggest drop wherever)
+            n = max_gap_selection(self.eigenvalues_, min_ratio=1.2)
+            return n
+        else:
+            raise ValueError(
+                f"Unknown selection method '{method}'. "
+                "Choose from 'outlier', 'ratio', 'max_gap', or 'combined'."
+            )
 
     def _normalize(
         self, X: BaseRaw | BaseEpochs | Evoked | np.ndarray, fit: bool = False
@@ -425,8 +655,8 @@ class DSS(BaseEstimator, TransformerMixin):
             data_2d = data
 
         if fit:
-            # unique std per channel
-            self.channel_norms_ = np.std(data_2d, axis=1)
+            # unique norms per channel
+            self.channel_norms_ = np.linalg.norm(data_2d, axis=1)
             # Avoid division by zero
             self.channel_norms_ = np.where(
                 self.channel_norms_ > 0, self.channel_norms_, 1.0
@@ -683,13 +913,19 @@ class DSS(BaseEstimator, TransformerMixin):
         if mne_type == "epochs":
             data = np.transpose(data, (1, 2, 0))
 
-        orig_shape = data.shape
-        if data.ndim == 3:
-            n_ch, n_times, n_epochs = data.shape
-            data_2d = data.reshape(n_ch, -1)
+        # If smoothing is enabled, project the residual (not full data)
+        if self._smoother is not None:
+            _, data_for_dss = self._decompose_smooth(data)
         else:
-            n_ch, n_times = data.shape
-            data_2d = data
+            data_for_dss = data
+
+        orig_shape = data.shape
+        if data_for_dss.ndim == 3:
+            n_ch, n_times, n_epochs = data_for_dss.shape
+            data_2d = data_for_dss.reshape(n_ch, -1)
+        else:
+            n_ch, n_times = data_for_dss.shape
+            data_2d = data_for_dss
 
         # Center using mean on data_2d
         # DSS implies zero-mean assumption for correct projection
@@ -811,20 +1047,279 @@ class DSS(BaseEstimator, TransformerMixin):
 
         return rec
 
-    def get_normalized_patterns(self) -> np.ndarray:
-        """Get L2-normalized spatial patterns for visualization.
+    # -----------------------------------------------------------------
+    # Segmented mode
+    # -----------------------------------------------------------------
+
+    def fit_transform(
+        self, X, y=None, **fit_params
+    ):
+        """Fit and transform data in one step.
+
+        In **segmented mode** (``segmented=True``), the data is split into
+        segments and each segment gets its own independent DSS fit +
+        cleaning pass.  This is the only entry-point for segmented
+        processing because ``fit()`` alone is not meaningful when
+        filters differ per segment.
+
+        In standard mode, this is equivalent to
+        ``self.fit(X).transform(X)``.
+
+        Parameters
+        ----------
+        X : Raw | Epochs | Evoked | ndarray
+            The data to process.
+        y : None
+            Ignored.
+        **fit_params
+            Additional keyword arguments forwarded to :meth:`fit`.
 
         Returns
         -------
-        patterns_norm : ndarray, shape (n_channels, n_components)
-            L2-normalized spatial patterns.
+        X_out : ndarray | Raw | Epochs | Evoked
+            In segmented mode, returns cleaned data (same type as input).
+            In standard mode with ``return_type='sources'``, returns DSS
+            source time-series.  With any other ``return_type``, returns
+            cleaned (denoised) data produced by subtracting the artifact
+            captured by the first ``n_selected_`` components.
         """
-        if self.patterns_ is None:
-            raise RuntimeError("DSS not fitted. Call fit() first.")
+        if not self.segmented:
+            self.fit(X, **fit_params)
 
-        norms = np.linalg.norm(self.patterns_, axis=0)
-        # Use relative threshold for physical units
-        max_norm = np.max(norms)
-        threshold = 1e-15 * max_norm if max_norm > 0 else 1e-30
-        norms = np.where(norms > threshold, norms, 1.0)
-        return self.patterns_ / norms
+            if self.return_type == "sources":
+                return self.transform(X)
+
+            # ── Denoise via artifact subtraction ──
+            data, _, mne_type, orig_inst = extract_data_from_mne(X)
+
+            n_remove = self.n_selected_ if self.n_selected_ is not None else 0
+            if n_remove > 0:
+                # Temporarily switch to get source time-series
+                saved_rt = self.return_type
+                self.return_type = "sources"
+                try:
+                    sources = self.transform(X)
+                finally:
+                    self.return_type = saved_rt
+
+                artifact = self.inverse_transform(
+                    sources, component_indices=np.arange(n_remove)
+                )
+                cleaned = data - artifact
+            else:
+                cleaned = data
+
+            return reconstruct_mne_object(
+                cleaned, orig_inst, mne_type, verbose=False
+            )
+
+        # --- segmented mode ---
+        data, extracted_sfreq, mne_type, orig_inst = extract_data_from_mne(X)
+
+        # Determine sfreq
+        sfreq = extracted_sfreq
+        if sfreq is None and hasattr(self.bias, "sfreq"):
+            sfreq = self.bias.sfreq
+        if sfreq is None:
+            raise ValueError(
+                "Cannot determine sfreq for segmented mode. "
+                "Pass an MNE object or use a bias with a .sfreq attribute."
+            )
+
+        # Handle epochs: concatenate into continuous
+        is_epochs = False
+        if data.ndim == 3:
+            is_epochs = True
+            n_ep, n_ch, n_t = data.shape
+            data_cont = np.transpose(data, (1, 0, 2)).reshape(n_ch, -1)
+        else:
+            data_cont = data
+
+        # Resolve smoother once
+        self._resolve_smoother()
+
+        # Run segmented processing
+        cleaned = self._run_segmented(data_cont, sfreq)
+
+        # Reshape back if epochs
+        if is_epochs:
+            cleaned = cleaned.reshape(n_ch, n_ep, n_t).transpose(1, 0, 2)
+
+        return reconstruct_mne_object(cleaned, orig_inst, mne_type, verbose=False)
+
+    def _resolve_segmenter(self, sfreq: float):
+        """Resolve the segmenter parameter.
+
+        If ``self.segmenter`` is ``None``, creates a default
+        :class:`CovarianceSegmenter` with optional bandpass from the
+        bias function.
+
+        Parameters
+        ----------
+        sfreq : float
+            Sampling frequency in Hz.
+
+        Returns
+        -------
+        segmenter : CovarianceSegmenter | FixedWindowSegmenter
+        """
+        if self.segmenter is not None:
+            return self.segmenter
+
+        # Build a default CovarianceSegmenter
+        bandpass = None
+        # If the bias has a target frequency, focus segmentation around it
+        if hasattr(self.bias, "freq") and self.bias.freq is not None:
+            f = float(self.bias.freq)
+            bandpass = (max(1.0, f - 3), min(sfreq / 2 - 1, f + 3))
+
+        return CovarianceSegmenter(
+            sfreq=sfreq,
+            min_chunk_len=30.0,
+            bandpass=bandpass,
+        )
+
+    def _run_segmented(self, data: np.ndarray, sfreq: float) -> np.ndarray:
+        """Run segmented fit-transform on continuous data.
+
+        Parameters
+        ----------
+        data : ndarray, shape (n_channels, n_times)
+            Continuous data.
+        sfreq : float
+            Sampling frequency.
+
+        Returns
+        -------
+        cleaned : ndarray, shape (n_channels, n_times)
+            Cleaned data (segments are concatenated).
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        segmenter = self._resolve_segmenter(sfreq)
+        segments = segmenter.segment(data)
+        logger.info(
+            f"Segmented DSS: {len(segments)} segment(s) "
+            f"over {data.shape[1] / sfreq:.1f}s"
+        )
+
+        self.segment_results_ = []
+        cleaned_chunks = []
+        total_n_removed = 0
+
+        for seg_idx, (start, end) in enumerate(segments):
+            chunk = data[:, start:end]
+            result = self._process_segment(chunk)
+
+            cleaned_chunks.append(result["cleaned"])
+            total_n_removed += result["n_selected"]
+
+            # Store per-segment metadata
+            self.segment_results_.append(
+                {
+                    "start": start,
+                    "end": end,
+                    "n_selected": result["n_selected"],
+                    "eigenvalues": result["eigenvalues"],
+                    "patterns": result["patterns"],
+                }
+            )
+
+            # Keep last segment's filters/patterns as representative
+            if result["eigenvalues"] is not None:
+                self.eigenvalues_ = result["eigenvalues"]
+            if result["patterns"] is not None:
+                self.patterns_ = result["patterns"]
+            if result["filters"] is not None:
+                self.filters_ = result["filters"]
+                self.mixing_ = np.linalg.pinv(self.filters_)
+
+        self.n_selected_ = total_n_removed
+        return np.concatenate(cleaned_chunks, axis=1)
+
+    def _process_segment(self, chunk: np.ndarray) -> dict:
+        """Process a single segment: fit DSS, select components, clean.
+
+        Parameters
+        ----------
+        chunk : ndarray, shape (n_channels, n_times)
+            Data segment.
+
+        Returns
+        -------
+        result : dict
+            Contains 'cleaned', 'n_selected', 'eigenvalues', 'patterns',
+            'filters'.
+        """
+        n_channels = chunk.shape[0]
+
+        # Create a fresh DSS for this segment (non-segmented)
+        seg_dss = DSS(
+            bias=self.bias,
+            n_components=self.n_components,
+            n_select=self.n_select,
+            selection_method=self.selection_method,
+            selection_threshold=self.selection_threshold,
+            rank=self.rank if isinstance(self.rank, int | type(None)) else None,
+            reg=self.reg,
+            normalize_input=self.normalize_input,
+            cov_method=self.cov_method,
+            cov_kws=self.cov_kws,
+            smooth=self.smooth,
+            segmented=False,  # Do NOT recurse
+        )
+
+        seg_dss.fit(chunk)
+        n_sel = seg_dss.n_selected_ if seg_dss.n_selected_ is not None else 0
+
+        # Apply caps
+        if self.max_prop_remove is not None:
+            n_sel = min(n_sel, int(n_channels * self.max_prop_remove))
+        n_sel = max(n_sel, self.min_select)
+
+        # Clean the segment
+        cleaned = self._clean_segment(chunk, seg_dss, n_sel)
+
+        return {
+            "cleaned": cleaned,
+            "n_selected": n_sel,
+            "eigenvalues": seg_dss.eigenvalues_,
+            "patterns": seg_dss.patterns_,
+            "filters": seg_dss.filters_,
+        }
+
+    def _clean_segment(
+        self, data: np.ndarray, fitted_dss: DSS, n_remove: int
+    ) -> np.ndarray:
+        """Clean a segment by projecting out *n_remove* DSS components.
+
+        Parameters
+        ----------
+        data : ndarray, shape (n_channels, n_times)
+            Segment data.
+        fitted_dss : DSS
+            A fitted DSS instance (with ``filters_``, ``mixing_``, etc.).
+        n_remove : int
+            Number of components to remove.
+
+        Returns
+        -------
+        cleaned : ndarray, shape (n_channels, n_times)
+        """
+        if n_remove <= 0 or fitted_dss.filters_ is None:
+            return data.copy()
+
+        # Smoothing decomposition (if configured)
+        if fitted_dss._smoother is not None:
+            data_smooth, data_residual = fitted_dss._decompose_smooth(data)
+        else:
+            data_smooth = np.zeros_like(data)
+            data_residual = data
+
+        # Project residual through the top n_remove DSS filters
+        sources = fitted_dss.filters_[:n_remove] @ data_residual
+        artifact = fitted_dss.mixing_[:, :n_remove] @ sources
+
+        return data_smooth + (data_residual - artifact)

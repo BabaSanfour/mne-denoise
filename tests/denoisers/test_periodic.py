@@ -166,6 +166,59 @@ def test_comb_filter_invalid_ndim():
         bias.apply(data)
 
 
+def test_comb_filter_adaptive_q():
+    """Test CombFilterBias with proportional Q mode.
+
+    With q_mode="proportional", Q scales as q_factor * h for harmonic h,
+    maintaining approximately constant absolute bandwidth across harmonics.
+    """
+    sfreq = 1000
+    times = np.arange(2000) / sfreq
+    f0 = 10
+
+    # Signal: fundamental + 2nd + 3rd harmonic
+    signal_clean = (
+        np.sin(2 * np.pi * f0 * times)
+        + 0.5 * np.sin(2 * np.pi * 2 * f0 * times)
+        + 0.3 * np.sin(2 * np.pi * 3 * f0 * times)
+    )
+    rng = np.random.default_rng(42)
+    noise = rng.normal(0, 2, len(times))
+    data = (signal_clean + noise)[np.newaxis, :]
+
+    # Fixed Q
+    bias_fixed = CombFilterBias(
+        fundamental_freq=f0, sfreq=sfreq, n_harmonics=3, q_factor=30.0, q_mode="fixed"
+    )
+    biased_fixed = bias_fixed.apply(data)
+
+    # Proportional Q
+    bias_prop = CombFilterBias(
+        fundamental_freq=f0, sfreq=sfreq, n_harmonics=3, q_factor=30.0,
+        q_mode="proportional",
+    )
+    biased_prop = bias_prop.apply(data)
+
+    # Both should produce valid output
+    assert biased_fixed.shape == data.shape
+    assert biased_prop.shape == data.shape
+
+    # Proportional should differ from fixed (different filter shapes)
+    assert not np.allclose(biased_fixed, biased_prop, atol=1e-10)
+
+    # Both should correlate well with the clean signal
+    corr_fixed = np.corrcoef(biased_fixed[0], signal_clean)[0, 1]
+    corr_prop = np.corrcoef(biased_prop[0], signal_clean)[0, 1]
+    assert corr_fixed > 0.8, f"Fixed Q failed (corr={corr_fixed:.3f})"
+    assert corr_prop > 0.8, f"Proportional Q failed (corr={corr_prop:.3f})"
+
+
+def test_comb_filter_invalid_q_mode():
+    """Test CombFilterBias raises error for invalid q_mode."""
+    with pytest.raises(ValueError, match="q_mode must be one of"):
+        CombFilterBias(fundamental_freq=10, sfreq=250, q_mode="invalid")
+
+
 def test_quasi_periodic_1d_input():
     """Test QuasiPeriodicDenoiser with 1D input."""
     rng = np.random.default_rng(42)

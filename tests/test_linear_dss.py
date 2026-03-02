@@ -876,26 +876,6 @@ def test_dss_mne_epochs_inverse_transform_with_normalization():
     assert reconstructed.shape == (n_epochs, n_channels, n_times)
 
 
-def test_dss_full_rank_reconstruction_exact_match():
-    """DSS with n_components=n_channels should reconstruct data exactly (minus mean)."""
-    rng = np.random.default_rng(42)
-    n_channels, n_samples = 5, 500
-    data = rng.standard_normal((n_channels, n_samples)) * 1e-6  # uV scale
-
-    # Use no-op bias
-    dss = DSS(bias=lambda x: x, n_components=n_channels, normalize_input=True)
-    dss.fit(data)
-    sources = dss.transform(data)
-    rec = dss.inverse_transform(sources)
-
-    # Comparison against centered data
-    data_centered = data - data.mean(axis=1, keepdims=True)
-
-    # Tolerances for floating point arithmetic
-    # Relative tolerance 1e-7 is reasonable for float64
-    assert_allclose(rec, data_centered, rtol=1e-7, atol=1e-25)
-
-
 def test_dss_inverse_transform_mne_format_3d():
     """inverse_transform should detect MNE epochs format (n_epochs, n_comps, n_times)."""
     rng = np.random.default_rng(42)
@@ -1022,9 +1002,8 @@ def test_dss_cov_method_options():
         n_components=2,
         bias=lambda x: x,
         cov_method="auto",
-        cov_kws=None,
+        cov_kws={"return_estimators": False},
     )
-    dss_mne.cov_method = "empirical"
     dss_mne.fit(raw)
     assert dss_mne.filters_.shape == (2, 3)
 

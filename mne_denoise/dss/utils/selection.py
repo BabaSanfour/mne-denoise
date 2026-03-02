@@ -1,6 +1,7 @@
 """Component selection utilities for DSS.
 
-Provides automatic component selection using outlier detection.
+Provides automatic component selection using outlier detection and
+eigenvalue ratio analysis.
 
 Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
          Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
@@ -235,3 +236,110 @@ def auto_select_components_robust(
         eigenvalues, rel_floor=knee_rel_floor, min_ratio=knee_min_ratio
     )
     return int(max(n_outlier, n_knee))
+
+
+def eigenvalue_ratio_selection(
+    eigenvalues: np.ndarray, ratio_threshold: float = 2.0
+) -> int:
+    """Select components using eigenvalue ratio (scree test).
+
+    Identifies the first significant "drop" in the eigenvalue spectrum.
+    A component is considered significant if the ratio
+    ``eigenvalue[i] / eigenvalue[i+1]`` exceeds ``ratio_threshold``.
+
+    This method works well when eigenvalue contrast is moderate (e.g., direct
+    DSS without smoothing), where the iterative outlier removal may fail to
+    detect any significant components.
+
+    Parameters
+    ----------
+    eigenvalues : ndarray
+        DSS eigenvalues, sorted in descending order.
+    ratio_threshold : float
+        Minimum ratio between consecutive eigenvalues to indicate a
+        significant drop. Default 2.0 (i.e., a 2× drop).
+
+    Returns
+    -------
+    n_components : int
+        Number of significant components (before the first big drop).
+        Returns 0 if no drop exceeds the threshold.
+
+    Examples
+    --------
+    >>> eigenvalues = np.array([0.012, 0.005, 0.004, 0.0015, 0.0008])
+    >>> n = eigenvalue_ratio_selection(eigenvalues, ratio_threshold=2.0)
+    >>> print(f"{n} component(s) before the first big drop")
+    1 component(s) before the first big drop
+    """
+    eigenvalues = np.asarray(eigenvalues, dtype=float)
+
+    if len(eigenvalues) < 2:
+        return len(eigenvalues)
+
+    # Guard against zero/negative eigenvalues
+    eigenvalues = np.maximum(eigenvalues, 0.0)
+
+    for i in range(len(eigenvalues) - 1):
+        if eigenvalues[i + 1] < 1e-15:
+            # Denominator effectively zero → everything before this is signal
+            return i + 1
+        ratio = eigenvalues[i] / eigenvalues[i + 1]
+        if ratio >= ratio_threshold:
+            return i + 1
+
+    return 0
+
+
+def max_gap_selection(
+    eigenvalues: np.ndarray, min_ratio: float = 1.2
+) -> int:
+    """Select components by finding the largest gap in the eigenvalue spectrum.
+
+    Instead of requiring a fixed ratio threshold, this method finds the
+    position of the maximum consecutive eigenvalue ratio (biggest "drop")
+    and uses it as the cutpoint — provided the drop exceeds ``min_ratio``.
+
+    This is the most lenient automatic method and works even when eigenvalue
+    contrast is weak (e.g., direct DSS without smoothing on weak artifacts).
+
+    Parameters
+    ----------
+    eigenvalues : ndarray
+        DSS eigenvalues, sorted in descending order.
+    min_ratio : float
+        Minimum ratio at the largest gap to be considered meaningful.
+        Default 1.2 (i.e., at least a 20%% drop). Set lower for noisier
+        data, higher for stricter selection.
+
+    Returns
+    -------
+    n_components : int
+        Number of significant components (before the biggest gap).
+        Returns 0 if no gap exceeds ``min_ratio``.
+
+    Examples
+    --------
+    >>> eigenvalues = np.array([0.0066, 0.0052, 0.0042, 0.0035, 0.003])
+    >>> n = max_gap_selection(eigenvalues, min_ratio=1.2)
+    >>> print(f"{n} component(s)")  # Finds the 1.26× drop at position 0
+    1 component(s)
+    """
+    eigenvalues = np.asarray(eigenvalues, dtype=float)
+
+    if len(eigenvalues) < 2:
+        return len(eigenvalues)
+
+    eigenvalues = np.maximum(eigenvalues, 0.0)
+
+    # Compute consecutive ratios
+    denominators = np.maximum(eigenvalues[1:], 1e-15)
+    ratios = eigenvalues[:-1] / denominators
+
+    # Find the position of the largest gap
+    max_idx = np.argmax(ratios)
+
+    if ratios[max_idx] >= min_ratio:
+        return int(max_idx + 1)
+
+    return 0
