@@ -10,6 +10,8 @@ import pytest
 from numpy.testing import assert_allclose
 
 from mne_denoise.dss import DSS, compute_dss
+from mne_denoise.dss.denoisers.spectral import LineNoiseBias
+from mne_denoise.dss.utils.segmentation import CovarianceSegmenter, FixedWindowSegmenter
 
 # =============================================================================
 # compute_dss - Core Algorithm Tests
@@ -1336,7 +1338,8 @@ class TestSegmentedDSS:
     def test_fit_raises_without_sfreq(self):
         """fit() should raise if segmented=True but no sfreq available."""
         data = np.random.default_rng(0).standard_normal((8, 5000))
-        dss = DSS(segmented=True, n_components=2)
+        bias = LineNoiseBias(freq=50.0, sfreq=250.0)
+        dss = DSS(bias, segmented=True, n_components=2)
         with pytest.raises((ValueError, RuntimeError)):
             dss.fit(data)
 
@@ -1345,10 +1348,11 @@ class TestSegmentedDSS:
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
+            bias,
             segmented=True,
-            segmenter="fixed",
-            segmenter_kws={"window_len": 30.0},
+            segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=2,
         )
         result = dss.fit_transform(raw)
@@ -1359,10 +1363,11 @@ class TestSegmentedDSS:
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
+            bias,
             segmented=True,
-            segmenter="fixed",
-            segmenter_kws={"window_len": 30.0},
+            segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=2,
         )
         dss.fit_transform(raw)
@@ -1374,10 +1379,11 @@ class TestSegmentedDSS:
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
+            bias,
             segmented=True,
-            segmenter="fixed",
-            segmenter_kws={"window_len": 30.0},
+            segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=4,
             n_select="outlier",
         )
@@ -1392,10 +1398,11 @@ class TestSegmentedDSS:
         data, sfreq = _make_nonstationary_line_noise(freq=50.0)
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
+            bias,
             segmented=True,
-            segmenter="fixed",
-            segmenter_kws={"window_len": 30.0},
+            segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=4,
             n_select=1,
         )
@@ -1413,14 +1420,15 @@ class TestSegmentedDSS:
         assert pwr_after < pwr_before
 
     def test_covariance_segmenter(self):
-        """Segmenter='covariance' should work."""
+        """CovarianceSegmenter as segmenter should work."""
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
+            bias,
             segmented=True,
-            segmenter="covariance",
-            segmenter_kws={"min_chunk_len": 20.0},
+            segmenter=CovarianceSegmenter(sfreq=sfreq, min_chunk_len=20.0),
             n_components=2,
         )
         result = dss.fit_transform(raw)
@@ -1440,7 +1448,8 @@ class TestSegmentedDSS:
         )
         epochs = mne.Epochs(raw, events, tmin=0, tmax=(n_times - 1) / sfreq,
                             baseline=None, preload=True, verbose=False)
-        dss = DSS(segmented=True, n_components=2)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        dss = DSS(bias, segmented=True, n_components=2)
         # Epochs should either work (segmentation on concatenated) or raise
         try:
             dss.fit_transform(epochs)
@@ -1456,7 +1465,8 @@ class TestAutoSelect:
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
-        dss = DSS(n_components=4, n_select="outlier")
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        dss = DSS(bias, n_components=4, n_select="outlier")
         dss.fit(raw)
         assert dss.n_selected_ is not None
         assert dss.n_selected_ >= 0
@@ -1466,7 +1476,8 @@ class TestAutoSelect:
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
-        dss = DSS(n_components=4, n_select="ratio")
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        dss = DSS(bias, n_components=4, n_select="ratio")
         dss.fit(raw)
         assert dss.n_selected_ is not None
         assert dss.n_selected_ >= 0
@@ -1476,7 +1487,8 @@ class TestAutoSelect:
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
-        dss = DSS(n_components=4, n_select="max_gap")
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        dss = DSS(bias, n_components=4, n_select="max_gap")
         dss.fit(raw)
         assert dss.n_selected_ is not None
         assert dss.n_selected_ >= 0
@@ -1486,7 +1498,8 @@ class TestAutoSelect:
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
-        dss = DSS(n_components=4, n_select="combined")
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        dss = DSS(bias, n_components=4, n_select="combined")
         dss.fit(raw)
         assert dss.n_selected_ is not None
         assert dss.n_selected_ >= 0
@@ -1496,16 +1509,19 @@ class TestAutoSelect:
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
-        dss = DSS(n_components=4, n_select=2)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        dss = DSS(bias, n_components=4, n_select=2)
         dss.fit(raw)
         assert dss.n_selected_ == 2
 
     def test_invalid_method(self):
-        """Invalid n_select string should raise ValueError."""
+        """Invalid selection_method string should raise ValueError."""
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
-        dss = DSS(n_components=4, n_select="nonexistent_method")
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        dss = DSS(bias, n_components=4, n_select="outlier",
+                  selection_method="nonexistent_method")
         with pytest.raises((ValueError, KeyError)):
             dss.fit(raw)
 
@@ -1514,7 +1530,8 @@ class TestAutoSelect:
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
-        dss = DSS(n_components=4, n_select=None)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        dss = DSS(bias, n_components=4, n_select=None)
         dss.fit(raw)
         assert dss.n_selected_ is None
 
@@ -1527,7 +1544,8 @@ class TestSmoothingDecomposition:
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
-        dss = DSS(n_components=2, smooth=5)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        dss = DSS(bias, n_components=2, smooth=5)
         result = dss.fit_transform(raw)
         assert result is not None
 
@@ -1539,7 +1557,8 @@ class TestSmoothingDecomposition:
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
-        dss = DSS(n_components=2, smooth=5)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        dss = DSS(bias, n_components=2, smooth=5, return_type="raw")
         dss.fit(raw)
         result = dss.transform(raw)
         result_data = result.get_data()
@@ -1555,10 +1574,11 @@ class TestSmoothingDecomposition:
         data, sfreq = _make_nonstationary_line_noise(freq=50.0)
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
+            bias,
             segmented=True,
-            segmenter="fixed",
-            segmenter_kws={"window_len": 30.0},
+            segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=4,
             n_select=1,
             smooth=5,
@@ -1593,10 +1613,11 @@ class TestCapAndFloor:
             data += np.outer(topo * h, np.sin(2 * np.pi * 50 * h * t))
         info = mne.create_info(n_ch, sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
+            bias,
             segmented=True,
-            segmenter="fixed",
-            segmenter_kws={"window_len": 30.0},
+            segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=10,
             n_select="outlier",
             max_prop_remove=0.1,
@@ -1611,10 +1632,11 @@ class TestCapAndFloor:
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
+            bias,
             segmented=True,
-            segmenter="fixed",
-            segmenter_kws={"window_len": 30.0},
+            segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=4,
             n_select="outlier",
             min_select=2,

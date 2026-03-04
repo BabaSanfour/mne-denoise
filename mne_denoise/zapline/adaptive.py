@@ -45,7 +45,7 @@ import numpy as np
 from scipy import signal
 from scipy.signal import find_peaks, welch
 
-from ..dss.utils.covariance import compute_covariance
+from ..dss.utils.segmentation import CovarianceSegmenter
 
 logger = logging.getLogger(__name__)
 
@@ -283,6 +283,10 @@ def segment_data(
     Identifies boundaries where the noise characteristics change significantly
     by tracking changes in the spatial covariance matrix over time.
 
+    .. deprecated::
+        Use :class:`~mne_denoise.dss.utils.segmentation.CovarianceSegmenter`
+        directly for new code.  This wrapper is kept for backward compatibility.
+
     Parameters
     ----------
     data : ndarray, shape (n_channels, n_times)
@@ -300,74 +304,19 @@ def segment_data(
     -------
     segments : list of tuple
         List of ``(start_sample, end_sample)`` tuples defining segment boundaries.
+
+    See Also
+    --------
+    mne_denoise.dss.utils.segmentation.CovarianceSegmenter :
+        The shared implementation used internally.
     """
-    n_channels, n_times = data.shape
-
-    # 1. Filter around target freq
-    f_low = target_freq - 3
-    f_high = target_freq + 3
-
-    sos = signal.butter(4, [f_low, f_high], btype="bandpass", fs=sfreq, output="sos")
-    data_filt = signal.sosfiltfilt(sos, data, axis=1)
-
-    # 2. Compute covariance series
-    n_win = int(cov_win_len * sfreq)
-    if n_win > n_times:
-        return [(0, n_times)]
-
-    n_steps = n_times // n_win
-
-    covs = []
-    for i in range(n_steps):
-        start = i * n_win
-        end = start + n_win
-        chunk = data_filt[:, start:end]
-        cov = compute_covariance(chunk)
-        tr = np.trace(cov)
-        if tr > 1e-20:
-            cov = cov / tr
-        covs.append(cov)
-
-    covs = np.array(covs)
-
-    # 3. Successive distances
-    dists = []
-    for i in range(len(covs) - 1):
-        d = np.linalg.norm(covs[i] - covs[i + 1], ord="fro")
-        dists.append(d)
-
-    dists = np.array(dists)
-
-    if len(dists) == 0:
-        return [(0, n_times)]
-
-    # 4. Detect peaks (boundaries) - use distance.
-    min_distance = max(1, int(min_chunk_len * sfreq / n_win))
-    peak_indices, _ = find_peaks(
-        dists, prominence=np.std(dists) * 0.5, distance=min_distance
+    segmenter = CovarianceSegmenter(
+        sfreq=sfreq,
+        min_chunk_len=min_chunk_len,
+        cov_win_len=cov_win_len,
+        bandpass=(target_freq - 3, target_freq + 3),
     )
-    boundary_indices = (peak_indices + 1) * n_win
-
-    # 5. Enforce min length
-    valid_boundaries = [0]
-    last_boundary = 0
-    min_samples = int(min_chunk_len * sfreq)
-
-    for b in boundary_indices:
-        if (b - last_boundary) >= min_samples:
-            valid_boundaries.append(b)
-            last_boundary = b
-
-    if (n_times - last_boundary) < min_samples and len(valid_boundaries) > 1:
-        valid_boundaries.pop()
-
-    valid_boundaries.append(n_times)
-
-    segments = []
-    for i in range(len(valid_boundaries) - 1):
-        segments.append((valid_boundaries[i], valid_boundaries[i + 1]))
-
-    return segments
+    return segmenter.segment(data)
 
 
 def find_fine_peak(

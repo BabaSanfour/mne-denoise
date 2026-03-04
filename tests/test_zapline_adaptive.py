@@ -6,6 +6,7 @@ import pytest
 from scipy import signal
 
 from mne_denoise.zapline import ZapLine
+from mne_denoise.dss.utils.segmentation import CovarianceSegmenter
 from mne_denoise.zapline.adaptive import (
     apply_cleanline_notch,
     apply_hybrid_cleanup,
@@ -681,3 +682,73 @@ def test_hybrid_cleanup_protection():
 
         cleaned = apply_hybrid_cleanup(data, sfreq=1000, freq=50.0)
         assert np.array_equal(cleaned, data)
+
+
+# =========================================================================
+# CovarianceSegmenter / segment_data unification tests
+# =========================================================================
+
+
+def test_segment_data_wraps_covariance_segmenter():
+    """segment_data wrapper produces identical results to CovarianceSegmenter."""
+    rng = np.random.default_rng(42)
+    sfreq = 250
+    n_times = int(120 * sfreq)  # 2 minutes
+    data = rng.standard_normal((4, n_times))
+    target_freq = 50.0
+
+    # Via the wrapper
+    wrapper_result = segment_data(
+        data, sfreq, target_freq=target_freq, min_chunk_len=30.0, cov_win_len=1.0
+    )
+
+    # Via CovarianceSegmenter directly
+    seg = CovarianceSegmenter(
+        sfreq=sfreq,
+        min_chunk_len=30.0,
+        cov_win_len=1.0,
+        bandpass=(target_freq - 3, target_freq + 3),
+    )
+    direct_result = seg.segment(data)
+
+    assert wrapper_result == direct_result
+
+
+def test_covariance_segmenter_in_zapline_adaptive():
+    """ZapLine adaptive mode uses CovarianceSegmenter internally."""
+    rng = np.random.default_rng(42)
+    sfreq = 250
+    n_times = int(60 * sfreq)
+    times = np.arange(n_times) / sfreq
+    n_ch = 4
+
+    data = rng.standard_normal((n_ch, n_times)) * 0.1
+    data += np.sin(2 * np.pi * 50.0 * times) * 5.0
+
+    zl = ZapLine(
+        sfreq=sfreq,
+        line_freq=50.0,
+        adaptive=True,
+        adaptive_params={"min_chunk_len": 10.0},
+    )
+
+    # Should run without error — internally uses CovarianceSegmenter
+    cleaned = zl.fit_transform(data)
+    assert cleaned.shape == data.shape
+
+
+def test_segment_data_deprecated_wrapper_still_works():
+    """segment_data backward-compatible wrapper still returns valid segments."""
+    rng = np.random.default_rng(42)
+    data = rng.standard_normal((4, 5000))
+    sfreq = 250
+
+    segments = segment_data(data, sfreq, target_freq=50.0, min_chunk_len=5.0)
+
+    # Basic validity checks
+    assert len(segments) >= 1
+    assert segments[0][0] == 0
+    assert segments[-1][1] == 5000
+    # Segments should be contiguous
+    for i in range(len(segments) - 1):
+        assert segments[i][1] == segments[i + 1][0]

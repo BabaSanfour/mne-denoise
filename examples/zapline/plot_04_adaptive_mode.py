@@ -17,12 +17,12 @@ import numpy as np
 from matplotlib.gridspec import GridSpec
 from scipy import signal
 
+from mne_denoise.dss.utils.segmentation import CovarianceSegmenter
 from mne_denoise.viz import plot_psd_comparison
 from mne_denoise.zapline.adaptive import (
     check_artifact_presence,
     find_fine_peak,
     find_noise_freqs,
-    segment_data,
 )
 
 # Suppress warnings for cleaner output
@@ -204,9 +204,12 @@ plt.show()
 
 print("\n--- Step 2: Adaptive Segmentation ---")
 target_freq = detected_freqs[0] if detected_freqs else 50.0
-segments = segment_data(
-    data, sfreq, target_freq, min_chunk_len=PAPER_PARAMS["minChunkLength"]
+segmenter = CovarianceSegmenter(
+    sfreq=sfreq,
+    min_chunk_len=PAPER_PARAMS["minChunkLength"],
+    bandpass=(target_freq - 3, target_freq + 3),
 )
+segments = segmenter.segment(data)
 print(f"Number of segments: {len(segments)}")
 for i, (start, end) in enumerate(segments):
     print(

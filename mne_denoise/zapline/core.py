@@ -47,6 +47,7 @@ from .._logging import set_log_level_from_verbose
 from ..dss.denoisers.spectral import LineNoiseBias
 from ..dss.denoisers.temporal import SmoothingBias
 from ..dss.linear import DSS
+from ..dss.utils.segmentation import CovarianceSegmenter
 from ..dss.utils.selection import auto_select_components_robust
 from ..dss.utils.whitening import (
     apply_spatial_transform,
@@ -63,7 +64,6 @@ from .adaptive import (
     detect_harmonics,
     find_fine_peak,
     find_noise_freqs,
-    segment_data,
 )
 
 logger = logging.getLogger(__name__)
@@ -801,12 +801,12 @@ class ZapLine(DSS):
 
         # Process each frequency sequentially
         for target_freq in all_freqs_to_process:
-            segments = segment_data(
-                current_data,
-                self.sfreq,
-                target_freq=target_freq,
+            segmenter = CovarianceSegmenter(
+                sfreq=self.sfreq,
                 min_chunk_len=min_chunk_len,
+                bandpass=(target_freq - 3, target_freq + 3),
             )
+            segments = segmenter.segment(current_data)
 
             # Process each segment
             cleaned_chunks = []
