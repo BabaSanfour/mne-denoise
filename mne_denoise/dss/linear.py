@@ -301,6 +301,14 @@ class DSS(BaseEstimator, TransformerMixin):
         a :class:`CovarianceSegmenter` is created automatically
         (requires ``sfreq`` to be determinable from the input or
         from the bias function).
+    crossfade : float, default=0.0
+        Duration (in seconds) of the cross-fade at segment boundaries
+        when ``segmented=True``.  Adjacent segments are extended by
+        this amount on each side, cleaned independently, then blended
+        using a raised-cosine (Hann) overlap-add window.  This
+        eliminates discontinuities at segment boundaries.
+        If ``0.0`` (default), segments are hard-concatenated (original
+        behaviour).  Typical values: ``0.5`` – ``2.0`` seconds.
     max_prop_remove : float | None, default=None
         Maximum proportion of channels that can be removed per segment.
         E.g. ``0.2`` caps ``n_selected`` at ``int(n_channels × 0.2)``.
@@ -378,6 +386,7 @@ class DSS(BaseEstimator, TransformerMixin):
         smooth: LinearDenoiser | int | None = None,
         segmented: bool = False,
         segmenter: CovarianceSegmenter | FixedWindowSegmenter | None = None,
+        crossfade: float = 0.0,
         max_prop_remove: float | None = None,
         min_select: int = 0,
         return_type: str = "sources",
@@ -398,6 +407,7 @@ class DSS(BaseEstimator, TransformerMixin):
         self.smooth = smooth
         self.segmented = segmented
         self.segmenter = segmenter
+        self.crossfade = crossfade
         self.max_prop_remove = max_prop_remove
         self.min_select = min_select
         self.return_type = return_type
@@ -1192,6 +1202,12 @@ class DSS(BaseEstimator, TransformerMixin):
     def _run_segmented(self, data: np.ndarray, sfreq: float) -> np.ndarray:
         """Run segmented fit-transform on continuous data.
 
+        Each segment gets an independent DSS fit and cleaning pass.
+        When :attr:`crossfade` is positive and there are multiple
+        segments, adjacent segments are extended by ``crossfade``
+        seconds on each side and combined using raised-cosine (Hann)
+        overlap-add to eliminate boundary discontinuities.
+
         Parameters
         ----------
         data : ndarray, shape (n_channels, n_times)
@@ -1202,7 +1218,8 @@ class DSS(BaseEstimator, TransformerMixin):
         Returns
         -------
         cleaned : ndarray, shape (n_channels, n_times)
-            Cleaned data (segments are concatenated).
+            Cleaned data (segments blended via cross-fade or
+            concatenated).
         """
         import logging
 
@@ -1222,15 +1239,50 @@ class DSS(BaseEstimator, TransformerMixin):
             f"over {data.shape[1] / sfreq:.1f}s"
         )
 
+        # ------ cross-fade setup ------
+        n_overlap = (
+            int(self.crossfade * sfreq) if self.crossfade > 0 else 0
+        )
+        _n_ch, n_times = data.shape
+        use_crossfade = n_overlap > 0 and len(segments) > 1
+
+        if use_crossfade:
+            min_seg_len = min(end - start for start, end in segments)
+            if n_overlap > min_seg_len // 2:
+                n_overlap = max(1, min_seg_len // 2)
+                logger.warning(
+                    f"Crossfade overlap clamped to {n_overlap} samples "
+                    f"({n_overlap / sfreq:.2f}s) — half the smallest "
+                    f"segment."
+                )
+
+        # ------ per-segment processing ------
         self.segment_results_ = []
-        cleaned_chunks = []
-        per_segment_n_removed = []
+        cleaned_chunks: list[dict] = []
+        per_segment_n_removed: list[int] = []
 
         for seg_idx, (start, end) in enumerate(segments):
-            chunk = data[:, start:end]
+            # Optionally extend boundaries for cross-fade context
+            if use_crossfade:
+                is_first = seg_idx == 0
+                is_last = seg_idx == len(segments) - 1
+                ext_start = start if is_first else max(0, start - n_overlap)
+                ext_end = end if is_last else min(n_times, end + n_overlap)
+            else:
+                ext_start, ext_end = start, end
+
+            chunk = data[:, ext_start:ext_end]
             result = self._process_segment(chunk)
 
-            cleaned_chunks.append(result["cleaned"])
+            cleaned_chunks.append(
+                {
+                    "cleaned": result["cleaned"],
+                    "ext_start": ext_start,
+                    "ext_end": ext_end,
+                    "start": start,
+                    "end": end,
+                }
+            )
             per_segment_n_removed.append(result["n_selected"])
 
             # Store per-segment metadata
@@ -1253,8 +1305,82 @@ class DSS(BaseEstimator, TransformerMixin):
                 self.filters_ = result["filters"]
                 self.mixing_ = np.linalg.pinv(self.filters_)
 
-        self.n_selected_ = max(per_segment_n_removed) if per_segment_n_removed else 0
-        return np.concatenate(cleaned_chunks, axis=1)
+        self.n_selected_ = (
+            max(per_segment_n_removed) if per_segment_n_removed else 0
+        )
+
+        # ------ combine segments ------
+        if use_crossfade:
+            return self._crossfade_combine(
+                data.shape, cleaned_chunks, n_overlap
+            )
+        return np.concatenate(
+            [c["cleaned"] for c in cleaned_chunks], axis=1
+        )
+
+    def _crossfade_combine(
+        self,
+        shape: tuple[int, int],
+        cleaned_chunks: list[dict],
+        n_overlap: int,
+    ) -> np.ndarray:
+        """Combine cleaned segments with raised-cosine overlap-add.
+
+        Each chunk has been cleaned over an extended region that
+        overlaps with its neighbours.  A Hann-based window tapers
+        the overlap zones; after accumulating all weighted chunks
+        the output is normalised by the sum of weights, producing
+        a smooth, discontinuity-free result.
+
+        Parameters
+        ----------
+        shape : (int, int)
+            ``(n_channels, n_times)`` — shape of the output array.
+        cleaned_chunks : list of dict
+            Each dict contains ``'cleaned'`` (ndarray),
+            ``'ext_start'``, ``'ext_end'``, ``'start'``, ``'end'``.
+        n_overlap : int
+            Overlap length in samples.
+
+        Returns
+        -------
+        output : ndarray, shape (n_channels, n_times)
+        """
+        n_ch, n_times = shape
+        output = np.zeros((n_ch, n_times))
+        weights = np.zeros(n_times)
+
+        for info in cleaned_chunks:
+            cleaned = info["cleaned"]
+            ext_start = info["ext_start"]
+            ext_end = info["ext_end"]
+            start = info["start"]
+            end = info["end"]
+
+            chunk_len = ext_end - ext_start
+            window = np.ones(chunk_len)
+
+            # Fade-in: leading overlap (before original segment start)
+            lead = start - ext_start
+            if lead > 0:
+                t = np.arange(lead, dtype=float)
+                window[:lead] = 0.5 * (1.0 - np.cos(np.pi * t / lead))
+
+            # Fade-out: trailing overlap (after original segment end)
+            trail = ext_end - end
+            if trail > 0:
+                t = np.arange(trail, dtype=float)
+                window[chunk_len - trail:] = 0.5 * (
+                    1.0 + np.cos(np.pi * t / trail)
+                )
+
+            output[:, ext_start:ext_end] += cleaned * window[np.newaxis, :]
+            weights[ext_start:ext_end] += window
+
+        # Normalise (weights > 0 everywhere because segments tile the data)
+        weights = np.maximum(weights, 1e-10)
+        output /= weights[np.newaxis, :]
+        return output
 
     def _process_segment(self, chunk: np.ndarray) -> dict:
         """Process a single segment: fit DSS, select components, clean.

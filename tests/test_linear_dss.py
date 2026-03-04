@@ -1646,6 +1646,169 @@ class TestCapAndFloor:
             assert r["n_selected"] >= 2
 
 
+class TestCrossfade:
+    """Tests for cross-fade overlap-add blending at segment boundaries."""
+
+    def test_crossfade_output_shape(self):
+        """Output shape must match input shape regardless of crossfade."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        dss = DSS(
+            bias,
+            segmented=True,
+            segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
+            crossfade=1.0,
+            n_components=4,
+            n_select="auto",
+        )
+        cleaned = dss.fit_transform(raw)
+        assert cleaned.get_data().shape == data.shape
+
+    def test_crossfade_no_boundary_jump(self):
+        """Derivative at segment boundaries should not spike."""
+        data, sfreq = _make_nonstationary_line_noise(duration=120.0)
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+
+        # Without cross-fade
+        dss_hard = DSS(
+            bias,
+            segmented=True,
+            segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
+            crossfade=0.0,
+            n_components=4,
+            n_select="auto",
+        )
+        cleaned_hard = dss_hard.fit_transform(raw).get_data()
+
+        # With cross-fade
+        dss_xfade = DSS(
+            bias,
+            segmented=True,
+            segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
+            crossfade=1.0,
+            n_components=4,
+            n_select="auto",
+        )
+        cleaned_xfade = dss_xfade.fit_transform(raw).get_data()
+
+        # Check derivative at boundary (30s = 7500 samples)
+        boundary = int(30 * sfreq)
+        win = 10  # samples around boundary
+        far = 500  # samples away for reference
+
+        diff_hard = np.abs(np.diff(cleaned_hard, axis=1))
+        diff_xfade = np.abs(np.diff(cleaned_xfade, axis=1))
+
+        # Max derivative at boundary vs. reference region
+        bnd_hard = diff_hard[:, boundary - win : boundary + win].max()
+        ref_hard = np.median(diff_hard[:, boundary - far : boundary - 2 * win])
+        bnd_xfade = diff_xfade[:, boundary - win : boundary + win].max()
+        ref_xfade = np.median(diff_xfade[:, boundary - far : boundary - 2 * win])
+
+        ratio_hard = bnd_hard / (ref_hard + 1e-12)
+        ratio_xfade = bnd_xfade / (ref_xfade + 1e-12)
+
+        # Cross-fade boundary ratio should be no worse than hard boundary
+        # (and often much better)
+        assert ratio_xfade <= ratio_hard + 1.0 or ratio_xfade < 10.0
+
+    def test_crossfade_single_segment_matches_hard(self):
+        """With only one segment, crossfade has no effect."""
+        # Short data → single segment (< min_chunk_len * 2)
+        rng = np.random.default_rng(99)
+        sfreq = 250.0
+        data = rng.standard_normal((8, int(40 * sfreq)))
+        t = np.arange(data.shape[1]) / sfreq
+        data += 0.5 * np.sin(2 * np.pi * 50 * t)[np.newaxis, :]
+
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        seg = FixedWindowSegmenter(sfreq=sfreq, window_len=60.0)
+
+        dss_hard = DSS(
+            bias, segmented=True, segmenter=seg,
+            crossfade=0.0, n_components=4, n_select="auto",
+        )
+        dss_xfade = DSS(
+            bias, segmented=True, segmenter=seg,
+            crossfade=1.0, n_components=4, n_select="auto",
+        )
+
+        out_hard = dss_hard.fit_transform(data)
+        out_xfade = dss_xfade.fit_transform(data)
+        np.testing.assert_array_equal(out_hard, out_xfade)
+
+    def test_crossfade_zero_backward_compat(self):
+        """crossfade=0 must produce same result as before (hard concat)."""
+        data, sfreq = _make_nonstationary_line_noise()
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        seg = FixedWindowSegmenter(sfreq=sfreq, window_len=30.0)
+
+        # Default crossfade (0.0)
+        dss = DSS(
+            bias, segmented=True, segmenter=seg,
+            n_components=4, n_select="auto",
+        )
+        out_default = dss.fit_transform(data)
+
+        # Explicit crossfade=0.0
+        dss0 = DSS(
+            bias, segmented=True, segmenter=seg,
+            crossfade=0.0, n_components=4, n_select="auto",
+        )
+        out_zero = dss0.fit_transform(data)
+        np.testing.assert_array_equal(out_default, out_zero)
+
+    def test_crossfade_preserves_energy(self):
+        """Total signal power should not change dramatically with crossfade."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+
+        dss = DSS(
+            bias,
+            segmented=True,
+            segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
+            crossfade=1.0,
+            n_components=4,
+            n_select="auto",
+        )
+        cleaned = dss.fit_transform(raw).get_data()
+
+        # Power ratio should be between 0.3 and 1.5
+        # (cleaning removes artifact, but broadband should be preserved)
+        power_in = np.mean(data ** 2)
+        power_out = np.mean(cleaned ** 2)
+        ratio = power_out / power_in
+        assert 0.3 < ratio < 1.5, f"Power ratio {ratio:.2f} out of range"
+
+    def test_crossfade_overlap_clamped(self):
+        """When crossfade is longer than half a segment, it gets clamped."""
+        rng = np.random.default_rng(42)
+        sfreq = 250.0
+        # 20s data with 10s segments → crossfade=8s should get clamped
+        data = rng.standard_normal((8, int(20 * sfreq)))
+        t = np.arange(data.shape[1]) / sfreq
+        data += 0.3 * np.sin(2 * np.pi * 50 * t)[np.newaxis, :]
+
+        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+        dss = DSS(
+            bias,
+            segmented=True,
+            segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=10.0),
+            crossfade=8.0,  # way too long
+            n_components=4,
+            n_select="auto",
+        )
+        # Should not crash — overlap gets clamped internally
+        cleaned = dss.fit_transform(data)
+        assert cleaned.shape == data.shape
+
+
 def test_narrowband_scan_rejects_segmented():
     """narrowband_scan should raise ValueError with segmented=True."""
     from mne_denoise.dss.variants.narrowband import narrowband_scan
