@@ -115,6 +115,12 @@ def narrowband_scan(
     """
     data = np.asarray(data)
 
+    if dss_kws.get("segmented", False):
+        raise ValueError(
+            "narrowband_scan does not support segmented=True. "
+            "Run narrowband_scan per segment manually if needed."
+        )
+
     nyquist = sfreq / 2
     min_freq, max_freq = freq_range
 

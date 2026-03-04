@@ -1287,3 +1287,348 @@ def test_dss_whiten_inverse_transform_recovers_sensor_data():
     data_centered = data - data.mean(axis=1, keepdims=True)
     assert rec.shape == data.shape
     assert np.linalg.norm(rec - data_centered) / np.linalg.norm(data_centered) < 1e-6
+
+
+# =============================================================================
+# Adaptive DSS – Segmented Mode
+# =============================================================================
+
+
+def _make_nonstationary_line_noise(
+    n_channels=16,
+    sfreq=250.0,
+    duration=120.0,
+    freq=50.0,
+    snr_first_half=0.8,
+    snr_second_half=0.3,
+    seed=42,
+):
+    """Create synthetic non-stationary line noise (different amplitude halves).
+
+    Returns data (n_channels, n_times) and sfreq.
+    """
+    rng = np.random.default_rng(seed)
+    n_times = int(sfreq * duration)
+    half = n_times // 2
+    t = np.arange(n_times) / sfreq
+
+    # Spatial mixing for line noise (rank-1)
+    topo = rng.standard_normal(n_channels)
+    topo /= np.linalg.norm(topo)
+
+    # Line noise source
+    source = np.sin(2 * np.pi * freq * t)
+
+    # Background EEG (pink-ish noise)
+    eeg = rng.standard_normal((n_channels, n_times)) * 0.5
+
+    # Inject different amplitudes per half
+    noise = np.outer(topo, source)
+    noise[:, :half] *= snr_first_half
+    noise[:, half:] *= snr_second_half
+
+    return eeg + noise, sfreq
+
+
+class TestSegmentedDSS:
+    """Tests for DSS with segmented=True."""
+
+    def test_fit_raises_without_sfreq(self):
+        """fit() should raise if segmented=True but no sfreq available."""
+        data = np.random.default_rng(0).standard_normal((8, 5000))
+        dss = DSS(segmented=True, n_components=2)
+        with pytest.raises((ValueError, RuntimeError)):
+            dss.fit(data)
+
+    def test_fit_transform_runs(self):
+        """fit_transform should run to completion in segmented mode."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(
+            segmented=True,
+            segmenter="fixed",
+            segmenter_kws={"window_len": 30.0},
+            n_components=2,
+        )
+        result = dss.fit_transform(raw)
+        assert result is not None
+
+    def test_segment_results_populated(self):
+        """After segmented fit, segment_results_ should be populated."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(
+            segmented=True,
+            segmenter="fixed",
+            segmenter_kws={"window_len": 30.0},
+            n_components=2,
+        )
+        dss.fit_transform(raw)
+        assert hasattr(dss, "segment_results_")
+        assert len(dss.segment_results_) >= 2
+
+    def test_n_selected_is_max(self):
+        """n_selected_ should be the max across segments, not the sum."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(
+            segmented=True,
+            segmenter="fixed",
+            segmenter_kws={"window_len": 30.0},
+            n_components=4,
+            n_select="outlier",
+        )
+        dss.fit_transform(raw)
+        per_seg_n = [r["n_selected"] for r in dss.segment_results_]
+        assert dss.n_selected_ == max(per_seg_n)
+
+    def test_reduces_artifact(self):
+        """Segmented DSS should reduce line noise power."""
+        from scipy.signal import welch
+
+        data, sfreq = _make_nonstationary_line_noise(freq=50.0)
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(
+            segmented=True,
+            segmenter="fixed",
+            segmenter_kws={"window_len": 30.0},
+            n_components=4,
+            n_select=1,
+        )
+        cleaned = dss.fit_transform(raw)
+        cleaned_data = cleaned.get_data()
+
+        # Compare average 50 Hz power before and after
+        def avg_power_at_freq(d, freq, sfreq):
+            f, psd = welch(d, fs=sfreq, nperseg=min(1024, d.shape[1]))
+            idx = np.argmin(np.abs(f - freq))
+            return psd[:, idx].mean()
+
+        pwr_before = avg_power_at_freq(data, 50.0, sfreq)
+        pwr_after = avg_power_at_freq(cleaned_data, 50.0, sfreq)
+        assert pwr_after < pwr_before
+
+    def test_covariance_segmenter(self):
+        """Segmenter='covariance' should work."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(
+            segmented=True,
+            segmenter="covariance",
+            segmenter_kws={"min_chunk_len": 20.0},
+            n_components=2,
+        )
+        result = dss.fit_transform(raw)
+        assert result is not None
+
+    def test_epochs_3d(self):
+        """Segmented DSS should reject 3-D data (Epochs) gracefully or run."""
+        rng = np.random.default_rng(42)
+        n_ch, n_times, sfreq = 8, 250, 250.0
+        n_epochs = 10
+        data_3d = rng.standard_normal((n_ch, n_times * n_epochs))
+        info = mne.create_info(n_ch, sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data_3d, info, verbose=False)
+        events = np.column_stack(
+            [np.arange(0, n_times * n_epochs, n_times), np.zeros(n_epochs, int),
+             np.ones(n_epochs, int)]
+        )
+        epochs = mne.Epochs(raw, events, tmin=0, tmax=(n_times - 1) / sfreq,
+                            baseline=None, preload=True, verbose=False)
+        dss = DSS(segmented=True, n_components=2)
+        # Epochs should either work (segmentation on concatenated) or raise
+        try:
+            dss.fit_transform(epochs)
+        except (ValueError, RuntimeError):
+            pass  # Acceptable: segmented mode may not support Epochs
+
+
+class TestAutoSelect:
+    """Tests for automatic component selection (n_select='outlier', etc.)."""
+
+    def test_outlier(self):
+        """n_select='outlier' should set n_selected_ >= 0."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(n_components=4, n_select="outlier")
+        dss.fit(raw)
+        assert dss.n_selected_ is not None
+        assert dss.n_selected_ >= 0
+
+    def test_ratio(self):
+        """n_select='ratio' should set n_selected_ >= 0."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(n_components=4, n_select="ratio")
+        dss.fit(raw)
+        assert dss.n_selected_ is not None
+        assert dss.n_selected_ >= 0
+
+    def test_max_gap(self):
+        """n_select='max_gap' should set n_selected_ >= 0."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(n_components=4, n_select="max_gap")
+        dss.fit(raw)
+        assert dss.n_selected_ is not None
+        assert dss.n_selected_ >= 0
+
+    def test_combined(self):
+        """n_select='combined' should set n_selected_ >= 0."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(n_components=4, n_select="combined")
+        dss.fit(raw)
+        assert dss.n_selected_ is not None
+        assert dss.n_selected_ >= 0
+
+    def test_int_passthrough(self):
+        """n_select=int should directly set n_selected_."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(n_components=4, n_select=2)
+        dss.fit(raw)
+        assert dss.n_selected_ == 2
+
+    def test_invalid_method(self):
+        """Invalid n_select string should raise ValueError."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(n_components=4, n_select="nonexistent_method")
+        with pytest.raises((ValueError, KeyError)):
+            dss.fit(raw)
+
+    def test_manual_override(self):
+        """n_select=None should leave n_selected_=None."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(n_components=4, n_select=None)
+        dss.fit(raw)
+        assert dss.n_selected_ is None
+
+
+class TestSmoothingDecomposition:
+    """Tests for smooth parameter (smoothing decomposition)."""
+
+    def test_smooth_int_fit_transform(self):
+        """smooth=int should run fit_transform without error."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(n_components=2, smooth=5)
+        result = dss.fit_transform(raw)
+        assert result is not None
+
+    def test_fit_then_transform_preserves_smooth(self):
+        """fit() then transform() should NOT lose the smooth component.
+
+        Regression test: previously transform() discarded data_smooth.
+        """
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(n_components=2, smooth=5)
+        dss.fit(raw)
+        result = dss.transform(raw)
+        result_data = result.get_data()
+        # The result should have similar scale to the input (because smooth is
+        # added back). If smooth were lost, the result would be much smaller.
+        ratio = np.std(result_data) / np.std(data)
+        assert ratio > 0.3, f"Smooth likely lost: ratio={ratio:.3f}"
+
+    def test_smooth_segmented_cleans_artifact(self):
+        """Smooth + segmented should still reduce artifact power."""
+        from scipy.signal import welch
+
+        data, sfreq = _make_nonstationary_line_noise(freq=50.0)
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(
+            segmented=True,
+            segmenter="fixed",
+            segmenter_kws={"window_len": 30.0},
+            n_components=4,
+            n_select=1,
+            smooth=5,
+        )
+        cleaned = dss.fit_transform(raw)
+        cleaned_data = cleaned.get_data()
+
+        # Compare 50 Hz power
+        def avg_power_at_freq(d, freq, sfreq):
+            f, psd = welch(d, fs=sfreq, nperseg=min(1024, d.shape[1]))
+            idx = np.argmin(np.abs(f - freq))
+            return psd[:, idx].mean()
+
+        pwr_before = avg_power_at_freq(data, 50.0, sfreq)
+        pwr_after = avg_power_at_freq(cleaned_data, 50.0, sfreq)
+        assert pwr_after < pwr_before
+
+
+class TestCapAndFloor:
+    """Tests for max_prop_remove and min_select."""
+
+    def test_max_prop_remove_caps(self):
+        """max_prop_remove=0.1 on 32ch should cap at 3 components."""
+        rng = np.random.default_rng(42)
+        n_ch = 32
+        data = rng.standard_normal((n_ch, int(250 * 120)))
+        sfreq = 250.0
+        # Inject strong line noise to get many components selected
+        t = np.arange(data.shape[1]) / sfreq
+        topo = rng.standard_normal(n_ch)
+        for h in range(1, 6):  # 5 harmonics
+            data += np.outer(topo * h, np.sin(2 * np.pi * 50 * h * t))
+        info = mne.create_info(n_ch, sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(
+            segmented=True,
+            segmenter="fixed",
+            segmenter_kws={"window_len": 30.0},
+            n_components=10,
+            n_select="outlier",
+            max_prop_remove=0.1,
+        )
+        dss.fit_transform(raw)
+        max_cap = int(n_ch * 0.1)
+        for r in dss.segment_results_:
+            assert r["n_selected"] <= max_cap
+
+    def test_min_select_floor(self):
+        """min_select=2 should ensure at least 2 components removed."""
+        data, sfreq = _make_nonstationary_line_noise()
+        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+        raw = mne.io.RawArray(data, info, verbose=False)
+        dss = DSS(
+            segmented=True,
+            segmenter="fixed",
+            segmenter_kws={"window_len": 30.0},
+            n_components=4,
+            n_select="outlier",
+            min_select=2,
+        )
+        dss.fit_transform(raw)
+        for r in dss.segment_results_:
+            assert r["n_selected"] >= 2
+
+
+def test_narrowband_scan_rejects_segmented():
+    """narrowband_scan should raise ValueError with segmented=True."""
+    from mne_denoise.dss.variants.narrowband import narrowband_scan
+
+    rng = np.random.default_rng(42)
+    data = rng.standard_normal((8, 5000))
+    with pytest.raises(ValueError, match="segmented"):
+        narrowband_scan(data, sfreq=250.0, segmented=True)

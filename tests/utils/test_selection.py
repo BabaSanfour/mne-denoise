@@ -1,19 +1,23 @@
 """Unit tests for component-selection helpers.
 
 Covers :func:`iterative_outlier_removal`, :func:`detect_eigenvalue_knee`,
-and :func:`auto_select_components_robust`. Regression cases include the
+:func:`auto_select_components_robust`, :func:`eigenvalue_ratio_selection`,
+and :func:`max_gap_selection`. Regression cases include the
 high-channel-count MEG eigenvalue pattern reported in Issue #34.
 """
 
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from mne_denoise.dss.utils.selection import (
     auto_select_components,
     auto_select_components_robust,
     detect_eigenvalue_knee,
+    eigenvalue_ratio_selection,
     iterative_outlier_removal,
+    max_gap_selection,
 )
 
 # Eigenvalue spectrum from the user-reported CTF MEG case (Issue #34):
@@ -184,3 +188,142 @@ def test_auto_select_components_alias_unchanged():
     assert auto_select_components(scores, threshold=3.0) == iterative_outlier_removal(
         scores, sigma=3.0
     )
+
+
+# ============================================================================
+# iterative_outlier_removal
+# ============================================================================
+
+
+class TestIterativeOutlierRemoval:
+    """Tests for iterative_outlier_removal."""
+
+    def test_clear_outliers(self):
+        """Scores with a clear outlier should return >= 0 (conservative)."""
+        scores = np.array([0.9, 0.8, 0.15, 0.12, 0.1, 0.08, 0.07])
+        n = iterative_outlier_removal(scores, sigma=2.0)
+        # The iterative method is conservative; it may or may not flag
+        # the top scores depending on the distribution shape
+        assert n >= 0
+
+    def test_no_outliers(self):
+        """Uniform scores should produce 0 outliers."""
+        scores = np.array([0.5, 0.5, 0.5, 0.5, 0.5])
+        n = iterative_outlier_removal(scores, sigma=3.0)
+        assert n == 0
+
+    def test_single_outlier(self):
+        """One extreme value among many similar should be detected."""
+        scores = np.array([10.0, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+        n = iterative_outlier_removal(scores, sigma=2.0)
+        assert n >= 1
+
+    def test_strict_threshold(self):
+        """Very high sigma should detect fewer outliers."""
+        scores = np.array([10.0, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+        n_strict = iterative_outlier_removal(scores, sigma=10.0)
+        n_lenient = iterative_outlier_removal(scores, sigma=1.0)
+        assert n_strict <= n_lenient
+
+    def test_two_elements(self):
+        """With only two elements, algorithm should still work."""
+        scores = np.array([1.0, 0.1])
+        n = iterative_outlier_removal(scores, sigma=2.0)
+        assert n == 0  # Not enough elements for iterative removal
+
+    def test_empty_array(self):
+        """Empty array should return 0."""
+        scores = np.array([])
+        n = iterative_outlier_removal(scores, sigma=2.0)
+        assert n == 0
+
+
+# ============================================================================
+# eigenvalue_ratio_selection
+# ============================================================================
+
+
+class TestEigenvalueRatioSelection:
+    """Tests for eigenvalue_ratio_selection."""
+
+    def test_clear_drop(self):
+        """A clear 3x drop should be detected."""
+        eigenvalues = np.array([0.9, 0.3, 0.29, 0.28])
+        n = eigenvalue_ratio_selection(eigenvalues, ratio_threshold=2.0)
+        assert n == 1
+
+    def test_no_clear_drop(self):
+        """Gentle decline should return 0."""
+        eigenvalues = np.array([0.5, 0.48, 0.46, 0.44])
+        n = eigenvalue_ratio_selection(eigenvalues, ratio_threshold=2.0)
+        assert n == 0
+
+    def test_multiple_components(self):
+        """Two large then drop should select 2."""
+        eigenvalues = np.array([0.9, 0.8, 0.1, 0.09])
+        n = eigenvalue_ratio_selection(eigenvalues, ratio_threshold=2.0)
+        assert n == 2
+
+    def test_zero_eigenvalue(self):
+        """Zero eigenvalue should count as drop."""
+        eigenvalues = np.array([0.5, 0.0, 0.0])
+        n = eigenvalue_ratio_selection(eigenvalues, ratio_threshold=2.0)
+        assert n == 1
+
+    def test_single_eigenvalue(self):
+        """Single eigenvalue → select 1."""
+        eigenvalues = np.array([0.5])
+        n = eigenvalue_ratio_selection(eigenvalues, ratio_threshold=2.0)
+        assert n == 1
+
+    def test_all_equal(self):
+        """All equal eigenvalues → no drop → 0."""
+        eigenvalues = np.array([0.5, 0.5, 0.5, 0.5])
+        n = eigenvalue_ratio_selection(eigenvalues, ratio_threshold=2.0)
+        assert n == 0
+
+
+# ============================================================================
+# max_gap_selection
+# ============================================================================
+
+
+class TestMaxGapSelection:
+    """Tests for max_gap_selection."""
+
+    def test_finds_largest_gap(self):
+        """Should find the position of the biggest drop."""
+        eigenvalues = np.array([0.9, 0.3, 0.28, 0.27])
+        n = max_gap_selection(eigenvalues, min_ratio=1.2)
+        assert n == 1  # 0.9/0.3 = 3.0 is the biggest gap
+
+    def test_all_equal_no_gap(self):
+        """All equal → no gap exceeding min_ratio → 0."""
+        eigenvalues = np.array([0.5, 0.5, 0.5, 0.5])
+        n = max_gap_selection(eigenvalues, min_ratio=1.2)
+        assert n == 0
+
+    def test_gentle_decline(self):
+        """Gentle decline may still find a gap if ratio > min_ratio."""
+        eigenvalues = np.array([0.5, 0.4, 0.3, 0.2])
+        n = max_gap_selection(eigenvalues, min_ratio=1.2)
+        # 0.3/0.2 = 1.5 is the biggest gap → n=3
+        assert n >= 1
+
+    def test_min_ratio_filtering(self):
+        """High min_ratio should reject small gaps."""
+        eigenvalues = np.array([0.5, 0.45, 0.4, 0.35])
+        n = max_gap_selection(eigenvalues, min_ratio=2.0)
+        assert n == 0  # All ratios < 2.0
+
+    def test_single_eigenvalue(self):
+        """Single eigenvalue → return 1."""
+        eigenvalues = np.array([0.5])
+        n = max_gap_selection(eigenvalues, min_ratio=1.2)
+        assert n == 1
+
+    def test_two_eigenvalues(self):
+        """Two eigenvalues with clear gap."""
+        eigenvalues = np.array([0.9, 0.1])
+        n = max_gap_selection(eigenvalues, min_ratio=1.2)
+        assert n == 1

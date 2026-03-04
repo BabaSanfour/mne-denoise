@@ -915,8 +915,9 @@ class DSS(BaseEstimator, TransformerMixin):
 
         # If smoothing is enabled, project the residual (not full data)
         if self._smoother is not None:
-            _, data_for_dss = self._decompose_smooth(data)
+            data_smooth, data_for_dss = self._decompose_smooth(data)
         else:
+            data_smooth = None
             data_for_dss = data
 
         orig_shape = data.shape
@@ -949,6 +950,15 @@ class DSS(BaseEstimator, TransformerMixin):
         # mixing shape: (n_channels, n_components)
         rec = self.mixing_[:, :n_keep] @ sources[:n_keep]
         rec += mean_
+
+        # Add back smooth component if it was separated
+        if data_smooth is not None:
+            smooth_2d = (
+                data_smooth.reshape(data_smooth.shape[0], -1)
+                if data_smooth.ndim == 3
+                else data_smooth
+            )
+            rec = rec + smooth_2d
 
         # Reshape to original
         if len(orig_shape) == 3:
@@ -1200,6 +1210,13 @@ class DSS(BaseEstimator, TransformerMixin):
 
         segmenter = self._resolve_segmenter(sfreq)
         segments = segmenter.segment(data)
+
+        if not segments:
+            raise ValueError(
+                "Segmenter returned no segments. Check segmenter settings "
+                "and data length."
+            )
+
         logger.info(
             f"Segmented DSS: {len(segments)} segment(s) "
             f"over {data.shape[1] / sfreq:.1f}s"
@@ -1207,14 +1224,14 @@ class DSS(BaseEstimator, TransformerMixin):
 
         self.segment_results_ = []
         cleaned_chunks = []
-        total_n_removed = 0
+        per_segment_n_removed = []
 
         for seg_idx, (start, end) in enumerate(segments):
             chunk = data[:, start:end]
             result = self._process_segment(chunk)
 
             cleaned_chunks.append(result["cleaned"])
-            total_n_removed += result["n_selected"]
+            per_segment_n_removed.append(result["n_selected"])
 
             # Store per-segment metadata
             self.segment_results_.append(
@@ -1236,7 +1253,7 @@ class DSS(BaseEstimator, TransformerMixin):
                 self.filters_ = result["filters"]
                 self.mixing_ = np.linalg.pinv(self.filters_)
 
-        self.n_selected_ = total_n_removed
+        self.n_selected_ = max(per_segment_n_removed) if per_segment_n_removed else 0
         return np.concatenate(cleaned_chunks, axis=1)
 
     def _process_segment(self, chunk: np.ndarray) -> dict:
@@ -1318,8 +1335,12 @@ class DSS(BaseEstimator, TransformerMixin):
             data_smooth = np.zeros_like(data)
             data_residual = data
 
+        # Center residual before projection (DSS assumes zero-mean)
+        mean_ = data_residual.mean(axis=1, keepdims=True)
+        residual_centered = data_residual - mean_
+
         # Project residual through the top n_remove DSS filters
-        sources = fitted_dss.filters_[:n_remove] @ data_residual
+        sources = fitted_dss.filters_[:n_remove] @ residual_centered
         artifact = fitted_dss.mixing_[:, :n_remove] @ sources
 
         return data_smooth + (data_residual - artifact)
