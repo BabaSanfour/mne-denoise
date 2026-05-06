@@ -1,5 +1,7 @@
 """General utilities for mne-denoise."""
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np
@@ -50,7 +52,7 @@ def extract_data_from_mne(X: Any) -> tuple[np.ndarray, float | None, str, Any]:
     mne_type = "array"
     orig_inst = None
 
-    if _HAS_MNE and isinstance(X, BaseRaw | BaseEpochs | Evoked):
+    if _HAS_MNE and isinstance(X, (BaseRaw, BaseEpochs, Evoked)):  # noqa: UP038
         orig_inst = X
         sfreq = X.info["sfreq"]
         data = X.get_data()
