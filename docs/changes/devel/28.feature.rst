@@ -1,0 +1,5 @@
+Added source-backed ``JugglerASR`` calibration variants implementing the
+sample-wise ASRDBSCAN and ASRGEV reference-selection procedures from Kim et
+al. (2025), plus the low-level
+``mne_denoise.asr.select_juggler_reference_samples`` helper, tests, docs, and
+a synthetic gallery example.
