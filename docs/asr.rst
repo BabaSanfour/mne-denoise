@@ -6,9 +6,11 @@ spatially structured EEG artifacts by calibrating a clean covariance model and
 reconstructing burst-contaminated subspaces with the standard clean_rawdata
 lookahead, moving-covariance, and raised-cosine blending procedure.
 
-The current implementation provides standard Euclidean ASR, Juggler-style
-calibration variants, MATLAB-backed adaptive ASR variants, and an
-experimental Riemannian backend.
+The production target is standard Euclidean ASR. The module also exposes
+specialized Juggler-style calibration variants, MATLAB-fixture-backed adaptive
+ASR variants, and an experimental Riemannian backend; these variants are useful
+for research and comparison workflows but should be reported explicitly when
+used.
 
 Basic usage
 -----------
@@ -66,11 +68,12 @@ MATLAB parity fixtures under ``tests/parity`` remain the authoritative
 pass/fail validation for the standard and experimental backends.
 
 For additional local source comparison, ``scripts/run_asr_reference_benchmark.py``
-benchmarks:
+can benchmark against optional checkouts that are not shipped with this
+repository:
 
-- standard ASR against the local ``refs/asr/repos/python-meegkit`` checkout
-- experimental Riemannian ASR against the local ``refs/asr/repos/timeflux_rasr``
-  checkout, as a qualitative comparison only
+- standard ASR against an optional ``refs/asr/repos/python-meegkit`` checkout
+- experimental Riemannian ASR against an optional
+  ``refs/asr/repos/timeflux_rasr`` checkout, as a qualitative comparison only
 
 The ``timeflux_rasr`` comparison is intentionally not a parity test because
 that implementation is epoched/trial-based and currently depends on older
@@ -110,13 +113,15 @@ MATLAB-style method names:
   adaptive state
 - ``reset_process_state()`` to replay the reconstruction path deterministically
 
-The adaptive variants are validated against local MATLAB fixtures generated
-from ``refs/asr/repos/AASR`` for both:
+The adaptive variants are specialized research paths validated against the
+MATLAB fixture files stored under ``tests/parity``. Those fixtures were
+generated from an AASR reference checkout for both:
 
 - ``variant="psp"``
 - ``variant="psw"``
 
-across first-update and repeated-update cases.
+across first-update and repeated-update cases. The reference checkout itself is
+not required to use or test the package.
 
 JugglerASR
 ----------
@@ -146,7 +151,34 @@ from Kim et al. (2025) are exposed:
 The paper specifies the sample-selection logic but does not provide a local
 MATLAB oracle in this repository, so this implementation is validated through
 unit tests and the published algorithm description rather than a parity
-fixture.
+fixture. Treat it as a specialized calibration strategy for high-motion MoBI
+data, not as a universal replacement for standard ASR.
+
+Real-data validation
+--------------------
+
+Use ``scripts/run_asr_real_data_validation.py`` for local, reproducible
+smoke validation on cached real EEG data. The script discovers files under
+``.cache/asr_datasets`` and ``data`` by default, injects known burst artifacts
+into a copy of the recording, runs the requested ASR variants, and writes JSON,
+CSV, and Markdown reports with:
+
+- wall time, process CPU time, sampled RSS peak, and Python allocation peak
+- ASR calibration and processing memory modes
+- shape, finite-output, channel-order, sampling-frequency, bad-channel, and
+  annotation preservation checks
+- injected-burst attenuation and non-burst distortion metrics
+
+Example:
+
+.. code-block:: console
+
+   py -3.12 scripts/run_asr_real_data_validation.py \
+       --max-duration 120 \
+       --max-mem-mb 512 \
+       --low-mem-mb 0.1 \
+       --output reports/asr_real_data_validation.json \
+       --fail-on-error
 
 Important assumptions
 ---------------------
@@ -173,6 +205,9 @@ After ``transform``, the estimator stores audit fields:
 
 ``diagnostics_``
    Window starts, stops, variance estimates, thresholds, and summary fractions.
+   Long-recording memory fields include ``memory_mode``, ``max_mem_mb``,
+   ``estimated_full_cov_bytes``, ``peak_cov_buffer_bytes``, ``chunk_samples``,
+   and ``used_memory_bound``.
 
 ``to_annotations()``
    Converts repaired windows from the last transform into ``mne.Annotations``.
@@ -231,4 +266,9 @@ Implementation plan
 -------------------
 
 The detailed engineering plan and research synthesis are kept in
-``docs/asr/ASR_IMPLEMENTATION_PLAN.md``.
+:doc:`asr/ASR_IMPLEMENTATION_PLAN`.
+
+.. toctree::
+   :hidden:
+
+   asr/ASR_IMPLEMENTATION_PLAN

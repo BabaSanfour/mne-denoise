@@ -1,0 +1,7 @@
+Added ``scripts/run_asr_paper_validation.py``, a paper-driven validation
+harness that sweeps the ASR cutoff parameter on real EEG recordings, drops
+obviously bad channels, and reproduces the headline figures from Chang et al.
+(2020), Blum et al. (2019), and Kim et al. (2025): cutoff sweep
+(% windows-with-rejection, % background-variance reduced), per-variant
+computation time, reference-data fraction, PSD 1/f-bump parameter, and
+frontal eye-blink amplitude reduction.
