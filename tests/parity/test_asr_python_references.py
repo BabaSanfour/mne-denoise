@@ -24,7 +24,10 @@ def _load_meegkit_asr():
     if not repo.exists():
         pytest.skip("python-meegkit reference repo not found under refs/asr/repos")
     _prepend_if_exists(repo)
-    from meegkit.asr import ASR as MeegkitASR
+    try:
+        from meegkit.asr import ASR as MeegkitASR
+    except ModuleNotFoundError as exc:
+        pytest.skip(f"python-meegkit reference dependency not available: {exc.name}")
 
     return MeegkitASR
 
@@ -97,7 +100,9 @@ def test_standard_asr_tracks_python_meegkit_reference_behavior():
     )
 
     corr = np.corrcoef(our_clean.ravel(), reference_clean.ravel())[0, 1]
-    relerr = np.linalg.norm(our_clean - reference_clean) / np.linalg.norm(reference_clean)
+    relerr = np.linalg.norm(our_clean - reference_clean) / np.linalg.norm(
+        reference_clean
+    )
 
     assert our_clean.shape == data.shape
     assert reference_clean.shape == data.shape
