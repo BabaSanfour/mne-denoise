@@ -19,14 +19,17 @@ from ..utils import extract_data_from_mne, reconstruct_mne_object
 from .core import (
     ASR,
     ASRState,
+    _aggregate_block_covariances,
     _append_clean_rawdata_tail,
-    _block_covariances_clean_rawdata,
     _clean_rawdata_window_starts,
     _clean_windows_grid_diagnostics,
+    _covariance_chunk_blocks,
+    _covariance_stack_bytes,
     _empty_process_diagnostics,
-    _geometric_median,
     _good_raw_sample_mask,
+    _max_mem_bytes,
     _moving_average_clean_rawdata,
+    _process_memory_info,
     _regularize_spd,
     _resolve_max_dims_clean_rawdata,
     _round_half_up,
@@ -115,7 +118,9 @@ def _denf(R: np.ndarray, na: int) -> np.ndarray:
     return np.concatenate(([1.0], np.linalg.lstsq(Rm, rhs.T, rcond=None)[0].T))
 
 
-def _yulewalk(order: int, F: np.ndarray, M: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _yulewalk(
+    order: int, F: np.ndarray, M: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     """Design the AASR statistics filter."""
     F = np.asarray(F, dtype=np.float64)
     M = np.asarray(M, dtype=np.float64)
@@ -166,7 +171,16 @@ def _yulewalk(order: int, F: np.ndarray, M: np.ndarray) -> tuple[np.ndarray, np.
 def _design_aasr_filter(sfreq: float) -> tuple[np.ndarray, np.ndarray]:
     freqs = (
         np.array(
-            [0.0, 2.0, 3.0, 13.0, 16.0, 40.0, min(80.0, (sfreq / 2.0) - 1.0), sfreq / 2.0],
+            [
+                0.0,
+                2.0,
+                3.0,
+                13.0,
+                16.0,
+                40.0,
+                min(80.0, (sfreq / 2.0) - 1.0),
+                sfreq / 2.0,
+            ],
             dtype=np.float64,
         )
         * 2.0
@@ -271,13 +285,61 @@ def _adaptive_covariance_sqrt(
     *,
     blocksize: int,
     regularization: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    covariances = _block_covariances_clean_rawdata(X, blocksize)
-    C = _geometric_median(covariances)
+    max_mem_mb: int | float | None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+    C, memory_info = _aggregate_block_covariances(
+        X,
+        blocksize,
+        "geometric_median",
+        covariance_kind="clean_rawdata",
+        max_mem_mb=max_mem_mb,
+    )
     C = _regularize_spd(C, regularization)
     M = _sqrtm_spd(C, regularization)
     eigvals, V = np.linalg.eigh(M)
-    return M, C, eigvals, V
+    return M, C, eigvals, V, memory_info
+
+
+class _ChunkedMovingCovariances:
+    """Yield moving covariances at update positions without a full time stack."""
+
+    def __init__(
+        self,
+        X: np.ndarray,
+        update_at: np.ndarray,
+        window_length: int,
+        *,
+        chunk_samples: int,
+        zi: np.ndarray | None,
+    ) -> None:
+        self.X = X
+        self.update_at = np.asarray(update_at, dtype=int)
+        self.window_length = int(window_length)
+        self.chunk_samples = int(chunk_samples)
+        self.cov_state = zi.copy() if zi is not None else None
+
+    def __iter__(self):
+        n_channels, n_times = self.X.shape
+        update_idx = 0
+        for start in range(0, n_times, self.chunk_samples):
+            stop = min(start + self.chunk_samples, n_times)
+            chunk = self.X[:, start:stop]
+            outer = np.einsum("it,jt->ijt", chunk, chunk, optimize=True)
+            flat = outer.reshape(n_channels * n_channels, stop - start, order="F")
+            flat, self.cov_state = _moving_average_clean_rawdata(
+                self.window_length,
+                flat,
+                zi=self.cov_state,
+            )
+            while (
+                update_idx < self.update_at.size
+                and start < self.update_at[update_idx] <= stop
+            ):
+                local = int(self.update_at[update_idx] - start - 1)
+                yield flat[:, local].reshape(n_channels, n_channels, order="F")
+                update_idx += 1
+        if update_idx != self.update_at.size:
+            raise RuntimeError("Failed to produce all adaptive ASR covariance updates")
 
 
 def _fit_adaptive_thresholds(
@@ -368,6 +430,7 @@ def _process_adaptive_chunk(
     max_dims: float | int,
     store_reconstruction_matrices: bool,
     adaptive_variant: str,
+    max_mem_mb: int | float | None,
 ) -> tuple[np.ndarray, dict[str, Any], dict[str, Any]]:
     """Mirror the AASR ``reconstruct()`` wrapper around ``asr_process``."""
     X = _validate_array_2d(X)
@@ -379,7 +442,9 @@ def _process_adaptive_chunk(
     )
     if lookahead_samples >= n_times:
         raise ValueError("lookahead is too long for the data length")
-    win_len = max(_round_half_up(window_length * sfreq), _round_half_up(1.5 * n_channels))
+    win_len = max(
+        _round_half_up(window_length * sfreq), _round_half_up(1.5 * n_channels)
+    )
     stepsize = 32 if stepsize is None else int(stepsize)
     if stepsize < 1:
         raise ValueError("stepsize must be at least 1 sample")
@@ -388,7 +453,19 @@ def _process_adaptive_chunk(
     n_stream_input = sig.shape[1]
     max_bad = _resolve_max_dims_clean_rawdata(max_dims, n_channels)
     if max_bad <= 0:
-        return X.copy(), _empty_process_diagnostics(n_times), _copy_process_state(process_state)
+        diagnostics = _empty_process_diagnostics(n_times)
+        diagnostics.update(
+            _process_memory_info(
+                n_channels=n_channels,
+                n_stream_input=n_stream_input,
+                max_mem_mb=max_mem_mb,
+                memory_mode="identity",
+                peak_cov_buffer_bytes=0,
+                chunk_samples=0,
+                used_memory_bound=False,
+            )
+        )
+        return X.copy(), diagnostics, _copy_process_state(process_state)
 
     carry = process_state.get("carry")
     if carry is None:
@@ -411,14 +488,6 @@ def _process_adaptive_chunk(
         zi=process_state.get("iir"),
     )
 
-    outer = np.einsum("it,jt->ijt", X_stats, X_stats, optimize=True)
-    Xcov_flat = outer.reshape(n_channels * n_channels, n_stream_input, order="F")
-    Xcov_flat, cov_state = _moving_average_clean_rawdata(
-        win_len,
-        Xcov_flat,
-        zi=process_state.get("cov"),
-    )
-
     update_at = np.minimum(
         np.arange(stepsize, n_stream_input + stepsize, stepsize, dtype=int),
         n_stream_input,
@@ -434,6 +503,38 @@ def _process_adaptive_chunk(
         last_trivial = True
         update_at = np.concatenate(([1], update_at))
 
+    estimated_cov_bytes = _covariance_stack_bytes(n_stream_input, n_channels)
+    max_mem_bytes = _max_mem_bytes(max_mem_mb)
+    use_chunked_covariance = (
+        max_mem_bytes is not None and estimated_cov_bytes > max_mem_bytes
+    )
+    cov_state_in = process_state.get("cov")
+    cov_source = None
+    if use_chunked_covariance:
+        chunk_samples = _covariance_chunk_blocks(n_channels, max_mem_bytes)
+        cov_source = _ChunkedMovingCovariances(
+            X_stats,
+            update_at,
+            win_len,
+            chunk_samples=chunk_samples,
+            zi=cov_state_in,
+        )
+        covariance_iter = iter(cov_source)
+        Xcov_flat = None
+        cov_state = None
+        peak_cov_buffer_bytes = _covariance_stack_bytes(chunk_samples, n_channels)
+    else:
+        chunk_samples = n_stream_input
+        outer = np.einsum("it,jt->ijt", X_stats, X_stats, optimize=True)
+        Xcov_flat = outer.reshape(n_channels * n_channels, n_stream_input, order="F")
+        Xcov_flat, cov_state = _moving_average_clean_rawdata(
+            win_len,
+            Xcov_flat,
+            zi=cov_state_in,
+        )
+        covariance_iter = None
+        peak_cov_buffer_bytes = estimated_cov_bytes
+
     sample_mask = np.zeros(n_times, dtype=bool)
     n_reconstructed: list[int] = []
     component_variances: list[np.ndarray] = []
@@ -444,7 +545,10 @@ def _process_adaptive_chunk(
 
     last_n = 0
     for n in update_at:
-        Cw = Xcov_flat[:, n - 1].reshape(n_channels, n_channels, order="F")
+        if covariance_iter is None:
+            Cw = Xcov_flat[:, n - 1].reshape(n_channels, n_channels, order="F")
+        else:
+            Cw = next(covariance_iter)
         Cw = (Cw + Cw.T) / 2.0
         D, V = np.linalg.eigh(Cw)
         order = np.argsort(D)
@@ -467,10 +571,9 @@ def _process_adaptive_chunk(
             width = n - last_n
             blend = (1.0 - np.cos(np.pi * np.arange(1, width + 1) / width)) / 2.0
             segment = data_stream[:, subrange]
-            data_stream[:, subrange] = (
-                (R @ segment) * blend[np.newaxis, :]
-                + (last_R @ segment) * (1.0 - blend[np.newaxis, :])
-            )
+            data_stream[:, subrange] = (R @ segment) * blend[np.newaxis, :] + (
+                last_R @ segment
+            ) * (1.0 - blend[np.newaxis, :])
 
         start_out = max(last_n, lookahead_samples) - lookahead_samples
         stop_out = min(n, lookahead_samples + n_times) - lookahead_samples
@@ -489,9 +592,13 @@ def _process_adaptive_chunk(
         last_R = R
         last_trivial = trivial
 
-    carry_out = data_stream[:, -lookahead_samples:].copy() if lookahead_samples > 0 else None
-    delayed = data_stream[:, : n_stream_input].copy()
+    carry_out = (
+        data_stream[:, -lookahead_samples:].copy() if lookahead_samples > 0 else None
+    )
+    delayed = data_stream[:, :n_stream_input].copy()
     X_clean = delayed[:, lookahead_samples:]
+    if cov_source is not None:
+        cov_state = cov_source.cov_state
 
     n_reconstructed_arr = np.asarray(n_reconstructed, dtype=int)
     diagnostics = {
@@ -513,6 +620,17 @@ def _process_adaptive_chunk(
         "covariance_geometry": "standard",
         "adaptive_variant": adaptive_variant,
     }
+    diagnostics.update(
+        _process_memory_info(
+            n_channels=n_channels,
+            n_stream_input=n_stream_input,
+            max_mem_mb=max_mem_mb,
+            memory_mode="chunked" if use_chunked_covariance else "full",
+            peak_cov_buffer_bytes=peak_cov_buffer_bytes,
+            chunk_samples=chunk_samples,
+            used_memory_bound=use_chunked_covariance,
+        )
+    )
     if store_reconstruction_matrices:
         diagnostics["reconstruction_matrices"] = np.asarray(reconstruction_matrices)
 
@@ -625,7 +743,9 @@ class AdaptiveASR(ASR):
         fit_input = X if calibration is None else calibration
         data, sfreq, mne_type, orig_inst = extract_data_from_mne(fit_input)
         if mne_type == "evoked":
-            raise ValueError("AdaptiveASR.fit() does not support Evoked calibration data")
+            raise ValueError(
+                "AdaptiveASR.fit() does not support Evoked calibration data"
+            )
         sfreq = self._resolve_sfreq(sfreq)
         picks, ch_names = self._resolve_picks(fit_input, data, mne_type)
         data_2d = self._select_fit_data(data, mne_type, picks)
@@ -642,7 +762,9 @@ class AdaptiveASR(ASR):
             data_2d = data_2d[:, good_mask]
 
         self._warn_preprocessing_state(orig_inst, mne_type)
-        state, cal_info, learner, process_state = self._fit_adaptive_state(data_2d, sfreq)
+        state, cal_info, learner, process_state = self._fit_adaptive_state(
+            data_2d, sfreq
+        )
 
         self.state_ = state
         self.sfreq_ = float(sfreq)
@@ -758,7 +880,9 @@ class AdaptiveASR(ASR):
         self._warn_preprocessing_state(orig_inst, mne_type)
 
         if mne_type == "epochs":
-            cleaned_data, diagnostics = self._transform_epochs_adaptive(data, picks, sfreq)
+            cleaned_data, diagnostics = self._transform_epochs_adaptive(
+                data, picks, sfreq
+            )
         else:
             data_out = np.asarray(data, dtype=np.float64).copy()
             selected = data_out[picks, :]
@@ -773,13 +897,16 @@ class AdaptiveASR(ASR):
                 max_dims=self.max_dims,
                 store_reconstruction_matrices=self.store_reconstruction_matrices,
                 adaptive_variant=self.variant,
+                max_mem_mb=self.max_mem_mb,
             )
             if mne_type == "raw" and self.reject_by_annotation:
                 good_mask = _good_raw_sample_mask(orig_inst, self.skip_by_annotation)
                 selected_clean[:, ~good_mask] = selected[:, ~good_mask]
                 diagnostics["sample_mask"] = diagnostics["sample_mask"] & good_mask
             if self._window_criterion_enabled():
-                rejection_mask, rejection_diag = self._compute_window_rejection(selected_clean, sfreq)
+                rejection_mask, rejection_diag = self._compute_window_rejection(
+                    selected_clean, sfreq
+                )
                 if mne_type == "raw" and self.reject_by_annotation:
                     rejection_mask = rejection_mask & good_mask
                 diagnostics.update(
@@ -787,8 +914,12 @@ class AdaptiveASR(ASR):
                         "rejection_sample_mask": rejection_mask,
                         "rejection_window_starts": rejection_diag["window_starts"],
                         "rejection_window_stops": rejection_diag["window_stops"],
-                        "rejection_window_keep_mask": rejection_diag["window_keep_mask"],
-                        "rejection_window_remove_mask": rejection_diag["window_remove_mask"],
+                        "rejection_window_keep_mask": rejection_diag[
+                            "window_keep_mask"
+                        ],
+                        "rejection_window_remove_mask": rejection_diag[
+                            "window_remove_mask"
+                        ],
                         "fraction_retained_after_window_rejection": float(
                             np.mean(rejection_mask)
                         ),
@@ -802,7 +933,9 @@ class AdaptiveASR(ASR):
             self.process_state_ = next_process_state
 
         self._store_transform_diagnostics(diagnostics)
-        cleaned = reconstruct_mne_object(cleaned_data, orig_inst, mne_type, verbose=False)
+        cleaned = reconstruct_mne_object(
+            cleaned_data, orig_inst, mne_type, verbose=False
+        )
         if return_diagnostics:
             return cleaned, diagnostics
         return cleaned
@@ -867,10 +1000,11 @@ class AdaptiveASR(ASR):
         )
         filter_b, filter_a = _design_aasr_filter(sfreq)
         X_filtered, iir_state = _lfilter_channels(X_clean, filter_b, filter_a)
-        M, C, eigvals, V = _adaptive_covariance_sqrt(
+        M, C, eigvals, V, covariance_memory_info = _adaptive_covariance_sqrt(
             X_filtered,
             blocksize=self.blocksize,
             regularization=self.regularization,
+            max_mem_mb=self.max_mem_mb,
         )
         thresholds, threshold_info = _fit_adaptive_thresholds(
             X_filtered,
@@ -916,6 +1050,7 @@ class AdaptiveASR(ASR):
             threshold_info,
             event="fit",
         )
+        diagnostics.update(covariance_memory_info)
         diagnostics["rank"] = int(state.rank)
         return state, diagnostics, learner, process_state
 
@@ -931,13 +1066,16 @@ class AdaptiveASR(ASR):
             max_dropout_fraction=self.max_dropout_fraction,
             min_clean_fraction=self.min_clean_fraction,
         )
-        X_filtered, _ = _lfilter_channels(X_clean, self.state_.filter_b, self.state_.filter_a)
+        X_filtered, _ = _lfilter_channels(
+            X_clean, self.state_.filter_b, self.state_.filter_a
+        )
         self.adaptive_learner_.fit_next(X_filtered)
         V = self.adaptive_learner_.get_components()
-        M, C, eigvals, _ = _adaptive_covariance_sqrt(
+        M, C, eigvals, _, covariance_memory_info = _adaptive_covariance_sqrt(
             X_filtered,
             blocksize=self.blocksize,
             regularization=self.regularization,
+            max_mem_mb=self.max_mem_mb,
         )
         thresholds, threshold_info = _fit_adaptive_thresholds(
             X_filtered,
@@ -957,13 +1095,15 @@ class AdaptiveASR(ASR):
         self.state_.cov = C
         self.state_.rank = int(np.sum(eigvals > self.regularization * np.max(eigvals)))
 
-        return self._adaptive_calibration_info(
+        diagnostics = self._adaptive_calibration_info(
             clean_diag,
             clean_sample_mask,
             thresholds,
             threshold_info,
             event="update",
         )
+        diagnostics.update(covariance_memory_info)
+        return diagnostics
 
     def _adaptive_calibration_info(
         self,
@@ -976,12 +1116,16 @@ class AdaptiveASR(ASR):
     ) -> dict[str, Any]:
         return {
             "event": event,
-            "clean_window_mask": np.asarray(clean_diag["window_keep_mask"], dtype=bool).copy(),
+            "clean_window_mask": np.asarray(
+                clean_diag["window_keep_mask"], dtype=bool
+            ).copy(),
             "clean_window_scores": np.asarray(
                 clean_diag["window_rms_zscores"], dtype=np.float64
             ).copy(),
             "clean_sample_mask": np.asarray(clean_sample_mask, dtype=bool).copy(),
-            "calibration_window_starts": np.asarray(clean_diag["window_starts"], dtype=int).copy(),
+            "calibration_window_starts": np.asarray(
+                clean_diag["window_starts"], dtype=int
+            ).copy(),
             "calibration_window_length_samples": int(
                 clean_diag["window_stops"][0] - clean_diag["window_starts"][0]
             ),
@@ -997,7 +1141,9 @@ class AdaptiveASR(ASR):
             "threshold_fit_error": threshold_info["fit_error"].copy(),
             "threshold_fit_interval": threshold_info["fit_interval"].copy(),
             "threshold_window_starts": threshold_info["window_starts"].copy(),
-            "threshold_window_length_samples": int(threshold_info["window_length_samples"]),
+            "threshold_window_length_samples": int(
+                threshold_info["window_length_samples"]
+            ),
             "covariance_geometry": "standard",
             "adaptive_variant": self.variant,
             "statistics_filter": "yulewalk",
@@ -1038,6 +1184,7 @@ class AdaptiveASR(ASR):
                 max_dims=self.max_dims,
                 store_reconstruction_matrices=self.store_reconstruction_matrices,
                 adaptive_variant=self.variant,
+                max_mem_mb=self.max_mem_mb,
             )
             cleaned[epoch_idx, picks, :] = selected_clean
             if self._window_criterion_enabled():
@@ -1049,7 +1196,9 @@ class AdaptiveASR(ASR):
                 diag["rejection_window_starts"] = rejection_diag["window_starts"]
                 diag["rejection_window_stops"] = rejection_diag["window_stops"]
                 diag["rejection_window_keep_mask"] = rejection_diag["window_keep_mask"]
-                diag["rejection_window_remove_mask"] = rejection_diag["window_remove_mask"]
+                diag["rejection_window_remove_mask"] = rejection_diag[
+                    "window_remove_mask"
+                ]
                 diag["fraction_retained_after_window_rejection"] = float(
                     np.mean(rejection_mask)
                 )
@@ -1070,10 +1219,18 @@ class AdaptiveASR(ASR):
 
         diagnostics = {
             "epoch_diagnostics": epoch_diags,
-            "window_starts": np.concatenate(starts_all) if starts_all else np.array([], dtype=int),
-            "window_stops": np.concatenate(stops_all) if stops_all else np.array([], dtype=int),
-            "sample_mask": np.vstack(sample_masks) if sample_masks else np.empty((0, 0), dtype=bool),
-            "n_components_reconstructed": np.concatenate(counts) if counts else np.array([], dtype=int),
+            "window_starts": np.concatenate(starts_all)
+            if starts_all
+            else np.array([], dtype=int),
+            "window_stops": np.concatenate(stops_all)
+            if stops_all
+            else np.array([], dtype=int),
+            "sample_mask": np.vstack(sample_masks)
+            if sample_masks
+            else np.empty((0, 0), dtype=bool),
+            "n_components_reconstructed": np.concatenate(counts)
+            if counts
+            else np.array([], dtype=int),
             "n_windows": int(sum(diag["n_windows"] for diag in epoch_diags)),
             "covariance_geometry": "standard",
             "adaptive_variant": self.variant,

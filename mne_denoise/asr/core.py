@@ -140,7 +140,6 @@ def calibrate_asr(
     diagnostics : dict
         Calibration diagnostics.
     """
-    del max_mem_mb  # API placeholder; current calibration is window-streamed.
     _validate_common_params(
         sfreq=sfreq,
         cutoff=cutoff,
@@ -153,7 +152,9 @@ def calibrate_asr(
     if calibration not in ("auto", "manual"):
         raise ValueError("calibration must be 'auto' or 'manual'")
     if cov_estimator not in ("geometric_median", "mean", "median"):
-        raise ValueError("cov_estimator must be 'geometric_median', 'mean', or 'median'")
+        raise ValueError(
+            "cov_estimator must be 'geometric_median', 'mean', or 'median'"
+        )
     if method not in ("standard", "riemannian"):
         raise ValueError("method must be 'standard' or 'riemannian'")
     if blocksize < 1:
@@ -201,12 +202,14 @@ def calibrate_asr(
         clean_window_scores = np.zeros((len(cal_starts), n_channels), dtype=np.float64)
         clean_sample_mask = np.ones(n_times, dtype=bool)
         X_clean = X_stats
-    if method == "riemannian":
-        covariances = _block_covariances_rasr(X_clean, blocksize)
-    else:
-        covariances = _block_covariances_clean_rawdata(X_clean, blocksize)
     riemannian_info: dict[str, Any] = {}
-    C = _aggregate_covariances(covariances, cov_estimator)
+    C, memory_info = _aggregate_block_covariances(
+        X_clean,
+        blocksize,
+        cov_estimator,
+        covariance_kind="rasr" if method == "riemannian" else "clean_rawdata",
+        max_mem_mb=max_mem_mb,
+    )
     C = _regularize_spd(C, regularization)
     if method == "riemannian":
         M = _sqrtm_spd(C, regularization)
@@ -262,6 +265,7 @@ def calibrate_asr(
         "covariance_geometry": method,
         "filter_kind": filter_kind,
     }
+    diagnostics.update(memory_info)
     diagnostics.update(riemannian_info)
     return state, diagnostics
 
@@ -456,7 +460,9 @@ def _fit_eeg_distribution_clean_rawdata(
 
     alpha = (opt_lu[1] - opt_lu[0]) / np.diff(opt_bounds)[0]
     mu = opt_lu[0] - opt_bounds[0] * alpha
-    sigma = np.sqrt((alpha**2) * special.gamma(3.0 / opt_beta) / special.gamma(1.0 / opt_beta))
+    sigma = np.sqrt(
+        (alpha**2) * special.gamma(3.0 / opt_beta) / special.gamma(1.0 / opt_beta)
+    )
     return {
         "mu": float(mu),
         "sigma": float(sigma),
@@ -520,7 +526,8 @@ def compute_asr_qa_metrics(
     per_channel_variance_ratio = var_after / np.maximum(var_before, np.finfo(float).eps)
     metrics: dict[str, Any] = {
         "variance_removed_pct": float(
-            100.0 * (1.0 - np.var(after_2d) / max(np.var(before_2d), np.finfo(float).eps))
+            100.0
+            * (1.0 - np.var(after_2d) / max(np.var(before_2d), np.finfo(float).eps))
         ),
         "rms_change": float(np.sqrt(np.mean(delta**2))),
         "max_abs_change": float(np.max(np.abs(delta))),
@@ -540,9 +547,7 @@ def compute_asr_qa_metrics(
                 "mean_components_reconstructed": float(np.mean(counts))
                 if counts.size
                 else 0.0,
-                "max_components_reconstructed": int(
-                    asr.max_components_reconstructed_
-                ),
+                "max_components_reconstructed": int(asr.max_components_reconstructed_),
                 "n_windows": int(asr.n_windows_),
             }
         )
@@ -577,7 +582,9 @@ def compute_asr_qa_metrics(
                         cal["reference_selected_samples"]
                         / max(cal["reference_candidate_samples"], 1)
                     ),
-                    "n_clean_calibration_samples": int(cal["reference_selected_samples"]),
+                    "n_clean_calibration_samples": int(
+                        cal["reference_selected_samples"]
+                    ),
                     "n_calibration_candidate_samples": int(
                         cal["reference_candidate_samples"]
                     ),
@@ -655,7 +662,9 @@ def compute_asr_rejection_mask(
     n_channels, n_times = X.shape
     _check_enough_samples(n_times, sfreq, window_length)
     window_length_samples = _round_half_up(window_length * sfreq)
-    starts = _clean_rawdata_window_starts(n_times, window_length_samples, window_overlap)
+    starts = _clean_rawdata_window_starts(
+        n_times, window_length_samples, window_overlap
+    )
     diagnostics = _clean_windows_grid_diagnostics(
         X,
         starts,
@@ -736,7 +745,6 @@ def process_asr(
     diagnostics : dict
         Processing diagnostics.
     """
-    del max_mem_mb  # API placeholder; current processing uses one offline chunk.
     _validate_common_params(
         sfreq=sfreq,
         cutoff=1.0,
@@ -758,7 +766,9 @@ def process_asr(
     if method not in ("standard", "riemannian"):
         raise ValueError("method must be 'standard' or 'riemannian'")
 
-    win_len = max(_round_half_up(window_length * sfreq), _round_half_up(1.5 * n_channels))
+    win_len = max(
+        _round_half_up(window_length * sfreq), _round_half_up(1.5 * n_channels)
+    )
     if n_times < win_len:
         raise ValueError(
             f"Window length ({win_len} samples) exceeds data length ({n_times} samples)"
@@ -781,6 +791,17 @@ def process_asr(
     max_bad = _resolve_max_dims_clean_rawdata(max_dims, n_channels)
     if max_bad <= 0:
         diagnostics = _empty_process_diagnostics(n_times)
+        diagnostics.update(
+            _process_memory_info(
+                n_channels=n_channels,
+                n_stream_input=n_times,
+                max_mem_mb=max_mem_mb,
+                memory_mode="identity",
+                peak_cov_buffer_bytes=0,
+                chunk_samples=0,
+                used_memory_bound=False,
+            )
+        )
         return X.copy(), diagnostics
 
     X_proc = _append_clean_rawdata_tail(X, lookahead_samples)
@@ -800,9 +821,14 @@ def process_asr(
         update_at = np.append(update_at, n_stream_input)
     update_at = np.unique(update_at)
     update_at = np.concatenate(([1], update_at))
+    estimated_cov_bytes = _covariance_stack_bytes(n_stream_input, n_channels)
+    max_mem_bytes = _max_mem_bytes(max_mem_mb)
+    use_rolling_covariance = (
+        max_mem_bytes is not None and estimated_cov_bytes > max_mem_bytes
+    )
 
     if method == "riemannian":
-        return _process_asr_riemannian(
+        X_clean, diagnostics = _process_asr_riemannian(
             data_stream,
             X_stats,
             state,
@@ -816,10 +842,27 @@ def process_asr(
             regularization=regularization,
             store_reconstruction_matrices=store_reconstruction_matrices,
         )
+        diagnostics.update(
+            _process_memory_info(
+                n_channels=n_channels,
+                n_stream_input=n_stream_input,
+                max_mem_mb=max_mem_mb,
+                memory_mode="riemannian",
+                peak_cov_buffer_bytes=_covariance_stack_bytes(1, n_channels),
+                chunk_samples=n_stream_input,
+                used_memory_bound=False,
+            )
+        )
+        return X_clean, diagnostics
 
-    outer = np.einsum("it,jt->ijt", X_stats, X_stats, optimize=True)
-    Xcov_flat = outer.reshape(n_channels * n_channels, n_stream_input, order="F")
-    Xcov_flat, _ = _moving_average_clean_rawdata(win_len, Xcov_flat)
+    if use_rolling_covariance:
+        covariance_iter = _iter_moving_covariances_at(X_stats, update_at, win_len)
+        Xcov_flat = None
+    else:
+        outer = np.einsum("it,jt->ijt", X_stats, X_stats, optimize=True)
+        Xcov_flat = outer.reshape(n_channels * n_channels, n_stream_input, order="F")
+        Xcov_flat, _ = _moving_average_clean_rawdata(win_len, Xcov_flat)
+        covariance_iter = None
 
     sample_mask = np.zeros(n_times, dtype=bool)
     n_reconstructed: list[int] = []
@@ -834,7 +877,10 @@ def process_asr(
     last_trivial = True
     last_n = 0
     for n in update_at:
-        Cw = Xcov_flat[:, n - 1].reshape(n_channels, n_channels, order="F")
+        if covariance_iter is None:
+            Cw = Xcov_flat[:, n - 1].reshape(n_channels, n_channels, order="F")
+        else:
+            Cw = next(covariance_iter)
         Cw = (Cw + Cw.T) / 2.0
         D, V = np.linalg.eigh(Cw)
         order = np.argsort(D)
@@ -859,10 +905,9 @@ def process_asr(
             width = n - last_n
             blend = (1.0 - np.cos(np.pi * np.arange(1, width + 1) / width)) / 2.0
             segment = data_stream[:, subrange]
-            data_stream[:, subrange] = (
-                (R @ segment) * blend[np.newaxis, :]
-                + (last_R @ segment) * (1.0 - blend[np.newaxis, :])
-            )
+            data_stream[:, subrange] = (R @ segment) * blend[np.newaxis, :] + (
+                last_R @ segment
+            ) * (1.0 - blend[np.newaxis, :])
 
         start_out = max(last_n, lookahead_samples) - lookahead_samples
         stop_out = min(n, lookahead_samples + n_times) - lookahead_samples
@@ -902,6 +947,30 @@ def process_asr(
         "window_length_samples": int(win_len),
         "covariance_geometry": method,
     }
+    if use_rolling_covariance:
+        diagnostics.update(
+            _process_memory_info(
+                n_channels=n_channels,
+                n_stream_input=n_stream_input,
+                max_mem_mb=max_mem_mb,
+                memory_mode="rolling",
+                peak_cov_buffer_bytes=_covariance_stack_bytes(1, n_channels),
+                chunk_samples=win_len,
+                used_memory_bound=True,
+            )
+        )
+    else:
+        diagnostics.update(
+            _process_memory_info(
+                n_channels=n_channels,
+                n_stream_input=n_stream_input,
+                max_mem_mb=max_mem_mb,
+                memory_mode="full",
+                peak_cov_buffer_bytes=estimated_cov_bytes,
+                chunk_samples=n_stream_input,
+                used_memory_bound=False,
+            )
+        )
     if store_reconstruction_matrices:
         diagnostics["reconstruction_matrices"] = np.asarray(reconstruction_matrices)
     return X_clean, diagnostics
@@ -1261,7 +1330,9 @@ class ASR(BaseEstimator, TransformerMixin):
                         "rejection_sample_mask": rejection_mask,
                         "rejection_window_starts": rejection_diag["window_starts"],
                         "rejection_window_stops": rejection_diag["window_stops"],
-                        "rejection_window_keep_mask": rejection_diag["window_keep_mask"],
+                        "rejection_window_keep_mask": rejection_diag[
+                            "window_keep_mask"
+                        ],
                         "rejection_window_remove_mask": rejection_diag[
                             "window_remove_mask"
                         ],
@@ -1277,7 +1348,9 @@ class ASR(BaseEstimator, TransformerMixin):
             cleaned_data = data_out
 
         self._store_transform_diagnostics(diagnostics)
-        cleaned = reconstruct_mne_object(cleaned_data, orig_inst, mne_type, verbose=False)
+        cleaned = reconstruct_mne_object(
+            cleaned_data, orig_inst, mne_type, verbose=False
+        )
         if return_diagnostics:
             return cleaned, diagnostics
         return cleaned
@@ -1344,7 +1417,11 @@ class ASR(BaseEstimator, TransformerMixin):
         starts = self.diagnostics_["window_starts"]
         stops = self.diagnostics_["window_stops"]
         counts = self.diagnostics_["n_components_reconstructed"]
-        spans = [(int(s), int(e)) for s, e, c in zip(starts, stops, counts) if c >= min_components]
+        spans = [
+            (int(s), int(e))
+            for s, e, c in zip(starts, stops, counts)
+            if c >= min_components
+        ]
         spans = _merge_sample_spans(spans)
         onsets = [s / self.sfreq_ for s, _ in spans]
         durations = [(e - s) / self.sfreq_ for s, e in spans]
@@ -1448,9 +1525,13 @@ class ASR(BaseEstimator, TransformerMixin):
                 exclude="bads",
             )
         elif isinstance(self.picks, str):
-            picks = mne.pick_types(info, meg=False, eeg=self.picks == "eeg", exclude="bads")
+            picks = mne.pick_types(
+                info, meg=False, eeg=self.picks == "eeg", exclude="bads"
+            )
         elif all(isinstance(pick, str) for pick in self.picks):
-            picks = mne.pick_channels(info["ch_names"], include=list(self.picks), ordered=True)
+            picks = mne.pick_channels(
+                info["ch_names"], include=list(self.picks), ordered=True
+            )
         else:
             picks = np.asarray(self.picks, dtype=int)
         if picks.size == 0:
@@ -1526,7 +1607,9 @@ class ASR(BaseEstimator, TransformerMixin):
                 diag["rejection_window_starts"] = rejection_diag["window_starts"]
                 diag["rejection_window_stops"] = rejection_diag["window_stops"]
                 diag["rejection_window_keep_mask"] = rejection_diag["window_keep_mask"]
-                diag["rejection_window_remove_mask"] = rejection_diag["window_remove_mask"]
+                diag["rejection_window_remove_mask"] = rejection_diag[
+                    "window_remove_mask"
+                ]
                 diag["fraction_retained_after_window_rejection"] = float(
                     np.mean(rejection_mask)
                 )
@@ -1546,10 +1629,18 @@ class ASR(BaseEstimator, TransformerMixin):
             counts.append(diag["n_components_reconstructed"])
         diagnostics = {
             "epoch_diagnostics": epoch_diags,
-            "window_starts": np.concatenate(starts_all) if starts_all else np.array([], dtype=int),
-            "window_stops": np.concatenate(stops_all) if stops_all else np.array([], dtype=int),
-            "sample_mask": np.vstack(sample_masks) if sample_masks else np.empty((0, 0), dtype=bool),
-            "n_components_reconstructed": np.concatenate(counts) if counts else np.array([], dtype=int),
+            "window_starts": np.concatenate(starts_all)
+            if starts_all
+            else np.array([], dtype=int),
+            "window_stops": np.concatenate(stops_all)
+            if stops_all
+            else np.array([], dtype=int),
+            "sample_mask": np.vstack(sample_masks)
+            if sample_masks
+            else np.empty((0, 0), dtype=bool),
+            "n_components_reconstructed": np.concatenate(counts)
+            if counts
+            else np.array([], dtype=int),
             "n_windows": int(sum(diag["n_windows"] for diag in epoch_diags)),
         }
         diagnostics["fraction_reconstructed_windows"] = (
@@ -1608,16 +1699,12 @@ class ASR(BaseEstimator, TransformerMixin):
         self.fraction_reconstructed_samples_ = diagnostics[
             "fraction_reconstructed_samples"
         ]
-        self.max_components_reconstructed_ = diagnostics[
-            "max_components_reconstructed"
-        ]
+        self.max_components_reconstructed_ = diagnostics["max_components_reconstructed"]
         if "rejection_sample_mask" in diagnostics:
             self.rejection_sample_mask_ = diagnostics["rejection_sample_mask"]
             self.rejection_window_starts_ = diagnostics["rejection_window_starts"]
             self.rejection_window_stops_ = diagnostics["rejection_window_stops"]
-            self.rejection_window_keep_mask_ = diagnostics[
-                "rejection_window_keep_mask"
-            ]
+            self.rejection_window_keep_mask_ = diagnostics["rejection_window_keep_mask"]
             self.rejection_window_remove_mask_ = diagnostics[
                 "rejection_window_remove_mask"
             ]
@@ -1793,7 +1880,9 @@ def _clean_rawdata_window_starts(
         )
     step = win_len * (1.0 - overlap)
     starts_1_based = np.arange(1.0, n_times - win_len + np.finfo(float).eps, step)
-    starts = np.asarray([_round_half_up(start) - 1 for start in starts_1_based], dtype=int)
+    starts = np.asarray(
+        [_round_half_up(start) - 1 for start in starts_1_based], dtype=int
+    )
     return np.unique(starts)
 
 
@@ -1872,6 +1961,52 @@ def _apply_statistics_filter_streaming(
     return signal.lfilter(b, a, X, axis=1)
 
 
+def _process_memory_info(
+    *,
+    n_channels: int,
+    n_stream_input: int,
+    max_mem_mb: int | float | None,
+    memory_mode: str,
+    peak_cov_buffer_bytes: int,
+    chunk_samples: int,
+    used_memory_bound: bool,
+) -> dict[str, Any]:
+    """Create process-time covariance memory diagnostics."""
+    return {
+        "memory_mode": memory_mode,
+        "max_mem_mb": max_mem_mb,
+        "used_memory_bound": bool(used_memory_bound),
+        "estimated_full_cov_bytes": _covariance_stack_bytes(
+            n_stream_input,
+            n_channels,
+        ),
+        "peak_cov_buffer_bytes": int(peak_cov_buffer_bytes),
+        "chunk_samples": int(chunk_samples),
+    }
+
+
+def _iter_moving_covariances_at(
+    X: np.ndarray,
+    update_at: np.ndarray,
+    window_length: int,
+):
+    """Yield trailing moving covariances at ASR update sample counts."""
+    n_channels, _ = X.shape
+    cov_sum = np.zeros((n_channels, n_channels), dtype=np.float64)
+    current_n = 0
+    for target_n in update_at:
+        target_n = int(target_n)
+        while current_n < target_n:
+            sample = X[:, current_n]
+            cov_sum += np.outer(sample, sample)
+            remove_idx = current_n - window_length
+            if remove_idx >= 0:
+                old_sample = X[:, remove_idx]
+                cov_sum -= np.outer(old_sample, old_sample)
+            current_n += 1
+        yield cov_sum / window_length
+
+
 def _moving_average_clean_rawdata(
     window_length: int,
     X: np.ndarray,
@@ -1881,10 +2016,12 @@ def _moving_average_clean_rawdata(
     if zi is None:
         zi = np.zeros((X.shape[0], window_length), dtype=np.float64)
     Y = np.concatenate([zi, X], axis=1)
-    diffs = (Y[:, window_length:] - Y[:, : -window_length]) / window_length
+    diffs = (Y[:, window_length:] - Y[:, :-window_length]) / window_length
     out = np.cumsum(diffs, axis=1)
     zf_first = Y[:, [-window_length]] - out[:, [-1]] * window_length
-    zf_tail = Y[:, -window_length + 1 :] if window_length > 1 else np.empty((X.shape[0], 0))
+    zf_tail = (
+        Y[:, -window_length + 1 :] if window_length > 1 else np.empty((X.shape[0], 0))
+    )
     zf = np.concatenate([zf_first, zf_tail], axis=1)
     return out, zf
 
@@ -2071,10 +2208,9 @@ def _process_asr_riemannian(
             width = n - last_n
             blend = (1.0 - np.cos(np.pi * np.arange(1, width + 1) / width)) / 2.0
             segment = data_stream[:, subrange]
-            data_stream[:, subrange] = (
-                (R @ segment) * blend[np.newaxis, :]
-                + (last_R @ segment) * (1.0 - blend[np.newaxis, :])
-            )
+            data_stream[:, subrange] = (R @ segment) * blend[np.newaxis, :] + (
+                last_R @ segment
+            ) * (1.0 - blend[np.newaxis, :])
 
         start_out = max(last_n, lookahead_samples) - lookahead_samples
         stop_out = min(n, lookahead_samples + n_times) - lookahead_samples
@@ -2131,6 +2267,147 @@ def _process_asr_riemannian(
     return X_clean, diagnostics
 
 
+def _max_mem_bytes(max_mem_mb: int | float | None) -> int | None:
+    """Convert an optional megabyte memory cap to bytes."""
+    if max_mem_mb is None:
+        return None
+    max_mem_mb = float(max_mem_mb)
+    if not np.isfinite(max_mem_mb) or max_mem_mb < 0:
+        raise ValueError("max_mem_mb must be non-negative or None")
+    return int(max_mem_mb * 1024 * 1024)
+
+
+def _covariance_stack_bytes(n_items: int, n_channels: int) -> int:
+    """Return bytes needed for a float64 covariance stack."""
+    return int(n_items * n_channels * n_channels * np.dtype(np.float64).itemsize)
+
+
+def _covariance_chunk_blocks(n_channels: int, max_mem_bytes: int | None) -> int:
+    """Resolve a conservative covariance chunk size under a memory cap."""
+    per_block = _covariance_stack_bytes(1, n_channels)
+    if max_mem_bytes is None:
+        return np.iinfo(np.int32).max
+    budget = max(per_block, max_mem_bytes // 4)
+    return max(1, int(budget // per_block))
+
+
+def _iter_block_covariances_clean_rawdata(
+    X: np.ndarray,
+    blocksize: int,
+    chunk_blocks: int,
+):
+    """Yield clean_rawdata-style padded block covariances in chunks."""
+    n_channels, n_times = X.shape
+    n_blocks = max(1, int(np.ceil(n_times / blocksize)))
+    X_t = X.T
+    for start_block in range(0, n_blocks, chunk_blocks):
+        stop_block = min(start_block + chunk_blocks, n_blocks)
+        block_ids = np.arange(start_block, stop_block, dtype=int)
+        covariances = np.zeros(
+            (block_ids.size, n_channels, n_channels), dtype=np.float64
+        )
+        for offset in range(blocksize):
+            sample_idx = np.minimum(n_times - 1, offset + block_ids * blocksize)
+            samples = X_t[sample_idx]
+            covariances += np.einsum("bi,bj->bij", samples, samples, optimize=True)
+        yield covariances / blocksize
+
+
+def _iter_block_covariances_rasr(
+    X: np.ndarray,
+    blocksize: int,
+    chunk_blocks: int,
+):
+    """Yield rASRMatlab-style contiguous block covariances in chunks."""
+    n_channels, n_times = X.shape
+    starts = np.arange(0, n_times, blocksize, dtype=int)
+    for start_block in range(0, len(starts), chunk_blocks):
+        stop_block = min(start_block + chunk_blocks, len(starts))
+        covariances = np.empty(
+            (stop_block - start_block, n_channels, n_channels),
+            dtype=np.float64,
+        )
+        for out_idx, sample_start in enumerate(starts[start_block:stop_block]):
+            sample_stop = min(sample_start + blocksize, n_times)
+            block = X[:, sample_start:sample_stop]
+            covariances[out_idx] = (block @ block.T) / blocksize
+        yield covariances
+
+
+def _aggregate_block_covariances(
+    X: np.ndarray,
+    blocksize: int,
+    method: str,
+    *,
+    covariance_kind: str,
+    max_mem_mb: int | float | None,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Aggregate ASR calibration covariances with optional memory bounding."""
+    n_channels, n_times = X.shape
+    if covariance_kind == "rasr":
+        n_blocks = len(np.arange(0, n_times, blocksize, dtype=int))
+        iter_factory = lambda chunk_blocks: _iter_block_covariances_rasr(
+            X,
+            blocksize,
+            chunk_blocks,
+        )
+        full_factory = _block_covariances_rasr
+    elif covariance_kind == "clean_rawdata":
+        n_blocks = max(1, int(np.ceil(n_times / blocksize)))
+        iter_factory = lambda chunk_blocks: _iter_block_covariances_clean_rawdata(
+            X,
+            blocksize,
+            chunk_blocks,
+        )
+        full_factory = _block_covariances_clean_rawdata
+    else:
+        raise ValueError("covariance_kind must be 'clean_rawdata' or 'rasr'")
+
+    estimated_bytes = _covariance_stack_bytes(n_blocks, n_channels)
+    max_bytes = _max_mem_bytes(max_mem_mb)
+    use_chunked = max_bytes is not None and estimated_bytes > max_bytes
+    if not use_chunked:
+        covariances = full_factory(X, blocksize)
+        info = {
+            "memory_mode": "full",
+            "max_mem_mb": max_mem_mb,
+            "used_memory_bound": False,
+            "estimated_full_cov_bytes": estimated_bytes,
+            "peak_cov_buffer_bytes": estimated_bytes,
+            "chunk_samples": int(n_times),
+            "covariance_chunk_blocks": int(n_blocks),
+        }
+        return _aggregate_covariances(covariances, method), info
+
+    if method == "median":
+        raise ValueError(
+            "cov_estimator='median' requires full covariance storage; increase "
+            "max_mem_mb or use cov_estimator='geometric_median' or 'mean'."
+        )
+
+    chunk_blocks = _covariance_chunk_blocks(n_channels, max_bytes)
+    if method == "mean":
+        total = np.zeros((n_channels, n_channels), dtype=np.float64)
+        count = 0
+        for chunk in iter_factory(chunk_blocks):
+            total += np.sum(chunk, axis=0)
+            count += chunk.shape[0]
+        C = total / max(count, 1)
+    else:
+        C = _geometric_median_chunked(iter_factory, chunk_blocks, n_channels)
+
+    info = {
+        "memory_mode": "chunked",
+        "max_mem_mb": max_mem_mb,
+        "used_memory_bound": True,
+        "estimated_full_cov_bytes": estimated_bytes,
+        "peak_cov_buffer_bytes": _covariance_stack_bytes(chunk_blocks, n_channels),
+        "chunk_samples": int(chunk_blocks * blocksize),
+        "covariance_chunk_blocks": int(chunk_blocks),
+    }
+    return C, info
+
+
 def _block_covariances_clean_rawdata(X: np.ndarray, blocksize: int) -> np.ndarray:
     """Match clean_rawdata's padded trailing-block covariance accumulation."""
     n_channels, n_times = X.shape
@@ -2182,6 +2459,42 @@ def _geometric_median(
         distances = np.maximum(distances, np.finfo(float).eps)
         weights = 1.0 / distances
         update = np.tensordot(weights, covariances, axes=(0, 0)) / np.sum(weights)
+        if np.linalg.norm(update - current) <= tol * max(np.linalg.norm(current), 1.0):
+            current = update
+            break
+        current = update
+    return current
+
+
+def _geometric_median_chunked(
+    iter_factory,
+    chunk_blocks: int,
+    n_channels: int,
+    *,
+    max_iter: int = 128,
+    tol: float = 1e-7,
+) -> np.ndarray:
+    """Compute a covariance geometric median without storing all blocks."""
+    total = np.zeros((n_channels, n_channels), dtype=np.float64)
+    count = 0
+    for chunk in iter_factory(chunk_blocks):
+        total += np.sum(chunk, axis=0)
+        count += chunk.shape[0]
+    current = total / max(count, 1)
+
+    for _ in range(max_iter):
+        numerator = np.zeros_like(current)
+        denominator = 0.0
+        for chunk in iter_factory(chunk_blocks):
+            distances = np.linalg.norm(
+                (chunk - current).reshape(chunk.shape[0], -1),
+                axis=1,
+            )
+            distances = np.maximum(distances, np.finfo(float).eps)
+            weights = 1.0 / distances
+            numerator += np.tensordot(weights, chunk, axes=(0, 0))
+            denominator += float(np.sum(weights))
+        update = numerator / max(denominator, np.finfo(float).eps)
         if np.linalg.norm(update - current) <= tol * max(np.linalg.norm(current), 1.0):
             current = update
             break
@@ -2248,8 +2561,7 @@ def _karcher_mean_spd(
         weights = np.asarray(sample_weight, dtype=np.float64)
         if weights.shape != (n_matrices,):
             raise ValueError(
-                "sample_weight must have shape "
-                f"({n_matrices},), got {weights.shape}"
+                f"sample_weight must have shape ({n_matrices},), got {weights.shape}"
             )
         if np.any(weights < 0):
             raise ValueError("sample_weight must be non-negative")
@@ -2273,9 +2585,7 @@ def _karcher_mean_spd(
         tangent = np.zeros_like(current)
         for weight, cov in zip(weights, covariances):
             centered = (
-                invsqrt_current
-                @ _regularize_spd(cov, regularization)
-                @ invsqrt_current
+                invsqrt_current @ _regularize_spd(cov, regularization) @ invsqrt_current
             )
             tangent += weight * _logm_spd(centered, regularization)
         update_norm = float(np.linalg.norm(tangent, ord="fro"))

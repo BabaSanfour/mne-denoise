@@ -81,6 +81,35 @@ def test_calibrate_asr_returns_state_and_diagnostics(synthetic_burst_data):
     assert diagnostics["threshold_fit_interval"].shape == (data.shape[0], 2)
 
 
+def test_calibrate_asr_low_memory_handles_remainder_two(rng):
+    """Low-memory calibration handles the ASRpy block remainder edge case."""
+    sfreq = 250.0
+    n_channels = 6
+    n_times = 1002
+    blocksize = 100
+    assert n_times % blocksize == 2
+    data = 0.05 * rng.standard_normal((n_channels, n_times))
+
+    state, diagnostics = calibrate_asr(
+        data,
+        sfreq,
+        cutoff=5.0,
+        calibration="manual",
+        blocksize=blocksize,
+        filter_kind="none",
+        max_mem_mb=0.001,
+    )
+
+    assert isinstance(state, ASRState)
+    assert state.M.shape == (n_channels, n_channels)
+    assert diagnostics["memory_mode"] == "chunked"
+    assert diagnostics["used_memory_bound"] is True
+    assert (
+        diagnostics["estimated_full_cov_bytes"] > diagnostics["peak_cov_buffer_bytes"]
+    )
+    assert diagnostics["chunk_samples"] == blocksize
+
+
 def test_fit_eeg_distribution_robust_to_tail_and_dropouts(rng):
     """Clean RMS fitting resists high-tail artifacts and low dropouts."""
     clean = rng.normal(loc=1.0, scale=0.08, size=800)
@@ -142,6 +171,52 @@ def test_process_asr_reduces_synthetic_bursts(synthetic_burst_data):
     assert after < before
 
 
+def test_process_asr_low_memory_matches_full_path(synthetic_burst_data):
+    """Low-memory rolling covariance processing matches the full path."""
+    data, _, _, sfreq = synthetic_burst_data
+    state, _ = calibrate_asr(
+        data,
+        sfreq,
+        cutoff=3.0,
+        calibration="auto",
+        ref_tolerances=(-np.inf, 3.0),
+        filter_kind="none",
+        max_mem_mb=None,
+    )
+
+    full_cleaned, full_diag = process_asr(
+        data,
+        sfreq,
+        state,
+        window_length=0.5,
+        window_overlap=0.66,
+        max_dims=0.5,
+        max_mem_mb=None,
+    )
+    rolling_cleaned, rolling_diag = process_asr(
+        data,
+        sfreq,
+        state,
+        window_length=0.5,
+        window_overlap=0.66,
+        max_dims=0.5,
+        max_mem_mb=0.001,
+    )
+
+    assert full_diag["memory_mode"] == "full"
+    assert rolling_diag["memory_mode"] == "rolling"
+    assert rolling_diag["used_memory_bound"] is True
+    np.testing.assert_allclose(rolling_cleaned, full_cleaned, rtol=1e-10, atol=1e-10)
+    np.testing.assert_array_equal(
+        rolling_diag["sample_mask"],
+        full_diag["sample_mask"],
+    )
+    np.testing.assert_array_equal(
+        rolling_diag["n_components_reconstructed"],
+        full_diag["n_components_reconstructed"],
+    )
+
+
 def test_asr_estimator_numpy_qc_and_no_repair_cap(synthetic_burst_data):
     """Estimator path populates diagnostics and max_dims=0 preserves data."""
     data, _, _, sfreq = synthetic_burst_data
@@ -184,6 +259,37 @@ def test_asr_mne_raw_preserves_non_picked_channels(synthetic_burst_data):
     assert raw_clean.get_data().shape == raw_data.shape
     np.testing.assert_allclose(raw_clean.get_data(picks=["EOG1", "EOG2"]), eog)
     assert asr.ch_names_ == ch_names[: data.shape[0]]
+
+
+def test_asr_mne_raw_low_memory_preserves_metadata(synthetic_burst_data):
+    """Low-memory Raw processing preserves metadata and non-picked channels."""
+    mne = pytest.importorskip("mne")
+    data, _, _, sfreq = synthetic_burst_data
+    eog = np.sin(2 * np.pi * 1.0 * np.arange(data.shape[1]) / sfreq)[None, :]
+    raw_data = np.vstack([data, eog])
+    ch_names = [f"EEG{idx}" for idx in range(data.shape[0])] + ["EOG1"]
+    ch_types = ["eeg"] * data.shape[0] + ["eog"]
+    info = mne.create_info(ch_names, sfreq, ch_types)
+    raw = mne.io.RawArray(raw_data, info, verbose=False)
+    raw.info["bads"] = ["EEG7"]
+    raw.set_annotations(mne.Annotations([1.0], [0.25], ["BAD_test"]))
+
+    asr = ASR(
+        cutoff=3.0,
+        picks="eeg",
+        filter_kind="none",
+        reject_by_annotation=False,
+        max_mem_mb=0.001,
+        verbose=False,
+    )
+    raw_clean = asr.fit_transform(raw)
+
+    assert raw_clean.ch_names == raw.ch_names
+    assert raw_clean.info["bads"] == raw.info["bads"]
+    assert len(raw_clean.annotations) == len(raw.annotations)
+    assert raw_clean.info["sfreq"] == raw.info["sfreq"]
+    np.testing.assert_allclose(raw_clean.get_data(picks=["EOG1"]), eog)
+    assert asr.diagnostics_["memory_mode"] == "rolling"
 
 
 def test_asr_raw_bad_annotations_are_preserved(synthetic_burst_data):
@@ -400,7 +506,9 @@ def test_juggler_asr_reference_annotations_and_metrics(synthetic_burst_data):
         asr.get_clean_window_mask()
 
     metrics = compute_asr_qa_metrics(data, cleaned, asr)
-    assert metrics["n_clean_calibration_samples"] == int(np.sum(asr.reference_sample_mask_))
+    assert metrics["n_clean_calibration_samples"] == int(
+        np.sum(asr.reference_sample_mask_)
+    )
     assert metrics["n_calibration_candidate_samples"] == data.shape[1]
 
 
@@ -472,6 +580,39 @@ def test_adaptive_asr_reset_process_state_is_reproducible(synthetic_burst_data):
     np.testing.assert_allclose(cleaned_first, cleaned_second, atol=1e-10)
 
 
+def test_adaptive_asr_low_memory_matches_full_path(synthetic_burst_data):
+    """Adaptive ASR honors max_mem_mb without changing reconstruction."""
+    data, _, _, sfreq = synthetic_burst_data
+    calibration = data[:, : int(6 * sfreq)]
+
+    full = AdaptiveASR(
+        sfreq=sfreq,
+        cutoff=5.0,
+        variant="psw",
+        max_mem_mb=None,
+        verbose=False,
+    )
+    low_mem = AdaptiveASR(
+        sfreq=sfreq,
+        cutoff=5.0,
+        variant="psw",
+        max_mem_mb=0.001,
+        verbose=False,
+    )
+    full.fit(calibration)
+    low_mem.fit(calibration)
+
+    cleaned_full = full.reconstruct(data)
+    cleaned_low_mem = low_mem.reconstruct(data)
+
+    assert full.calibration_info_["memory_mode"] == "full"
+    assert low_mem.calibration_info_["memory_mode"] == "chunked"
+    assert full.diagnostics_["memory_mode"] == "full"
+    assert low_mem.diagnostics_["memory_mode"] == "chunked"
+    assert low_mem.diagnostics_["used_memory_bound"]
+    np.testing.assert_allclose(cleaned_low_mem, cleaned_full, atol=1e-10)
+
+
 def test_adaptive_asr_mne_raw_preserves_non_picked_channels(synthetic_burst_data):
     """Adaptive ASR cleans EEG picks and preserves non-picked channels."""
     mne = pytest.importorskip("mne")
@@ -503,10 +644,7 @@ def test_asr_epochs_round_trip(synthetic_burst_data):
     data, _, _, sfreq = synthetic_burst_data
     n_epochs = 3
     epoch_data = np.stack(
-        [
-            data[:, idx * 750 : (idx + 1) * 750]
-            for idx in range(n_epochs)
-        ]
+        [data[:, idx * 750 : (idx + 1) * 750] for idx in range(n_epochs)]
     )
     info = mne.create_info([f"EEG{idx}" for idx in range(data.shape[0])], sfreq, "eeg")
     epochs = mne.EpochsArray(epoch_data, info, verbose=False)
