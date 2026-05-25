@@ -55,3 +55,20 @@ condescending-liskov/data/
 cov_report.txt
 *.eeg
 *.mat
+
+# Tool / IDE / agent metadata
+.serena/
+.claude/
+
+# Local validation outputs
+reports/
+
+# Paper full-text mirrors (do not redistribute; convert locally as needed)
+docs/asr/papers_md/
+
+# User-specific dev utilities (require local paths or cluster account)
+scripts/convert_asr_papers.py
+scripts/fir_run_asr_paper_validation.sbatch
+
+# Tutorial WIPs being staged on other branches
+examples/tutorials/Paper10_*.ipynb
