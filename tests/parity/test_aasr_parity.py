@@ -16,7 +16,10 @@ MATLAB_REF_DIR = Path(__file__).parent / "matlab_reference"
 def _reference_params():
     paths = sorted(MATLAB_REF_DIR.glob("aasr_case_reference_*.mat"))
     if paths:
-        return [pytest.param(path, id=path.stem.replace("aasr_case_reference_", "")) for path in paths]
+        return [
+            pytest.param(path, id=path.stem.replace("aasr_case_reference_", ""))
+            for path in paths
+        ]
     return [
         pytest.param(
             None,

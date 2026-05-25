@@ -1,6 +1,6 @@
 r"""
 Artifact Subspace Reconstruction: Raw QC and Annotations.
-========================================================
+=========================================================
 
 This example shows ASR on an ``mne.io.RawArray`` with optional clean_windows-
 style final window rejection. The repaired spans and rejected spans are kept
@@ -87,7 +87,9 @@ ax.plot(times, noisy, color="0.75", lw=1.0, label="Noisy EEG")
 ax.plot(times, clean, color="C0", lw=1.0, label="ASR cleaned EEG")
 ax.plot(times, brain[0], color="C2", lw=1.0, alpha=0.8, label="Reference EEG")
 
-for idx, (onset, duration) in enumerate(zip(repair_annotations.onset, repair_annotations.duration)):
+for idx, (onset, duration) in enumerate(
+    zip(repair_annotations.onset, repair_annotations.duration)
+):
     ax.axvspan(
         onset,
         onset + duration,
@@ -95,7 +97,9 @@ for idx, (onset, duration) in enumerate(zip(repair_annotations.onset, repair_ann
         alpha=0.12,
         label="ASR repair" if idx == 0 else None,
     )
-for idx, (onset, duration) in enumerate(zip(reject_annotations.onset, reject_annotations.duration)):
+for idx, (onset, duration) in enumerate(
+    zip(reject_annotations.onset, reject_annotations.duration)
+):
     ax.axvspan(
         onset,
         onset + duration,

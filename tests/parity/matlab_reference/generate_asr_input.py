@@ -212,7 +212,10 @@ def generate_asr_fixture(
     data = brain.copy()
     spatial = rng.standard_normal((n_channels, 2))
     spatial /= np.linalg.norm(spatial, axis=0, keepdims=True)
-    for onset, stop in ((0.30 * times[-1], 0.30 * times[-1] + 0.55), (0.60 * times[-1], 0.60 * times[-1] + 0.55)):
+    for onset, stop in (
+        (0.30 * times[-1], 0.30 * times[-1] + 0.55),
+        (0.60 * times[-1], 0.60 * times[-1] + 0.55),
+    ):
         start = int(round(onset * sfreq))
         end = min(n_times, int(round(stop * sfreq)))
         source = artifact_scale * rng.standard_normal((2, end - start))

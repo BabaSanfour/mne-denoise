@@ -253,7 +253,9 @@ class JugglerASR(ASR):
         fit_input = X if calibration is None else calibration
         data, sfreq, mne_type, orig_inst = extract_data_from_mne(fit_input)
         if mne_type == "evoked":
-            raise ValueError("JugglerASR.fit() does not support Evoked calibration data")
+            raise ValueError(
+                "JugglerASR.fit() does not support Evoked calibration data"
+            )
         sfreq = self._resolve_sfreq(sfreq)
         picks, ch_names = self._resolve_picks(fit_input, data, mne_type)
         data_2d = self._select_fit_data(data, mne_type, picks)
@@ -270,16 +272,18 @@ class JugglerASR(ASR):
             data_2d = data_2d[:, good_mask]
 
         self._warn_preprocessing_state(orig_inst, mne_type)
-        reference_data, reference_mask, reference_info = select_juggler_reference_samples(
-            data_2d,
-            sfreq,
-            strategy=self.strategy,
-            selection_filter_kind=self.selection_filter_kind,
-            dbscan_top_k=self.dbscan_top_k,
-            dbscan_eps=self.dbscan_eps,
-            dbscan_min_samples=self.dbscan_min_samples,
-            gev_grid_size=self.gev_grid_size,
-            min_reference_fraction=self.min_reference_fraction,
+        reference_data, reference_mask, reference_info = (
+            select_juggler_reference_samples(
+                data_2d,
+                sfreq,
+                strategy=self.strategy,
+                selection_filter_kind=self.selection_filter_kind,
+                dbscan_top_k=self.dbscan_top_k,
+                dbscan_eps=self.dbscan_eps,
+                dbscan_min_samples=self.dbscan_min_samples,
+                gev_grid_size=self.gev_grid_size,
+                min_reference_fraction=self.min_reference_fraction,
+            )
         )
         state, cal_info = calibrate_asr(
             reference_data,
@@ -452,7 +456,9 @@ def _select_gev_reference_mask(
         mode = _histogram_mode(leading_amplitude)
     else:
         objective = lambda x: -distribution.pdf(x)
-        optimum = optimize.minimize_scalar(objective, bounds=(lower, upper), method="bounded")
+        optimum = optimize.minimize_scalar(
+            objective, bounds=(lower, upper), method="bounded"
+        )
         if optimum.success and np.isfinite(optimum.x):
             mode = float(optimum.x)
         else:
@@ -499,7 +505,9 @@ def _resolve_dbscan_eps(
     if not np.isfinite(eps) or eps <= np.finfo(float).eps:
         positive = feature_scale[feature_scale > 0]
         if positive.size == 0:
-            raise RuntimeError("Cannot derive a positive DBSCAN eps from zero-amplitude data")
+            raise RuntimeError(
+                "Cannot derive a positive DBSCAN eps from zero-amplitude data"
+            )
         eps = max(float(np.median(positive)) / 10.0, np.finfo(float).eps)
     return float(eps)
 

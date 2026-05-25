@@ -76,10 +76,14 @@ def _burst_corrupted_copy(
     return data, burst_mask
 
 
-def _summarize(clean: np.ndarray, brain: np.ndarray, burst_mask: np.ndarray) -> dict[str, float]:
+def _summarize(
+    clean: np.ndarray, brain: np.ndarray, burst_mask: np.ndarray
+) -> dict[str, float]:
     return {
         "burst_mse": float(np.mean((clean[:, burst_mask] - brain[:, burst_mask]) ** 2)),
-        "clean_mse": float(np.mean((clean[:, ~burst_mask] - brain[:, ~burst_mask]) ** 2)),
+        "clean_mse": float(
+            np.mean((clean[:, ~burst_mask] - brain[:, ~burst_mask]) ** 2)
+        ),
         "overall_corr": float(np.corrcoef(clean.ravel(), brain.ravel())[0, 1]),
     }
 
@@ -120,7 +124,9 @@ def _run_meegkit_reference() -> None:
 
     ours_metrics = _summarize(ours_clean, brain, burst_mask)
     meegkit_metrics = _summarize(meegkit_clean, brain, burst_mask)
-    relerr = float(np.linalg.norm(ours_clean - meegkit_clean) / np.linalg.norm(meegkit_clean))
+    relerr = float(
+        np.linalg.norm(ours_clean - meegkit_clean) / np.linalg.norm(meegkit_clean)
+    )
     corr = float(np.corrcoef(ours_clean.ravel(), meegkit_clean.ravel())[0, 1])
 
     print("[standard] mne-denoise vs python-meegkit")
@@ -174,7 +180,9 @@ def _run_timeflux_reference() -> None:
 
     window_samples = int(round(0.5 * sfreq))
     interval = 32
-    calibration_epochs = epoch(brain_long.T, size=window_samples, interval=interval, axis=0)
+    calibration_epochs = epoch(
+        brain_long.T, size=window_samples, interval=interval, axis=0
+    )
     test_epochs = epoch(data.T, size=window_samples, interval=interval, axis=0)
 
     reference = RASR(rejection_cutoff=20.0, max_dimension=0.66)
@@ -192,11 +200,15 @@ def _run_timeflux_reference() -> None:
 
     ours_metrics = _summarize(ours_clean, brain, burst_mask)
     reference_metrics = _summarize(reference_clean, brain, burst_mask)
-    relerr = float(np.linalg.norm(ours_clean - reference_clean) / np.linalg.norm(reference_clean))
+    relerr = float(
+        np.linalg.norm(ours_clean - reference_clean) / np.linalg.norm(reference_clean)
+    )
     corr = float(np.corrcoef(ours_clean.ravel(), reference_clean.ravel())[0, 1])
 
     print("[riemannian] mne-denoise vs timeflux_rasr")
-    print("  Qualitative only: timeflux_rasr is epoched/trial-based, not a parity oracle.")
+    print(
+        "  Qualitative only: timeflux_rasr is epoched/trial-based, not a parity oracle."
+    )
     print(f"  ours:      {ours_metrics}")
     print(f"  timeflux:  {reference_metrics}")
     print(f"  pairwise corr={corr:.4f} relerr={relerr:.4f}")

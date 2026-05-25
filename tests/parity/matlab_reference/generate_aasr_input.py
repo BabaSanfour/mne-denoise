@@ -15,7 +15,9 @@ CHUNK_SECONDS = 8.0
 CUTOFF = 20.0
 
 
-def _make_case(seed: int, *, burst_scale: float, drift_scale: float) -> dict[str, np.ndarray]:
+def _make_case(
+    seed: int, *, burst_scale: float, drift_scale: float
+) -> dict[str, np.ndarray]:
     rng = np.random.default_rng(seed)
     n_times = int(SFREQ * DURATION)
     chunk_len = int(SFREQ * CHUNK_SECONDS)
@@ -45,7 +47,9 @@ def _make_case(seed: int, *, burst_scale: float, drift_scale: float) -> dict[str
         source = rng.standard_normal((1, stop_samp - start)) * burst_scale
         data[:, start:stop_samp] += spatial[:, [source_idx]] @ source
 
-    blink = np.exp(-0.5 * ((t - 6.0) / 0.25) ** 2) + np.exp(-0.5 * ((t - 14.5) / 0.35) ** 2)
+    blink = np.exp(-0.5 * ((t - 6.0) / 0.25) ** 2) + np.exp(
+        -0.5 * ((t - 14.5) / 0.35) ** 2
+    )
     data[:2] += drift_scale * blink[np.newaxis, :]
 
     return {

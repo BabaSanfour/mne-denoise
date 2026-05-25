@@ -18,10 +18,7 @@ LEGACY_RASR_REF = MATLAB_REF_DIR / "rasr_reference_results.mat"
 def _reference_params(pattern: str, legacy_path: Path, prefix: str):
     paths = sorted(MATLAB_REF_DIR.glob(pattern))
     if paths:
-        return [
-            pytest.param(path, id=path.stem.replace(prefix, ""))
-            for path in paths
-        ]
+        return [pytest.param(path, id=path.stem.replace(prefix, "")) for path in paths]
     if legacy_path.exists():
         return [pytest.param(legacy_path, id="legacy")]
     return [
@@ -167,7 +164,10 @@ def test_asr_calibration_against_matlab_reference(ref_path: Path | None):
             np.asarray(diagnostics["clean_sample_mask"], dtype=bool),
             np.asarray(ref["reference_sample_mask"], dtype=bool).ravel(),
         )
-        assert diagnostics["calibration_samples"] == _array(ref, "calibration_used").shape[1]
+        assert (
+            diagnostics["calibration_samples"]
+            == _array(ref, "calibration_used").shape[1]
+        )
 
     assert m_error < 0.01
     assert t_error < 0.15
@@ -236,7 +236,10 @@ def test_rasr_calibration_against_matlab_reference(ref_path: Path | None):
             np.asarray(diagnostics["clean_sample_mask"], dtype=bool),
             np.asarray(ref["reference_sample_mask"], dtype=bool).ravel(),
         )
-        assert diagnostics["calibration_samples"] == _array(ref, "calibration_used").shape[1]
+        assert (
+            diagnostics["calibration_samples"]
+            == _array(ref, "calibration_used").shape[1]
+        )
 
     assert diagnostics["covariance_geometry"] == "riemannian"
     assert state.riemannian_solver == "nonlinear_eigenspace"
