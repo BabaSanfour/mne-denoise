@@ -632,6 +632,6 @@ def test_zapline_auto_meg_like_many_coequal_components():
     power_before = get_power_at(data, 50.0, sfreq)
     power_after = get_power_at(cleaned, 50.0, sfreq)
     reduction_db = 10 * np.log10(power_before / max(power_after, 1e-30))
-    assert (
-        reduction_db > 10.0
-    ), f"Expected >10 dB drop at 50 Hz, got {reduction_db:.1f} dB"
+    assert reduction_db > 10.0, (
+        f"Expected >10 dB drop at 50 Hz, got {reduction_db:.1f} dB"
+    )
