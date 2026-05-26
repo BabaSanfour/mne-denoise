@@ -479,15 +479,14 @@ class ZapLine(DSS):
                 knee_rel_floor=self.knee_rel_floor,
                 knee_min_ratio=self.knee_min_ratio,
             )
-            if len(self.eigenvalues_) > 0:
-                logger.info(
-                    "ZapLine auto-selected %d/%d components "
-                    "(eigenvalues: max=%.3g, min=%.3g)",
-                    self.n_removed_,
-                    len(self.eigenvalues_),
-                    float(self.eigenvalues_[0]),
-                    float(self.eigenvalues_[-1]),
-                )
+            logger.info(
+                "ZapLine auto-selected %d/%d components "
+                "(eigenvalues: max=%.3g, min=%.3g)",
+                self.n_removed_,
+                len(self.eigenvalues_),
+                float(self.eigenvalues_[0]),
+                float(self.eigenvalues_[-1]),
+            )
         else:
             self.n_removed_ = min(int(self.n_remove), len(self.eigenvalues_))
 

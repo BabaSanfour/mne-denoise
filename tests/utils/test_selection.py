@@ -105,6 +105,15 @@ def test_detect_knee_rel_floor_excludes_tail():
     assert detect_eigenvalue_knee(evs) == 3
 
 
+def test_detect_knee_rel_floor_excludes_all():
+    """``rel_floor`` greater than 1.0 leaves no valid anchors and returns 0.
+
+    Degenerate guard for the ``not np.any(valid)`` branch.
+    """
+    evs = np.array([0.9, 0.8, 0.1])
+    assert detect_eigenvalue_knee(evs, rel_floor=2.0) == 0
+
+
 # -----------------------------------------------------------------------------
 # auto_select_components_robust
 # -----------------------------------------------------------------------------

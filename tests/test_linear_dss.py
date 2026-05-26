@@ -1066,3 +1066,30 @@ def test_dss_get_normalized_patterns():
     norm_patterns = dss.get_normalized_patterns()
     assert norm_patterns.shape == (10, 2)
     assert_allclose(np.linalg.norm(norm_patterns, axis=0), 1.0)
+
+
+def test_compute_dss_warns_on_heavy_rank_reduction(caplog):
+    """``compute_dss`` warns when ``reg`` discards >75% of components.
+
+    Mimics MEG-style fT-scale covariances whose eigenvalues span many
+    decades: only a handful survive the default relative ``reg`` threshold,
+    and we want the user to see actionable workaround suggestions.
+    """
+    import logging
+
+    n_channels = 40
+    # Six eigenvalues at 1.0, the rest at 1e-15 -- well below the default
+    # reg=1e-9 cutoff, so n_keep ends up at 6 (< n_channels // 4 = 10).
+    eigvals = np.concatenate([np.ones(6), np.full(n_channels - 6, 1e-15)])
+    rng = np.random.default_rng(0)
+    Q, _ = np.linalg.qr(rng.standard_normal((n_channels, n_channels)))
+    cov = Q @ np.diag(eigvals) @ Q.T
+    cov = (cov + cov.T) / 2
+
+    with caplog.at_level(logging.WARNING, logger="mne_denoise.dss.linear"):
+        compute_dss(cov, cov)
+
+    assert any(
+        "components kept after rank reduction" in rec.getMessage()
+        for rec in caplog.records
+    )
