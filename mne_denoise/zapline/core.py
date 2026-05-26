@@ -45,7 +45,7 @@ import numpy as np
 from ..dss.denoisers.spectral import LineNoiseBias
 from ..dss.denoisers.temporal import SmoothingBias
 from ..dss.linear import DSS
-from ..dss.utils.selection import iterative_outlier_removal
+from ..dss.utils.selection import auto_select_components_robust
 from ..utils import extract_data_from_mne, reconstruct_mne_object
 from .adaptive import (
     apply_hybrid_cleanup,
@@ -106,6 +106,15 @@ class ZapLine(DSS):
         Regularization parameter for DSS covariance inversion.
     threshold : float, default=3.0
         Sigma threshold for iterative outlier removal when ``n_remove='auto'``.
+    knee_rel_floor : float, default=0.01
+        Relative-to-max anchor for the knee-detection fallback used when
+        ``n_remove='auto'``. Eigenvalues below this fraction of the largest
+        are excluded from knee selection. See
+        :func:`mne_denoise.dss.utils.detect_eigenvalue_knee`.
+    knee_min_ratio : float, default=3.0
+        Minimum linear-scale drop between consecutive eigenvalues required to
+        qualify as a knee. Defaults to a factor-of-3 drop. Lower values make
+        knee detection more permissive; higher values make it stricter.
     adaptive : bool, default=False
         If ``True``, use adaptive ZapLine-plus mode [2]_ with:
         - Automatic frequency detection
@@ -189,6 +198,8 @@ class ZapLine(DSS):
         rank: int | None = None,
         reg: float = 1e-9,
         threshold: float = 3.0,
+        knee_rel_floor: float = 0.01,
+        knee_min_ratio: float = 3.0,
         adaptive: bool = False,
         adaptive_params: dict | None = None,
     ):
@@ -199,6 +210,8 @@ class ZapLine(DSS):
         self.nfft = nfft
         self.nkeep = nkeep
         self.threshold = threshold
+        self.knee_rel_floor = knee_rel_floor
+        self.knee_min_ratio = knee_min_ratio
         self.adaptive = adaptive
         self.adaptive_params = adaptive_params if adaptive_params is not None else {}
 
@@ -460,9 +473,21 @@ class ZapLine(DSS):
 
         # 4. Determine n_remove
         if self.n_remove == "auto":
-            self.n_removed_ = iterative_outlier_removal(
-                self.eigenvalues_, self.threshold
+            self.n_removed_ = auto_select_components_robust(
+                self.eigenvalues_,
+                sigma=self.threshold,
+                knee_rel_floor=self.knee_rel_floor,
+                knee_min_ratio=self.knee_min_ratio,
             )
+            if len(self.eigenvalues_) > 0:
+                logger.info(
+                    "ZapLine auto-selected %d/%d components "
+                    "(eigenvalues: max=%.3g, min=%.3g)",
+                    self.n_removed_,
+                    len(self.eigenvalues_),
+                    float(self.eigenvalues_[0]),
+                    float(self.eigenvalues_[-1]),
+                )
         else:
             self.n_removed_ = min(int(self.n_remove), len(self.eigenvalues_))
 
@@ -811,6 +836,8 @@ class ZapLine(DSS):
                 line_freq=fine_freq,
                 n_remove="auto",
                 threshold=current_sigma,
+                knee_rel_floor=self.knee_rel_floor,
+                knee_min_ratio=self.knee_min_ratio,
                 adaptive=False,
             )
 
@@ -829,6 +856,8 @@ class ZapLine(DSS):
                     sfreq=self.sfreq,
                     line_freq=fine_freq,
                     n_remove=int(n_rem),
+                    knee_rel_floor=self.knee_rel_floor,
+                    knee_min_ratio=self.knee_min_ratio,
                     adaptive=False,
                 )
                 est.fit(chunk)

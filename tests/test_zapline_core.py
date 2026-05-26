@@ -583,3 +583,54 @@ def test_linenoise_bias_method_errors():
     # Should return data unchanged
     data = np.random.randn(1, 100)
     assert np.array_equal(bias.apply(data), data)
+
+
+def test_zapline_auto_meg_like_many_coequal_components():
+    """Regression for Issue #34: auto-mode must detect MEG-style line noise.
+
+    Mimics high-channel-count MEG environmental pickup: each sensor sees
+    the 50 / 100 / 150 Hz field through a different lead-field path, so
+    amplitudes and phases vary across channels. This produces multiple
+    independent line-noise sources, and DSS yields several co-equal strong
+    components -- the regime where the pre-fix outlier selector underdetected.
+    """
+    rng = np.random.default_rng(34)
+    sfreq = 400
+    n_channels = 64
+    n_times = 8000  # 20 s
+    times = np.arange(n_times) / sfreq
+
+    line = np.zeros((n_channels, n_times))
+    for freq in (50.0, 100.0, 150.0):
+        phases = rng.uniform(0, 2 * np.pi, n_channels)
+        amps = rng.normal(1.0, 0.3, n_channels) * 5.0
+        line += (amps[:, None] *
+                 np.sin(2 * np.pi * freq * times[None, :] + phases[:, None]))
+
+    background = rng.normal(0, 1, (n_channels, n_times))
+    data = background + line
+
+    est = ZapLine(line_freq=50.0, sfreq=sfreq, n_remove="auto", n_harmonics=3)
+    est.fit(data)
+    cleaned = est.transform(data)
+
+    # Should detect multiple line-noise components. With 3 harmonics and
+    # per-channel phase variation, we expect ~6 strong components (sin and
+    # cos at each harmonic). >=3 is a conservative lower bound.
+    assert est.n_removed_ >= 3, (
+        f"Expected n_removed_ >= 3 for MEG-like coherent line noise, "
+        f"got {est.n_removed_}. Eigenvalues (top 10): {est.eigenvalues_[:10]}"
+    )
+
+    # Power at 50 Hz should drop substantially.
+    def get_power_at(d, freq, fs):
+        f, psd = signal.welch(d, fs=fs, nperseg=int(fs), axis=-1)
+        idx = np.argmin(np.abs(f - freq))
+        return np.mean(psd[:, idx])
+
+    power_before = get_power_at(data, 50.0, sfreq)
+    power_after = get_power_at(cleaned, 50.0, sfreq)
+    reduction_db = 10 * np.log10(power_before / max(power_after, 1e-30))
+    assert reduction_db > 10.0, (
+        f"Expected >10 dB drop at 50 Hz, got {reduction_db:.1f} dB"
+    )

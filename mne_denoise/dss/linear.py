@@ -15,10 +15,13 @@ References
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
+
+logger = logging.getLogger(__name__)
 
 # Optional MNE support
 try:
@@ -155,6 +158,21 @@ def compute_dss(
     n_keep = np.sum(keep_mask)
     if n_keep == 0:
         raise ValueError("No components above regularization threshold")
+
+    if n_keep < n_channels // 4:
+        logger.warning(
+            "DSS: only %d/%d components kept after rank reduction "
+            "(reg=%g, max_eigval=%.3g, smallest_kept_eigval=%.3g). "
+            "This is common for MEG data with a large dynamic range "
+            "(e.g., raw CTF magnetometers in Tesla). Consider passing "
+            "normalize_input=True to DSS, raising reg (e.g., 1e-6), or "
+            "supplying rank='info' via cov_kws when fitting on MNE objects.",
+            int(n_keep),
+            int(n_channels),
+            float(reg),
+            float(max_ev),
+            float(eigenvalues_white[n_keep - 1]),
+        )
 
     eigenvalues_white = eigenvalues_white[keep_mask]
     eigenvectors_white = eigenvectors_white[:, keep_mask]

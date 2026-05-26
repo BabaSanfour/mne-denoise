@@ -1,0 +1,6 @@
+**ZapLine**:
+- Fixed `ZapLine` with `n_remove='auto'` returning 0 components on high-channel-count MEG data with many co-equal line-noise components (e.g., CTF 275-channel recordings). The iterative outlier selector assumes 1-2 dominant components and fails when several DSS eigenvalues are similar; we now layer a log-space knee detector on top of it and use the larger of the two counts (Issue #34).
+- Added `mne_denoise.dss.utils.detect_eigenvalue_knee` and `auto_select_components_robust` helpers, plus optional ``knee_rel_floor`` and ``knee_min_ratio`` parameters to ``ZapLine`` for tuning.
+
+**DSS**:
+- `compute_dss` now emits a warning when the ``reg``-based rank reduction discards more than 75% of channels, which is common with raw CTF MEG fT-scale covariances. The message points users at channel normalization, raising ``reg``, or passing ``rank='info'`` via ``cov_kws``.
