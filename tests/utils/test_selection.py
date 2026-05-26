@@ -156,9 +156,7 @@ def test_iterative_outlier_removal_unchanged():
     The original algorithm is conservative; this case has one massive outlier
     that survives the iterative step.
     """
-    scores = np.array(
-        [1000.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05]
-    )
+    scores = np.array([1000.0, 1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05])
     assert iterative_outlier_removal(scores, sigma=3.0) >= 1
 
 

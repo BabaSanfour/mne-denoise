@@ -21,8 +21,6 @@ from collections.abc import Callable
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 
-logger = logging.getLogger(__name__)
-
 # Optional MNE support
 try:
     import mne
@@ -35,6 +33,8 @@ except ImportError:
 from ..utils import extract_data_from_mne, reconstruct_mne_object
 from .denoisers import LinearDenoiser
 from .utils import compute_covariance
+
+logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # 1. Core Algorithm

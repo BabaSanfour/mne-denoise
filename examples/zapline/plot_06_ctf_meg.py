@@ -50,9 +50,7 @@ line = np.zeros((n_channels, n_times))
 for freq in (50.0, 100.0, 150.0):
     phases = rng.uniform(0, 2 * np.pi, n_channels)
     amps = rng.normal(1.0, 0.3, n_channels) * 5.0
-    line += amps[:, None] * np.sin(
-        2 * np.pi * freq * times[None, :] + phases[:, None]
-    )
+    line += amps[:, None] * np.sin(2 * np.pi * freq * times[None, :] + phases[:, None])
 
 # 1/f-ish brain background
 background = rng.normal(0, 1, (n_channels, n_times))
