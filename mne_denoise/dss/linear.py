@@ -147,7 +147,7 @@ def compute_dss(
 
     # Apply threshold
     max_ev = np.max(eigenvalues_white)
-    if max_ev < 1e-15:
+    if not np.isfinite(max_ev) or max_ev <= 0:
         raise ValueError("Covariance matrix has no significant variance")
 
     keep_mask = eigenvalues_white / max_ev > reg
@@ -165,8 +165,9 @@ def compute_dss(
             "(reg=%g, max_eigval=%.3g, smallest_kept_eigval=%.3g). "
             "This is common for MEG data with a large dynamic range "
             "(e.g., raw CTF magnetometers in Tesla). Consider passing "
-            "normalize_input=True to DSS, raising reg (e.g., 1e-6), or "
-            "supplying rank='info' via cov_kws when fitting on MNE objects.",
+            "normalize_input=True to DSS, lowering reg, or fitting "
+            "homogeneous channel types separately instead of mixing channels "
+            "with different physical units.",
             int(n_keep),
             int(n_channels),
             float(reg),

@@ -181,12 +181,16 @@ def test_compute_dss_error_no_variance():
         compute_dss(c, c)
 
 
-def test_compute_dss_error_tiny_eigenvalues():
-    """compute_dss should raise error when all eigenvalues are tiny."""
-    c = np.eye(5) * 1e-20
+def test_compute_dss_tiny_positive_covariance_is_scale_invariant():
+    """Tiny SI-unit covariances should not be treated as zero variance."""
+    cov = np.diag([5.0, 2.0, 1.0, 0.5, 0.25])
+    tiny_cov = cov * 1e-26
 
-    with pytest.raises(ValueError, match="no significant variance|No components"):
-        compute_dss(c, c)
+    filters, patterns, eigenvalues = compute_dss(tiny_cov, tiny_cov)
+
+    assert filters.shape == (5, 5)
+    assert patterns.shape == (5, 5)
+    assert_allclose(eigenvalues, np.ones(5), atol=1e-12)
 
 
 # =============================================================================
@@ -1093,3 +1097,5 @@ def test_compute_dss_warns_on_heavy_rank_reduction(caplog):
         "components kept after rank reduction" in rec.getMessage()
         for rec in caplog.records
     )
+    assert any("lowering reg" in rec.getMessage() for rec in caplog.records)
+    assert not any("raising reg" in rec.getMessage() for rec in caplog.records)

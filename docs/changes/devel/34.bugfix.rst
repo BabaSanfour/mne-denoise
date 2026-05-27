@@ -1,6 +1,7 @@
 **ZapLine**:
 - Fixed `ZapLine` with `n_remove='auto'` returning 0 components on high-channel-count MEG data with many co-equal line-noise components (e.g., CTF 275-channel recordings). The iterative outlier selector assumes 1-2 dominant components and fails when several DSS eigenvalues are similar; we now layer a log-space knee detector on top of it and use the larger of the two counts (Issue #34).
 - Added `mne_denoise.dss.utils.detect_eigenvalue_knee` and `auto_select_components_robust` helpers, plus optional ``knee_rel_floor`` and ``knee_min_ratio`` parameters to ``ZapLine`` for tuning.
+- `ZapLine` now fits homogeneous MNE channel types instead of mixing CTF magnetometers, reference channels, EEG, and misc channels in one DSS decomposition. Full CTF Raw objects preserve non-target channels unchanged while cleaning magnetometers.
 
 **DSS**:
-- `compute_dss` now emits a warning when the ``reg``-based rank reduction discards more than 75% of channels, which is common with raw CTF MEG fT-scale covariances. The message points users at channel normalization, raising ``reg``, or passing ``rank='info'`` via ``cov_kws``.
+- `compute_dss` now treats the baseline covariance variance check as relative to the data scale instead of rejecting valid SI-unit MEG covariances. It also emits a warning when the ``reg``-based rank reduction discards more than 75% of channels; the message points users at channel normalization, lowering ``reg``, or fitting homogeneous channel types separately instead of mixing channels with different physical units.

@@ -383,6 +383,81 @@ def test_zapline_sfreq_mismatch_warning_fit_transform():
         est.fit_transform(raw)
 
 
+def test_zapline_mne_eeg_raw_reduces_line_noise():
+    """EEG-only MNE Raw inputs should keep the existing all-channel behavior."""
+    import mne
+
+    rng = np.random.default_rng(33)
+    sfreq = 400.0
+    n_eeg = 4
+    n_times = int(20 * sfreq)
+    times = np.arange(n_times) / sfreq
+
+    eeg_noise = rng.normal(0, 0.2, (n_eeg, n_times))
+    eeg_line = 2.0 * np.sin(2 * np.pi * 50 * times)[None, :]
+    eeg_data = eeg_noise + eeg_line
+
+    info = mne.create_info(
+        ch_names=[f"EEG{i:03d}" for i in range(n_eeg)],
+        sfreq=sfreq,
+        ch_types="eeg",
+    )
+    raw = mne.io.RawArray(eeg_data, info, verbose=False)
+
+    def line_power(x):
+        freqs, psd = signal.welch(x, fs=sfreq, nperseg=int(4 * sfreq), axis=-1)
+        idx = np.argmin(np.abs(freqs - 50.0))
+        return float(np.mean(psd[:, idx]))
+
+    before = line_power(eeg_data)
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    cleaned = est.fit_transform(raw)
+
+    assert 10 * np.log10(before / line_power(cleaned.get_data())) > 10
+    assert est.n_removed_ == 1
+
+
+def test_zapline_mne_mixed_channels_cleans_magnetometers_only():
+    """Mixed-unit MNE objects should clean MEG channels without touching misc."""
+    import mne
+
+    rng = np.random.default_rng(34)
+    sfreq = 400.0
+    n_mag = 8
+    n_times = int(20 * sfreq)
+    times = np.arange(n_times) / sfreq
+
+    phases = rng.uniform(0, 2 * np.pi, n_mag)
+    mag_noise = rng.normal(0, 0.2e-13, (n_mag, n_times))
+    mag_line = 2e-13 * np.sin(2 * np.pi * 50 * times[None, :] + phases[:, None])
+    mag_data = mag_noise + mag_line
+    misc_data = rng.normal(0, 1.0, (1, n_times))
+    data = np.vstack([mag_data, misc_data])
+
+    info = mne.create_info(
+        ch_names=[f"MEG{i:03d}" for i in range(n_mag)] + ["MISC001"],
+        sfreq=sfreq,
+        ch_types=["mag"] * n_mag + ["misc"],
+    )
+    raw = mne.io.RawArray(data, info, verbose=False)
+
+    def line_power(x):
+        freqs, psd = signal.welch(x, fs=sfreq, nperseg=int(4 * sfreq), axis=-1)
+        idx = np.argmin(np.abs(freqs - 50.0))
+        return float(np.mean(psd[:, idx]))
+
+    before = line_power(mag_data)
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=2, n_harmonics=1, nfft=400)
+    cleaned = est.fit_transform(raw)
+
+    cleaned_mag = cleaned.get_data(picks="mag")
+    cleaned_misc = cleaned.get_data(picks="misc")
+
+    assert 10 * np.log10(before / line_power(cleaned_mag)) > 10
+    assert_allclose(cleaned_misc, misc_data, atol=0, rtol=0)
+    assert est.n_removed_ == 2
+
+
 def test_zapline_fit_none_line_freq_error():
     """ZapLine fit() should raise error if line_freq is None."""
     data = np.random.randn(4, 1000)

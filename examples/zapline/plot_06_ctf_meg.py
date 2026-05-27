@@ -130,13 +130,13 @@ plt.show()
 # %%
 # Workarounds for the rank-loss warning
 # -------------------------------------
-# Real CTF data in raw Tesla units can trip the new rank-loss warning in
-# :func:`mne_denoise.dss.linear.compute_dss` because the baseline-covariance
-# eigenvalues span 15+ decades. Three options:
+# Real CTF recordings can trip the rank-loss warning in
+# :func:`mne_denoise.dss.linear.compute_dss` when channels with very different
+# physical units are fit together, or when the baseline covariance spectrum spans
+# many decades. Three options:
 #
 # 1. Pass ``normalize_input=True`` to :class:`mne_denoise.dss.linear.DSS`
 #    when fitting DSS directly (ZapLine sets this to ``False`` by design).
-# 2. Raise ``reg`` from the default ``1e-9`` to something like ``1e-6``.
-# 3. Pass ``rank='info'`` via ``cov_kws`` when fitting on an MNE object so
-#    the rank is taken from the measurement info (which accounts for the
-#    CTF gradient compensation grade).
+# 2. Lower ``reg`` if the relative cutoff discards too many PCA dimensions.
+# 3. Fit homogeneous channel types separately, e.g. use ``raw.copy().pick("mag")``
+#    for CTF magnetometers instead of passing all channels at once.
