@@ -291,8 +291,8 @@ class ZapLine(DSS):
             if ch_type not in ch_types:
                 continue
             picks = mne.pick_types(inst.info, exclude=(), **pick_kws)
-            if len(picks) == 0:
-                continue
+            if len(picks) == 0:  # pragma: no cover -- defensive: type present but
+                continue  # pick filter excludes everything (shouldn't happen)
             if len(picks) == len(inst.ch_names):
                 return None
             logger.info(

@@ -458,6 +458,129 @@ def test_zapline_mne_mixed_channels_cleans_magnetometers_only():
     assert est.n_removed_ == 2
 
 
+def test_zapline_mne_mixed_channels_prefers_gradiometers_when_no_mags():
+    """Mixed MNE inputs should clean gradiometers when magnetometers are absent."""
+    import mne
+
+    rng = np.random.default_rng(35)
+    sfreq = 400.0
+    n_grad = 4
+    n_times = int(10 * sfreq)
+    times = np.arange(n_times) / sfreq
+
+    grad_noise = rng.normal(0, 0.2e-13, (n_grad, n_times))
+    grad_line = 2e-13 * np.sin(2 * np.pi * 50 * times)[None, :]
+    grad_data = grad_noise + grad_line
+    misc_data = rng.normal(0, 1.0, (1, n_times))
+
+    info = mne.create_info(
+        ch_names=[f"MEG{i:03d}" for i in range(n_grad)] + ["MISC001"],
+        sfreq=sfreq,
+        ch_types=["grad"] * n_grad + ["misc"],
+    )
+    raw = mne.io.RawArray(np.vstack([grad_data, misc_data]), info, verbose=False)
+
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    cleaned = est.fit_transform(raw)
+
+    assert est._mne_ch_names_ == [f"MEG{i:03d}" for i in range(n_grad)]
+    assert_allclose(cleaned.get_data(picks="misc"), misc_data, atol=0, rtol=0)
+
+
+def test_zapline_mne_mixed_epochs_preserves_misc_channels():
+    """Mixed Epochs should clean EEG picks and reinsert them into full data."""
+    import mne
+
+    rng = np.random.default_rng(36)
+    sfreq = 400.0
+    n_epochs = 3
+    n_eeg = 4
+    n_times = int(4 * sfreq)
+    times = np.arange(n_times) / sfreq
+
+    eeg_noise = rng.normal(0, 0.2, (n_epochs, n_eeg, n_times))
+    eeg_line = 2.0 * np.sin(2 * np.pi * 50 * times)[None, None, :]
+    eeg_data = eeg_noise + eeg_line
+    misc_data = rng.normal(0, 1.0, (n_epochs, 1, n_times))
+    data = np.concatenate([eeg_data, misc_data], axis=1)
+
+    info = mne.create_info(
+        ch_names=[f"EEG{i:03d}" for i in range(n_eeg)] + ["MISC001"],
+        sfreq=sfreq,
+        ch_types=["eeg"] * n_eeg + ["misc"],
+    )
+    events = np.column_stack(
+        [
+            np.arange(n_epochs) * n_times,
+            np.zeros(n_epochs, dtype=int),
+            np.ones(n_epochs, dtype=int),
+        ]
+    )
+    epochs = mne.EpochsArray(data, info, events=events, tmin=0, verbose=False)
+
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    cleaned = est.fit_transform(epochs)
+
+    assert cleaned.get_data().shape == data.shape
+    assert_allclose(cleaned.get_data(picks="misc"), misc_data, atol=0, rtol=0)
+
+
+def test_zapline_mne_mixed_evoked_transform_preserves_misc_channels():
+    """Mixed Evoked transform should use fitted channel names and preserve misc."""
+    import mne
+
+    rng = np.random.default_rng(37)
+    sfreq = 400.0
+    n_eeg = 4
+    n_times = int(10 * sfreq)
+    times = np.arange(n_times) / sfreq
+
+    eeg_noise = rng.normal(0, 0.2, (n_eeg, n_times))
+    eeg_line = 2.0 * np.sin(2 * np.pi * 50 * times)[None, :]
+    eeg_data = eeg_noise + eeg_line
+    misc_data = rng.normal(0, 1.0, (1, n_times))
+
+    info = mne.create_info(
+        ch_names=[f"EEG{i:03d}" for i in range(n_eeg)] + ["MISC001"],
+        sfreq=sfreq,
+        ch_types=["eeg"] * n_eeg + ["misc"],
+    )
+    evoked = mne.EvokedArray(np.vstack([eeg_data, misc_data]), info, tmin=0)
+
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    est.fit(evoked)
+    cleaned = est.transform(evoked)
+
+    assert cleaned.data.shape == evoked.data.shape
+    assert_allclose(cleaned.get_data(picks="misc"), misc_data, atol=0, rtol=0)
+
+
+def test_zapline_mne_transform_requires_fitted_channels():
+    """Transform should fail clearly if fitted MNE channels are missing."""
+    import mne
+
+    rng = np.random.default_rng(38)
+    sfreq = 400.0
+    n_times = int(4 * sfreq)
+    times = np.arange(n_times) / sfreq
+    eeg_data = rng.normal(0, 0.2, (2, n_times))
+    eeg_data += 2.0 * np.sin(2 * np.pi * 50 * times)[None, :]
+    misc_data = rng.normal(0, 1.0, (1, n_times))
+
+    info = mne.create_info(
+        ch_names=["EEG001", "EEG002", "MISC001"],
+        sfreq=sfreq,
+        ch_types=["eeg", "eeg", "misc"],
+    )
+    raw = mne.io.RawArray(np.vstack([eeg_data, misc_data]), info, verbose=False)
+
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    est.fit(raw)
+
+    with pytest.raises(ValueError, match="missing channels used during fit"):
+        est.transform(raw.copy().drop_channels(["EEG002"]))
+
+
 def test_zapline_fit_none_line_freq_error():
     """ZapLine fit() should raise error if line_freq is None."""
     data = np.random.randn(4, 1000)
@@ -710,3 +833,30 @@ def test_zapline_auto_meg_like_many_coequal_components():
     assert reduction_db > 10.0, (
         f"Expected >10 dB drop at 50 Hz, got {reduction_db:.1f} dB"
     )
+
+
+def test_zapline_no_supported_channel_types_falls_back():
+    """If no mag/grad/eeg channels are present, ZapLine processes all channels."""
+    import mne
+
+    rng = np.random.default_rng(3)
+    sfreq = 400.0
+    n_times = int(2 * sfreq)
+    times = np.arange(n_times) / sfreq
+
+    line = 5.0 * np.sin(2 * np.pi * 50 * times)
+    data = rng.normal(0, 0.5, (3, n_times)) + line[None, :]
+
+    info = mne.create_info(
+        ch_names=["MISC001", "MISC002", "MISC003"],
+        sfreq=sfreq,
+        ch_types=["misc"] * 3,
+    )
+    raw = mne.io.RawArray(data, info, verbose=False)
+
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    est.fit(raw)
+
+    # No mag/grad/eeg -> no picking; estimator processes the misc channels.
+    assert est._mne_ch_names_ is None
+    assert est.n_removed_ == 1
