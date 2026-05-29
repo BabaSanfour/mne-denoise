@@ -20,6 +20,11 @@ JugglerASR :
     A specialized variant that selects and updates reference samples dynamically
     using a sliding window approach, designed for highly unstable environments.
 
+GuidedASR :
+    An experimental research prototype that combines the
+    ``riemannian_windowed`` ASR backbone with DSS-style bias operators and
+    soft component reconstruction. It is not a validated or published method.
+
 Core Workflow
 -------------
 1. **Calibration** (`calibrate_asr`): Automatically finds clean segments of data
@@ -48,6 +53,7 @@ from ._reconstruction import process_asr
 from ._windowing import compute_clean_window_mask
 from .adaptive import AdaptiveASR
 from .core import ASR
+from .guided import GuidedASR, process_guided_asr
 from .juggler import JugglerASR, select_juggler_reference_samples
 
 __all__ = [
@@ -55,9 +61,11 @@ __all__ = [
     "ASR",
     "AdaptiveASR",
     "JugglerASR",
+    "GuidedASR",
     # Core Functions
     "calibrate_asr",
     "process_asr",
+    "process_guided_asr",
     "fit_rms_distribution",
     "select_juggler_reference_samples",
     # QA and Metrics
