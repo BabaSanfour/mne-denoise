@@ -39,27 +39,35 @@ For NumPy arrays, pass the sampling frequency explicitly. Arrays use shape
    asr = ASR(sfreq=250.0, cutoff=20.0)
    clean = asr.fit_transform(data)
 
-Experimental Riemannian ASR
----------------------------
+Riemannian ASR
+--------------
 
-An SPD-manifold backend is available behind an explicit experimental opt-in:
+Two Riemannian backends are available.
+
+``method="riemannian_windowed"`` is the **recommended** Riemannian backend and
+is first-class (no ``experimental`` flag). It keeps the Riemannian
+(geometric-median) robust calibration covariance but applies a standard
+per-window eigendecomposition at processing time, so its ``cutoff`` knob works
+the same monotone way as standard ASR:
 
 .. code-block:: python
 
-   asr = ASR(
-       sfreq=250.0,
-       cutoff=20.0,
-       method="riemannian",
-       experimental=True,
-   )
-
+   asr = ASR(sfreq=250.0, cutoff=20.0, method="riemannian_windowed")
    clean = asr.fit_transform(data)
 
-This backend uses affine-invariant Karcher means for covariance smoothing and
-aggregation and a source-backed nonlinear eigenspace compatibility
-formulation for the full-basis `rASRMatlab` use case. Treat it as a
-test-covered experimental path; it is validated against local MATLAB fixtures
-but still not presented as a finalized public-stability backend.
+Its processing is byte-identical to standard ASR given the same calibration
+state, and a direct ``clean_rawdata/asr_process`` MATLAB cross-check matches it
+to ``relerr < 1e-13`` (see ``tests/parity/test_riemannian_windowed_parity.py``).
+
+``method="riemannian"`` is the MATLAB-``rASRMatlab``-faithful backend and stays
+behind an explicit experimental opt-in. It computes one covariance and one
+reconstruction matrix for the whole stream, which makes it **cutoff-invariant
+on real EEG** — use it only for MATLAB parity, not for cutoff tuning:
+
+.. code-block:: python
+
+   asr = ASR(sfreq=250.0, cutoff=20.0, method="riemannian", experimental=True)
+   clean = asr.fit_transform(data)
 
 Reference cross-checks
 ----------------------
@@ -101,17 +109,19 @@ rules from the AASR repository.
    )
 
    aasr.fit(chunk_1)
-   aasr.update(chunk_2)
-   clean = aasr.reconstruct(full_data)
+   aasr.partial_fit(chunk_2)
+   clean = aasr.transform(full_data)
 
-The public API follows the package conventions while also keeping the
-MATLAB-style method names:
+The public API follows the package (sklearn-style) conventions:
 
-- ``fit()`` / ``partial_fit()`` for initial calibration and adaptive updates
-- ``update()`` as an alias for ``partial_fit()``
-- ``transform()`` / ``reconstruct()`` for burst repair with the current
-  adaptive state
+- ``fit()`` for initial calibration; ``partial_fit()`` for adaptive updates
+- ``transform()`` for burst repair with the current adaptive state
 - ``reset_process_state()`` to replay the reconstruction path deterministically
+
+A moving-window variant is available via ``variant="mw"``. Its
+``mw_mode="sliding"`` option (calibrate-and-clean per window) is the
+recommended MW configuration; the default ``mw_mode="final_state"`` mirrors the
+MATLAB ``AASR_demo`` Cell 4 semantics.
 
 The adaptive variants are specialized research paths validated against the
 MATLAB fixture files stored under ``tests/parity``. Those fixtures were
@@ -146,13 +156,56 @@ from Kim et al. (2025) are exposed:
 
    jasr.fit(raw)
    raw_clean = jasr.transform(raw)
-   reference_mask = jasr.get_reference_sample_mask()
+   reference_mask = jasr.get_calibration_mask()  # sample-based for Juggler
 
 The paper specifies the sample-selection logic but does not provide a local
 MATLAB oracle in this repository, so this implementation is validated through
 unit tests and the published algorithm description rather than a parity
 fixture. Treat it as a specialized calibration strategy for high-motion MoBI
 data, not as a universal replacement for standard ASR.
+
+Choosing a variant
+------------------
+
+A quick decision guide (see
+``reports/paper_validation/robustness/decision_guide.md`` for the full version):
+
+- **Most EEG** — ``ASR(method="standard")`` at ``cutoff=20`` (Chang 2020
+  recommends 20-30 for adult EEG). The default, and the right default.
+- **Need Riemannian-robust calibration with a working cutoff** —
+  ``ASR(method="riemannian_windowed")``.
+- **Online / streaming BCI** — ``AdaptiveASR(variant="psw")`` (strongest SNR
+  gain) or ``variant="psp"`` (best ground-truth correlation).
+- **Per-segment cleaning** — ``AdaptiveASR(variant="mw", mw_mode="sliding")``
+  (avoid the coarse-window ``final_state`` default, which can over-clean).
+- **Extreme MoBI / high motion** where the clean-windows criterion collapses —
+  ``JugglerASR(strategy="gev")`` (tight selector) or ``strategy="dbscan"``
+  (more permissive). These survive contamination levels where standard ASR
+  refuses to calibrate.
+
+Visualizing results
+-------------------
+
+``mne_denoise.viz`` provides ten ASR-specific plotting helpers. They accept the
+fitted estimator and/or before/after data (MNE objects or NumPy arrays), return
+``(fig, ax)``, and honour ``ax=`` / ``show=`` / ``fname=``:
+
+.. code-block:: python
+
+   from mne_denoise.viz import plot_asr_overlay, plot_asr_repair_timeline
+
+   asr = ASR(sfreq=250.0, cutoff=20.0).fit(raw)
+   clean = asr.transform(raw)
+   plot_asr_overlay(raw, clean, asr, pick="Fp1")   # before/after + repair spans
+   plot_asr_repair_timeline(asr)                    # which windows were repaired
+
+See :doc:`api` (Visualization) for the full list:
+``plot_asr_overlay``, ``plot_asr_cutoff_sweep``, ``plot_asr_psd_comparison``,
+``plot_asr_variance_topomap``, ``plot_asr_repair_timeline``,
+``plot_asr_calibration_fraction``, ``plot_asr_component_reconstruction``,
+``plot_asr_blink_reduction``, ``plot_asr_grand_average``,
+``plot_asr_method_comparison``. The ``plot_05_asr_visualization.py`` gallery
+example exercises them end-to-end.
 
 Real-data validation
 --------------------
@@ -209,16 +262,21 @@ After ``transform``, the estimator stores audit fields:
    ``estimated_full_cov_bytes``, ``peak_cov_buffer_bytes``, ``chunk_samples``,
    and ``used_memory_bound``.
 
-``to_annotations()``
-   Converts repaired windows from the last transform into ``mne.Annotations``.
+``to_annotations(kind=...)``
+   Unified annotation export. ``kind="repair"`` (default) annotates repaired
+   windows from the last transform; ``kind="rejection"`` annotates samples
+   removed by the final window-rejection pass; ``kind="calibration"`` annotates
+   the reference samples chosen by :class:`JugglerASR` (sample-based backends
+   only). All return ``mne.Annotations``.
+
+``get_calibration_mask()``
+   Returns the boolean calibration mask — window-based for standard / Riemannian
+   / adaptive backends, sample-based for :class:`JugglerASR` (see
+   ``calibration_mask_kind_``).
 
 ``get_rejection_mask()``
    Returns the retained-sample mask from optional clean_windows-style final
    window rejection.
-
-``to_rejection_annotations()``
-   Converts the rejected portions of the final retained-sample mask into
-   ``mne.Annotations``.
 
 ``compute_asr_qa_metrics()``
    Computes ASR-specific variance-change and repair-extent metrics from
@@ -256,7 +314,7 @@ between burst repair and later segment rejection:
 
    raw_clean = asr.fit_transform(raw)
    keep_mask = asr.get_rejection_mask()
-   reject_annotations = asr.to_rejection_annotations()
+   reject_annotations = asr.to_annotations("rejection")
 
 This step does not delete samples from the returned object. It records the
 retained/rejected mask and exposes it for downstream QC, annotation, or

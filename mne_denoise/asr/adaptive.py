@@ -662,10 +662,10 @@ class AdaptiveASR(ASR):
         variant: str = "psw",
         window_length: float = 0.5,
         update_window_length: float = 0.1,
-        clean_window_length: float = 1.0,
-        clean_window_overlap: float = 0.66,
-        clean_max_bad_channels: float = 0.2,
-        clean_tolerances: tuple[float, float] = (-3.5, 5.0),
+        calibration_window_length: float = 1.0,
+        calibration_window_overlap: float = 0.66,
+        ref_max_bad_channels: float = 0.2,
+        ref_tolerances: tuple[float, float] = (-3.5, 5.0),
         blocksize: int = 10,
         max_dims: float | int = 0.66,
         max_dropout_fraction: float = 0.1,
@@ -683,6 +683,8 @@ class AdaptiveASR(ASR):
         store_reconstruction_matrices: bool = False,
         learning_rate: float = 0.2,
         tau: float | None = None,
+        mw_window_length: float = 20.0,
+        mw_mode: str = "final_state",
         random_state: int | None = None,
         n_jobs: int | None = None,
         verbose: bool | str | int | None = None,
@@ -691,17 +693,17 @@ class AdaptiveASR(ASR):
             sfreq=sfreq,
             cutoff=cutoff,
             window_length=window_length,
-            window_overlap=clean_window_overlap,
+            window_overlap=calibration_window_overlap,
             max_dropout_fraction=max_dropout_fraction,
             min_clean_fraction=min_clean_fraction,
             method="standard",
             experimental=False,
             calibration="manual",
             picks=picks,
-            calibration_window_length=clean_window_length,
-            calibration_window_overlap=clean_window_overlap,
-            ref_max_bad_channels=clean_max_bad_channels,
-            ref_tolerances=clean_tolerances,
+            calibration_window_length=calibration_window_length,
+            calibration_window_overlap=calibration_window_overlap,
+            ref_max_bad_channels=ref_max_bad_channels,
+            ref_tolerances=ref_tolerances,
             blocksize=blocksize,
             max_dims=max_dims,
             reject_by_annotation=reject_by_annotation,
@@ -722,12 +724,14 @@ class AdaptiveASR(ASR):
         )
         self.variant = variant
         self.update_window_length = update_window_length
-        self.clean_window_length = clean_window_length
-        self.clean_window_overlap = clean_window_overlap
-        self.clean_max_bad_channels = clean_max_bad_channels
-        self.clean_tolerances = clean_tolerances
+        self.calibration_window_length = calibration_window_length
+        self.calibration_window_overlap = calibration_window_overlap
+        self.ref_max_bad_channels = ref_max_bad_channels
+        self.ref_tolerances = ref_tolerances
         self.learning_rate = learning_rate
         self.tau = tau
+        self.mw_window_length = mw_window_length
+        self.mw_mode = mw_mode
 
     def fit(
         self,
@@ -762,9 +766,26 @@ class AdaptiveASR(ASR):
             data_2d = data_2d[:, good_mask]
 
         self._warn_preprocessing_state(orig_inst, mne_type)
-        state, cal_info, learner, process_state = self._fit_adaptive_state(
-            data_2d, sfreq
-        )
+
+        if self.variant == "mw":
+            # MW-ASR (sliding-window subspace, no Hebbian carry-over).
+            # MATLAB AASR_demo.ipynb cell 4 semantics: per-window subspace
+            # calibration; final state = last window's calibration; one
+            # reconstruction pass over the whole stream uses that state.
+            (
+                state,
+                cal_info,
+                learner,
+                process_state,
+                mw_diagnostics,
+            ) = self._fit_mw_state(data_2d, sfreq)
+            self.mw_diagnostics_ = mw_diagnostics
+        else:
+            state, cal_info, learner, process_state = self._fit_adaptive_state(
+                data_2d, sfreq
+            )
+            # Ensure attribute is always defined post-fit for consumer code.
+            self.mw_diagnostics_ = []
 
         self.state_ = state
         self.sfreq_ = float(sfreq)
@@ -780,6 +801,7 @@ class AdaptiveASR(ASR):
         self.patterns_ = state.calibration_patterns
         self.rank_ = state.rank
         self.clean_window_mask_ = cal_info["clean_window_mask"]
+        self.calibration_mask_kind_ = "window"
         self.clean_window_scores_ = cal_info["clean_window_scores"]
         self.calibration_info_ = cal_info
         self.adaptive_learner_ = learner
@@ -804,6 +826,13 @@ class AdaptiveASR(ASR):
     ) -> AdaptiveASR:
         """Update the adaptive calibration state on a new clean chunk."""
         del y
+        if self.variant == "mw":
+            raise NotImplementedError(
+                "AdaptiveASR(variant='mw') does not support partial_fit. "
+                "MW-ASR semantics require a single fit() call over the full "
+                "stream; the windowing happens internally. To re-calibrate, "
+                "call fit() again."
+            )
         if not hasattr(self, "state_"):
             return self.fit(X, calibration_mask=calibration_mask)
 
@@ -836,6 +865,7 @@ class AdaptiveASR(ASR):
         self.adaptive_update_history_.append(update_info)
         self.calibration_info_ = update_info
         self.clean_window_mask_ = update_info["clean_window_mask"]
+        self.calibration_mask_kind_ = "window"
         self.clean_window_scores_ = update_info["clean_window_scores"]
         self.M_ = self.state_.M
         self.mixing_ = self.state_.M
@@ -846,15 +876,6 @@ class AdaptiveASR(ASR):
         self.patterns_ = self.state_.calibration_patterns
         self.rank_ = self.state_.rank
         return self
-
-    def update(
-        self,
-        X: BaseRaw | BaseEpochs | np.ndarray,
-        *,
-        calibration_mask: np.ndarray | None = None,
-    ) -> AdaptiveASR:
-        """MATLAB-style alias for :meth:`partial_fit`."""
-        return self.partial_fit(X, calibration_mask=calibration_mask)
 
     def transform(
         self,
@@ -940,15 +961,6 @@ class AdaptiveASR(ASR):
             return cleaned, diagnostics
         return cleaned
 
-    def reconstruct(
-        self,
-        X: BaseRaw | BaseEpochs | np.ndarray,
-        *,
-        return_diagnostics: bool = False,
-    ) -> Any:
-        """MATLAB-style alias for :meth:`transform`."""
-        return self.transform(X, return_diagnostics=return_diagnostics)
-
     def fit_transform(
         self,
         X: BaseRaw | BaseEpochs | np.ndarray,
@@ -957,9 +969,199 @@ class AdaptiveASR(ASR):
         calibration: BaseRaw | BaseEpochs | np.ndarray | None = None,
         return_diagnostics: bool = False,
     ) -> Any:
-        """Fit adaptive ASR and reconstruct ``X`` with the fitted state."""
+        """Fit adaptive ASR and reconstruct ``X`` with the fitted state.
+
+        For ``variant="mw", mw_mode="sliding"`` the work is per-window
+        calibrate-AND-transform: each window is calibrated on itself and
+        cleaned by that local calibration, then the cleaned slices are
+        concatenated. ``fit()`` alone is still legal in sliding mode (it
+        records per-window diagnostics) but ``transform()`` afterwards
+        applies only the final window's state — semantically equivalent to
+        ``mw_mode="final_state"``. The true per-segment behavior requires
+        this ``fit_transform`` entry point.
+        """
+        if (
+            self.variant == "mw"
+            and getattr(self, "mw_mode", "final_state") == "sliding"
+        ):
+            return self._fit_transform_mw_sliding(
+                X, calibration=calibration, return_diagnostics=return_diagnostics
+            )
         self.fit(X, y=y, calibration=calibration)
         return self.transform(X, return_diagnostics=return_diagnostics)
+
+    def _fit_transform_mw_sliding(
+        self,
+        X: BaseRaw | BaseEpochs | np.ndarray,
+        *,
+        calibration: BaseRaw | BaseEpochs | np.ndarray | None = None,
+        return_diagnostics: bool = False,
+    ) -> Any:
+        """Per-window calibrate-AND-clean implementation for MW sliding mode.
+
+        For each non-overlapping window of length ``mw_window_length``:
+
+        1. Run the existing AdaptiveASR calibration on that window's data.
+        2. Apply the resulting state to clean the same window's data.
+        3. Concatenate the cleaned slices and return.
+
+        Windows shorter than ``blocksize`` are skipped (data passes through
+        unchanged). Calibration failures are also passed through.
+        """
+        self._validate_estimator_params()
+        self._validate_adaptive_params()
+        fit_input = X if calibration is None else calibration
+        data, sfreq, mne_type, orig_inst = extract_data_from_mne(fit_input)
+        if mne_type == "evoked":
+            raise ValueError(
+                "AdaptiveASR.fit_transform() does not support Evoked input "
+                "with variant='mw', mw_mode='sliding'."
+            )
+        sfreq_val = self._resolve_sfreq(sfreq)
+        picks, ch_names = self._resolve_picks(fit_input, data, mne_type)
+        data_2d = self._select_fit_data(data, mne_type, picks)
+        if mne_type == "raw" and self.reject_by_annotation:
+            good_mask = _good_raw_sample_mask(orig_inst, self.skip_by_annotation)
+            data_2d_masked = data_2d[:, good_mask]
+        else:
+            data_2d_masked = data_2d
+
+        self._warn_preprocessing_state(orig_inst, mne_type)
+
+        n_times = data_2d_masked.shape[1]
+        win_samples = max(1, int(round(self.mw_window_length * sfreq_val)))
+        cleaned = data_2d_masked.copy()
+        mw_diagnostics: list[dict[str, Any]] = []
+
+        n_windows = (n_times + win_samples - 1) // win_samples
+        last = None  # store the last successful calibration for the public state
+        for window_idx in range(n_windows):
+            start = window_idx * win_samples
+            stop = min(start + win_samples, n_times)
+            window = data_2d_masked[:, start:stop]
+            entry: dict[str, Any] = {
+                "window_idx": int(window_idx),
+                "window_start": int(start),
+                "window_stop": int(stop),
+                "n_samples": int(window.shape[1]),
+            }
+            if window.shape[1] < self.blocksize:
+                entry["status"] = "skipped_too_short"
+                mw_diagnostics.append(entry)
+                continue
+            try:
+                state, cal_info, learner, process_state = self._fit_adaptive_state(
+                    window, sfreq_val
+                )
+                window_cleaned, _, _ = _process_adaptive_chunk(
+                    window,
+                    sfreq_val,
+                    state,
+                    process_state,
+                    window_length=self.window_length,
+                    lookahead=self.lookahead,
+                    stepsize=self.stepsize,
+                    max_dims=self.max_dims,
+                    store_reconstruction_matrices=False,
+                    adaptive_variant=self.variant,
+                    max_mem_mb=self.max_mem_mb,
+                )
+                cleaned[:, start:stop] = window_cleaned
+                entry.update(
+                    {
+                        "status": "passed",
+                        "M": np.asarray(state.M, dtype=np.float64),
+                        "T": np.asarray(state.T, dtype=np.float64),
+                        "thresholds": np.asarray(state.thresholds, dtype=np.float64),
+                        "rank": int(state.rank),
+                        "clean_window_fraction": cal_info.get(
+                            "calibration_clean_window_fraction"
+                        ),
+                    }
+                )
+                last = (state, cal_info, learner, process_state)
+            except Exception as exc:  # noqa: BLE001
+                entry.update(
+                    {
+                        "status": "failed",
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
+                )
+            mw_diagnostics.append(entry)
+
+        if last is None:
+            raise RuntimeError(
+                "MW-ASR sliding-mode fit_transform() found no usable window "
+                f"(n_windows={n_windows}, mw_window_length={self.mw_window_length})"
+            )
+        state, cal_info, learner, process_state = last
+        cal_info = dict(cal_info)
+        cal_info["adaptive_variant"] = "mw"
+        cal_info["mw_mode"] = "sliding"
+        cal_info["mw_n_windows"] = int(len(mw_diagnostics))
+        cal_info["mw_window_length_s"] = float(self.mw_window_length)
+
+        # Populate the standard fitted-state attributes from the FINAL window's
+        # calibration so downstream introspection (.M_, .T_, .calibration_info_,
+        # ...) behaves the same way as the existing final_state mode.
+        self.state_ = state
+        self.sfreq_ = float(sfreq_val)
+        self.picks_ = picks
+        self.ch_names_ = ch_names
+        self.n_channels_ = int(len(picks))
+        self.M_ = state.M
+        self.mixing_ = state.M
+        self.T_ = state.T
+        self.threshold_matrix_ = state.T
+        self.thresholds_ = state.thresholds
+        self.calibration_patterns_ = state.calibration_patterns
+        self.patterns_ = state.calibration_patterns
+        self.rank_ = state.rank
+        self.clean_window_mask_ = np.array([], dtype=bool)
+        self.calibration_mask_kind_ = "window"
+        self.clean_window_scores_ = np.empty((0, len(picks)), dtype=np.float64)
+        self.calibration_info_ = cal_info
+        self.mw_diagnostics_ = mw_diagnostics
+        self.process_state_ = _copy_process_state(process_state)
+        self._initial_process_state_template_ = _copy_process_state(process_state)
+        self._adaptive_learner_ = learner
+        self.history_ = {
+            "method": "adaptive",
+            "variant": "mw",
+            "mw_mode": "sliding",
+            "source_type": mne_type,
+            "n_channels": self.n_channels_,
+            "sfreq": self.sfreq_,
+        }
+        self.diagnostics_ = {
+            "adaptive_variant": "mw",
+            "mw_mode": "sliding",
+            "covariance_geometry": "adaptive",
+            "n_components_reconstructed": np.zeros(len(mw_diagnostics), dtype=int),
+            "fraction_reconstructed_samples": 0.0,
+            "fraction_reconstructed_windows": 0.0,
+            "n_windows": int(len(mw_diagnostics)),
+        }
+
+        # Wire the cleaned 2D array back into whatever MNE container the caller
+        # provided (or pass through if ndarray input).
+        full = np.asarray(data, dtype=np.float64).copy()
+        if mne_type == "raw" and self.reject_by_annotation:
+            # Two-step indexing: full[picks] gives a (n_picks, n_times) view;
+            # then mask the good samples and write cleaned in. Plain
+            # full[picks, good_mask] triggers advanced-indexing broadcasting
+            # which fails when picks and good_mask have incompatible shapes.
+            sub = full[picks].copy()
+            sub[:, good_mask] = cleaned
+            sub[:, ~good_mask] = data_2d[:, ~good_mask]
+            full[picks] = sub
+        else:
+            full[picks, :] = cleaned
+        result = reconstruct_mne_object(full, orig_inst, mne_type, verbose=False)
+        if return_diagnostics:
+            return result, self.diagnostics_
+        return result
 
     def reset_process_state(self) -> None:
         """Reset the streaming reconstruction state to the fitted baseline."""
@@ -967,20 +1169,119 @@ class AdaptiveASR(ASR):
         self.process_state_ = _copy_process_state(self._initial_process_state_template_)
 
     def _validate_adaptive_params(self) -> None:
-        if self.variant not in ("psp", "psw"):
-            raise ValueError("variant must be 'psp' or 'psw'")
+        if self.variant not in ("psp", "psw", "mw"):
+            raise ValueError("variant must be 'psp', 'psw', or 'mw'")
         if self.update_window_length <= 0:
             raise ValueError("update_window_length must be positive")
-        if self.clean_window_length <= 0:
+        if self.calibration_window_length <= 0:
             raise ValueError("clean_window_length must be positive")
-        if not (0 <= self.clean_window_overlap < 1):
+        if not (0 <= self.calibration_window_overlap < 1):
             raise ValueError("clean_window_overlap must be in [0, 1)")
-        if self.clean_max_bad_channels < 0:
+        if self.ref_max_bad_channels < 0:
             raise ValueError("clean_max_bad_channels must be non-negative")
         if self.learning_rate <= 0:
             raise ValueError("learning_rate must be positive")
         if self.tau is not None and self.tau <= 0:
             raise ValueError("tau must be positive")
+        if self.variant == "mw" and self.mw_window_length <= 0:
+            raise ValueError("mw_window_length must be positive for variant='mw'")
+        if self.variant == "mw" and self.mw_mode not in ("final_state", "sliding"):
+            raise ValueError(
+                "mw_mode must be 'final_state' or 'sliding' for variant='mw'"
+            )
+
+    def _variant_for_learner(self) -> str:
+        """Map the public variant onto the learner's 'psp' / 'psw' vocabulary.
+
+        The underlying Hebbian learner only knows ``'psp'`` / ``'psw'``. MW-ASR
+        builds a fresh learner per window but never streams updates through it
+        (partial_fit is disabled), so the choice of underlying learner variant
+        is cosmetic for MW.
+        """
+        return "psp" if self.variant == "mw" else self.variant
+
+    def _fit_mw_state(
+        self,
+        X: np.ndarray,
+        sfreq: float,
+    ) -> tuple[
+        ASRState,
+        dict[str, Any],
+        _AdaptiveSimilarityMatcher,
+        dict[str, Any],
+        list[dict[str, Any]],
+    ]:
+        """MW-ASR: per-window subspace calibration, final-window state.
+
+        Implements the MATLAB ``AASR_demo.ipynb`` Cell 4 pattern: split the
+        input into non-overlapping windows of length ``mw_window_length``
+        seconds, run the standard subspace calibration on each window,
+        record per-window diagnostics, and keep only the final window's
+        state for the subsequent reconstruction pass.
+
+        Windows shorter than ``blocksize`` samples are skipped (cannot
+        calibrate).
+        """
+        X = _validate_array_2d(X)
+        sfreq = float(sfreq)
+        n_times = X.shape[1]
+        win_samples = max(1, int(round(self.mw_window_length * sfreq)))
+
+        diagnostics_list: list[dict[str, Any]] = []
+        last = None
+        n_windows = (n_times + win_samples - 1) // win_samples
+        for window_idx in range(n_windows):
+            start = window_idx * win_samples
+            stop = min(start + win_samples, n_times)
+            window = X[:, start:stop]
+            if window.shape[1] < self.blocksize:
+                continue
+            try:
+                state, cal_info, learner, process_state = self._fit_adaptive_state(
+                    window, sfreq
+                )
+            except Exception as exc:  # noqa: BLE001
+                diagnostics_list.append(
+                    {
+                        "window_idx": int(window_idx),
+                        "window_start": int(start),
+                        "window_stop": int(stop),
+                        "n_samples": int(window.shape[1]),
+                        "status": "failed",
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                    }
+                )
+                continue
+            diagnostics_list.append(
+                {
+                    "window_idx": int(window_idx),
+                    "window_start": int(start),
+                    "window_stop": int(stop),
+                    "n_samples": int(window.shape[1]),
+                    "status": "passed",
+                    "M": np.asarray(state.M, dtype=np.float64),
+                    "T": np.asarray(state.T, dtype=np.float64),
+                    "thresholds": np.asarray(state.thresholds, dtype=np.float64),
+                    "rank": int(state.rank),
+                    "clean_window_fraction": cal_info.get(
+                        "calibration_clean_window_fraction"
+                    ),
+                }
+            )
+            last = (state, cal_info, learner, process_state)
+
+        if last is None:
+            raise RuntimeError(
+                "MW-ASR fit() found no usable window for calibration "
+                f"(n_windows={n_windows}, mw_window_length={self.mw_window_length})"
+            )
+        state, cal_info, learner, process_state = last
+        cal_info = dict(cal_info)
+        cal_info["adaptive_variant"] = "mw"
+        cal_info["mw_n_windows"] = int(len(diagnostics_list))
+        cal_info["mw_window_length_s"] = float(self.mw_window_length)
+        return state, cal_info, learner, process_state, diagnostics_list
 
     def _fit_adaptive_state(
         self,
@@ -991,10 +1292,10 @@ class AdaptiveASR(ASR):
         X_clean, clean_sample_mask, clean_diag = _select_aasr_clean_samples(
             X,
             sfreq,
-            window_length=self.clean_window_length,
-            window_overlap=self.clean_window_overlap,
-            max_bad_channels=self.clean_max_bad_channels,
-            zthresholds=self.clean_tolerances,
+            window_length=self.calibration_window_length,
+            window_overlap=self.calibration_window_overlap,
+            max_bad_channels=self.ref_max_bad_channels,
+            zthresholds=self.ref_tolerances,
             max_dropout_fraction=self.max_dropout_fraction,
             min_clean_fraction=self.min_clean_fraction,
         )
@@ -1011,7 +1312,7 @@ class AdaptiveASR(ASR):
             V,
             sfreq=sfreq,
             window_length=self.window_length,
-            window_overlap=self.clean_window_overlap,
+            window_overlap=self.calibration_window_overlap,
             cutoff=self.cutoff,
             min_clean_fraction=self.min_clean_fraction,
             max_dropout_fraction=self.max_dropout_fraction,
@@ -1031,7 +1332,7 @@ class AdaptiveASR(ASR):
         learner = _build_adaptive_learner(
             X_filtered,
             V,
-            variant=self.variant,
+            variant=self._variant_for_learner(),
             learning_rate=self.learning_rate,
             tau=self._resolved_tau(),
             regularization=self.regularization,
@@ -1059,10 +1360,10 @@ class AdaptiveASR(ASR):
         X_clean, clean_sample_mask, clean_diag = _select_aasr_clean_samples(
             X,
             sfreq,
-            window_length=self.clean_window_length,
-            window_overlap=self.clean_window_overlap,
-            max_bad_channels=self.clean_max_bad_channels,
-            zthresholds=self.clean_tolerances,
+            window_length=self.calibration_window_length,
+            window_overlap=self.calibration_window_overlap,
+            max_bad_channels=self.ref_max_bad_channels,
+            zthresholds=self.ref_tolerances,
             max_dropout_fraction=self.max_dropout_fraction,
             min_clean_fraction=self.min_clean_fraction,
         )
@@ -1082,7 +1383,7 @@ class AdaptiveASR(ASR):
             V,
             sfreq=sfreq,
             window_length=self.update_window_length,
-            window_overlap=self.clean_window_overlap,
+            window_overlap=self.calibration_window_overlap,
             cutoff=self.cutoff,
             min_clean_fraction=self.min_clean_fraction,
             max_dropout_fraction=self.max_dropout_fraction,

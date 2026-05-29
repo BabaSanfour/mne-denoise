@@ -233,7 +233,7 @@ def test_asr_estimator_numpy_qc_and_no_repair_cap(synthetic_burst_data):
     assert asr.n_windows_ > 0
     assert asr.n_components_reconstructed_.shape == (asr.n_windows_,)
     assert asr.n_components_reconstructed_.sum() == 0
-    assert asr.get_clean_window_mask().shape == asr.clean_window_mask_.shape
+    assert asr.get_calibration_mask().shape == asr.clean_window_mask_.shape
 
 
 def test_asr_mne_raw_preserves_non_picked_channels(synthetic_burst_data):
@@ -362,7 +362,7 @@ def test_asr_window_criterion_mask_and_annotations(synthetic_burst_data):
     assert rejection_mask.shape == (data.shape[1],)
     assert not np.all(rejection_mask)
 
-    annotations = asr.to_rejection_annotations()
+    annotations = asr.to_annotations("rejection")
     assert isinstance(annotations, mne.Annotations)
     assert len(annotations) >= 1
     assert set(annotations.description) == {"ASR_REJECT"}
@@ -475,7 +475,7 @@ def test_juggler_asr_reduces_synthetic_bursts(synthetic_burst_data, strategy):
 
     assert cleaned.shape == data.shape
     assert np.all(np.isfinite(cleaned))
-    assert asr.get_reference_sample_mask().shape == (data.shape[1],)
+    assert asr.get_calibration_mask().shape == (data.shape[1],)
     assert asr.calibration_info_["reference_selection_strategy"] == strategy
     assert asr.calibration_info_["reference_selected_samples"] == int(
         np.sum(asr.reference_sample_mask_)
@@ -497,13 +497,12 @@ def test_juggler_asr_reference_annotations_and_metrics(synthetic_burst_data):
         verbose=False,
     )
     cleaned = asr.fit_transform(data)
-    annotations = asr.to_reference_annotations()
+    annotations = asr.to_annotations("calibration")
 
     assert isinstance(annotations, mne.Annotations)
     assert len(annotations) >= 1
     assert set(annotations.description) == {"ASR_REFERENCE"}
-    with pytest.raises(RuntimeError, match="get_reference_sample_mask"):
-        asr.get_clean_window_mask()
+    assert asr.calibration_mask_kind_ == "sample"
 
     metrics = compute_asr_qa_metrics(data, cleaned, asr)
     assert metrics["n_clean_calibration_samples"] == int(
@@ -546,7 +545,7 @@ def test_adaptive_asr_psw_updates_and_reduces_bursts(synthetic_burst_data):
     )
     asr.fit(data[:, : int(4 * sfreq)])
     initial_T = asr.T_.copy()
-    asr.update(data[:, int(4 * sfreq) : int(8 * sfreq)])
+    asr.partial_fit(data[:, int(4 * sfreq) : int(8 * sfreq)])
 
     assert len(asr.adaptive_update_history_) == 2
     assert asr.calibration_info_["event"] == "update"
@@ -554,7 +553,7 @@ def test_adaptive_asr_psw_updates_and_reduces_bursts(synthetic_burst_data):
     assert not np.allclose(initial_T, asr.T_)
 
     asr.reset_process_state()
-    cleaned = asr.reconstruct(data)
+    cleaned = asr.transform(data)
 
     assert cleaned.shape == data.shape
     assert np.all(np.isfinite(cleaned))
@@ -574,9 +573,9 @@ def test_adaptive_asr_reset_process_state_is_reproducible(synthetic_burst_data):
         verbose=False,
     )
     asr.fit(data[:, : int(6 * sfreq)])
-    cleaned_first = asr.reconstruct(data)
+    cleaned_first = asr.transform(data)
     asr.reset_process_state()
-    cleaned_second = asr.reconstruct(data)
+    cleaned_second = asr.transform(data)
     np.testing.assert_allclose(cleaned_first, cleaned_second, atol=1e-10)
 
 
@@ -602,8 +601,8 @@ def test_adaptive_asr_low_memory_matches_full_path(synthetic_burst_data):
     full.fit(calibration)
     low_mem.fit(calibration)
 
-    cleaned_full = full.reconstruct(data)
-    cleaned_low_mem = low_mem.reconstruct(data)
+    cleaned_full = full.transform(data)
+    cleaned_low_mem = low_mem.transform(data)
 
     assert full.calibration_info_["memory_mode"] == "full"
     assert low_mem.calibration_info_["memory_mode"] == "chunked"

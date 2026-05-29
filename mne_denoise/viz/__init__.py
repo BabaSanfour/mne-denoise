@@ -1,5 +1,17 @@
 """Visualization functions for MNE-Denoise."""
 
+from .asr import (
+    plot_asr_blink_reduction,
+    plot_asr_calibration_fraction,
+    plot_asr_component_reconstruction,
+    plot_asr_cutoff_sweep,
+    plot_asr_grand_average,
+    plot_asr_method_comparison,
+    plot_asr_overlay,
+    plot_asr_psd_comparison,
+    plot_asr_repair_timeline,
+    plot_asr_variance_topomap,
+)
 from .components import (
     plot_component_epochs_image,
     plot_component_patterns,
@@ -66,6 +78,17 @@ from .theme import (
 )
 
 __all__ = [
+    # ASR
+    "plot_asr_overlay",
+    "plot_asr_cutoff_sweep",
+    "plot_asr_psd_comparison",
+    "plot_asr_variance_topomap",
+    "plot_asr_repair_timeline",
+    "plot_asr_calibration_fraction",
+    "plot_asr_component_reconstruction",
+    "plot_asr_blink_reduction",
+    "plot_asr_grand_average",
+    "plot_asr_method_comparison",
     # Theme
     "COLORS",
     "FONTS",

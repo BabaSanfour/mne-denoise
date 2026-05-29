@@ -65,7 +65,7 @@ asr = ASR(
 )
 raw_clean = asr.fit_transform(raw)
 repair_annotations = asr.to_annotations()
-reject_annotations = asr.to_rejection_annotations()
+reject_annotations = asr.to_annotations("rejection")
 metrics = compute_asr_qa_metrics(raw, raw_clean, asr)
 
 print(f"Repaired sample fraction: {asr.fraction_reconstructed_samples_:.2%}")

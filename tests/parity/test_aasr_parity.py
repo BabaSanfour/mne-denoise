@@ -118,10 +118,10 @@ def test_aasr_against_matlab_reference(ref_path: Path | None):
     )
     asr.fit(_array(ref, "update_chunk_1"))
     for update_idx in range(2, n_updates + 1):
-        asr.update(_array(ref, f"update_chunk_{update_idx}"))
+        asr.partial_fit(_array(ref, f"update_chunk_{update_idx}"))
 
     asr.reset_process_state()
-    py_cleaned = asr.reconstruct(_array(ref, "data"))
+    py_cleaned = asr.transform(_array(ref, "data"))
 
     m_error = _relative_error(asr.M_, _array(ref, "M"))
     t_error, threshold_error, threshold_corr = _threshold_error(asr, ref)

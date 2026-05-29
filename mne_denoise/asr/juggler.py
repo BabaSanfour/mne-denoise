@@ -19,10 +19,8 @@ from .core import (
     _apply_statistics_filter,
     _design_statistics_filter,
     _good_raw_sample_mask,
-    _mask_to_sample_spans,
     _validate_array_2d,
     calibrate_asr,
-    mne,
 )
 
 try:
@@ -329,6 +327,8 @@ class JugglerASR(ASR):
         self.reference_sample_mask_ = reference_mask
         self.clean_window_mask_ = np.array([], dtype=bool)
         self.clean_window_scores_ = np.empty((0, len(picks)), dtype=np.float64)
+        # JugglerASR selects calibration data sample-by-sample, not by windows.
+        self.calibration_mask_kind_ = "sample"
         self.calibration_info_ = cal_info
         self.history_ = {
             "method": "juggler",
@@ -339,32 +339,20 @@ class JugglerASR(ASR):
         }
         return self
 
-    def get_reference_sample_mask(self) -> np.ndarray:
-        """Return the sample-wise reference mask chosen during calibration."""
+    def get_calibration_mask(self) -> np.ndarray:
+        """Return the sample-wise reference mask chosen during calibration.
+
+        JugglerASR selects calibration data point-by-point (Kim et al. 2025),
+        so the mask is **sample-based** (``calibration_mask_kind_ == "sample"``),
+        unlike the window-based mask of the other backends.
+
+        Returns
+        -------
+        mask : ndarray of bool, shape (n_times,)
+            ``True`` where the sample was retained as calibration reference.
+        """
         self._check_is_fitted()
         return np.asarray(self.reference_sample_mask_, dtype=bool).copy()
-
-    def get_clean_window_mask(self) -> np.ndarray:
-        """JugglerASR uses sample-wise reference selection instead of windows."""
-        raise RuntimeError(
-            "JugglerASR does not use window-wise calibration masks. "
-            "Use get_reference_sample_mask() instead."
-        )
-
-    def to_reference_annotations(
-        self,
-        *,
-        description: str = "ASR_REFERENCE",
-    ) -> Any:
-        """Convert the retained calibration-reference samples to annotations."""
-        self._check_is_fitted()
-        if mne is None:
-            raise RuntimeError("MNE is required to create annotations")
-        mask = np.asarray(self.reference_sample_mask_, dtype=bool)
-        spans = _mask_to_sample_spans(mask)
-        onsets = [start / self.sfreq_ for start, _ in spans]
-        durations = [(stop - start) / self.sfreq_ for start, stop in spans]
-        return mne.Annotations(onsets, durations, [description] * len(spans))
 
     def _validate_juggler_params(self) -> None:
         if self.strategy not in ("dbscan", "gev"):

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from scipy import signal, special, stats
+from scipy import signal, special
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from ..utils import extract_data_from_mne, reconstruct_mne_object
@@ -155,8 +155,10 @@ def calibrate_asr(
         raise ValueError(
             "cov_estimator must be 'geometric_median', 'mean', or 'median'"
         )
-    if method not in ("standard", "riemannian"):
-        raise ValueError("method must be 'standard' or 'riemannian'")
+    if method not in ("standard", "riemannian", "riemannian_windowed"):
+        raise ValueError(
+            "method must be 'standard', 'riemannian', or 'riemannian_windowed'"
+        )
     if blocksize < 1:
         raise ValueError("blocksize must be at least 1")
 
@@ -203,11 +205,18 @@ def calibrate_asr(
         clean_sample_mask = np.ones(n_times, dtype=bool)
         X_clean = X_stats
     riemannian_info: dict[str, Any] = {}
+    # Both Riemannian variants aggregate block covariances with Riemannian primitives
+    # (geometric median + Karcher-style block reduction). The difference is the
+    # eigenspace family used for V (and downstream T):
+    #   - "riemannian"           : tangent-space V (MATLAB-faithful one-shot processing)
+    #   - "riemannian_windowed"  : standard eigh on the Riemannian-aggregated C
+    #                              (cutoff-sensitive per-window processing)
+    use_riemannian_aggregation = method in ("riemannian", "riemannian_windowed")
     C, memory_info = _aggregate_block_covariances(
         X_clean,
         blocksize,
         cov_estimator,
-        covariance_kind="rasr" if method == "riemannian" else "clean_rawdata",
+        covariance_kind="rasr" if use_riemannian_aggregation else "clean_rawdata",
         max_mem_mb=max_mem_mb,
     )
     C = _regularize_spd(C, regularization)
@@ -217,6 +226,10 @@ def calibrate_asr(
         eigvals = np.sort(eigvals)
         _, V = _riemannian_nonlinear_eigenspace(M, regularization)
     else:
+        # Both "standard" and "riemannian_windowed" use standard eigh on C.
+        # The Riemannian-windowed variant gets robustness from the geometric-
+        # median aggregation above; cutoff sensitivity comes from the matching
+        # V family at calibration and per-window processing time.
         M, eigvals, V = _sqrt_and_eig(C, regularization)
     rank = int(np.sum(eigvals > regularization * np.max(eigvals)))
 
@@ -242,7 +255,11 @@ def calibrate_asr(
         cov=C,
         rank=rank,
         method=method,
-        riemannian_solver="nonlinear_eigenspace" if method == "riemannian" else None,
+        riemannian_solver=(
+            "nonlinear_eigenspace"
+            if method in ("riemannian", "riemannian_windowed")
+            else None
+        ),
     )
     diagnostics = {
         "clean_window_mask": clean_window_mask,
@@ -763,8 +780,10 @@ def process_asr(
         )
     if method is None:
         method = getattr(state, "method", "standard")
-    if method not in ("standard", "riemannian"):
-        raise ValueError("method must be 'standard' or 'riemannian'")
+    if method not in ("standard", "riemannian", "riemannian_windowed"):
+        raise ValueError(
+            "method must be 'standard', 'riemannian', or 'riemannian_windowed'"
+        )
 
     win_len = max(
         _round_half_up(window_length * sfreq), _round_half_up(1.5 * n_channels)
@@ -851,6 +870,39 @@ def process_asr(
                 peak_cov_buffer_bytes=_covariance_stack_bytes(1, n_channels),
                 chunk_samples=n_stream_input,
                 used_memory_bound=False,
+            )
+        )
+        return X_clean, diagnostics
+
+    if method == "riemannian_windowed":
+        X_clean, diagnostics = _process_asr_riemannian_windowed(
+            data_stream,
+            X_stats,
+            state,
+            n_times=n_times,
+            n_stream_input=n_stream_input,
+            lookahead_samples=lookahead_samples,
+            update_at=update_at,
+            max_bad=max_bad,
+            stepsize=stepsize,
+            win_len=win_len,
+            regularization=regularization,
+            store_reconstruction_matrices=store_reconstruction_matrices,
+            use_rolling_covariance=use_rolling_covariance,
+        )
+        diagnostics.update(
+            _process_memory_info(
+                n_channels=n_channels,
+                n_stream_input=n_stream_input,
+                max_mem_mb=max_mem_mb,
+                memory_mode=(
+                    "riemannian_windowed_rolling"
+                    if use_rolling_covariance
+                    else "riemannian_windowed"
+                ),
+                peak_cov_buffer_bytes=_covariance_stack_bytes(1, n_channels),
+                chunk_samples=win_len if use_rolling_covariance else n_stream_input,
+                used_memory_bound=use_rolling_covariance,
             )
         )
         return X_clean, diagnostics
@@ -995,12 +1047,30 @@ class ASR(BaseEstimator, TransformerMixin):
         Fraction of lowest RMS values ignored while estimating thresholds.
     min_clean_fraction : float
         Minimum central fraction used to estimate clean RMS statistics.
-    method : {'standard', 'riemannian'}
-        ASR backend. ``'riemannian'`` enables an experimental SPD-manifold
-        covariance backend.
+    method : {'standard', 'riemannian', 'riemannian_windowed'}
+        ASR backend.
+
+        - ``'standard'`` — clean_rawdata-faithful Euclidean ASR.
+        - ``'riemannian'`` — experimental SPD-manifold covariance backend,
+          MATLAB-rASR-faithful. NOTE: this backend computes one covariance +
+          one reconstruction matrix for the entire stream, so its cleaned
+          output is **cutoff-invariant on real EEG** (the ``cutoff`` knob does
+          not meaningfully change the result). Use it for MATLAB parity, not
+          for cutoff tuning.
+        - ``'riemannian_windowed'`` — per-window Riemannian backend that keeps
+          the Riemannian-aggregated (geometric-median) calibration but applies
+          a standard per-window eigendecomposition at processing time. Unlike
+          ``'riemannian'``, its ``cutoff`` knob works: ``% data modified`` and
+          ``% variance reduced`` scale monotonically with ``cutoff`` like
+          ``'standard'`` does. This is a **first-class backend** (no
+          ``experimental`` flag required): its processing is byte-identical to
+          standard ASR and it has a direct MATLAB ``asr_process`` cross-check
+          at relerr < 1e-13. Prefer it over ``'riemannian'`` whenever you need
+          cutoff control with Riemannian-robust calibration.
     experimental : bool
-        Explicit opt-in for unstable research backends such as
-        ``method='riemannian'``.
+        Explicit opt-in for the unstable ``method='riemannian'`` research
+        backend (cutoff-invariant on real EEG). Not required for
+        ``'riemannian_windowed'``.
     calibration : {'auto', 'manual'}
         Calibration mode. ``'auto'`` selects clean windows before fitting;
         ``'manual'`` uses all supplied calibration samples.
@@ -1245,6 +1315,7 @@ class ASR(BaseEstimator, TransformerMixin):
         self.rank_ = state.rank
         self.clean_window_mask_ = cal_info["clean_window_mask"]
         self.clean_window_scores_ = cal_info["clean_window_scores"]
+        self.calibration_mask_kind_ = "window"
         self.calibration_info_ = cal_info
         self.history_ = {
             "method": self.method,
@@ -1374,13 +1445,36 @@ class ASR(BaseEstimator, TransformerMixin):
             return {}
         return dict(self.diagnostics_)
 
-    def get_clean_window_mask(self) -> np.ndarray:
-        """Return the calibration clean-window mask."""
+    def get_calibration_mask(self) -> np.ndarray:
+        """Return the boolean mask of data used for calibration.
+
+        The mask is **window-based** for the standard / Riemannian / adaptive
+        backends (one bool per calibration window; see
+        :attr:`calibration_mask_kind_` ``== "window"``) and **sample-based**
+        for :class:`JugglerASR` (one bool per time sample;
+        :attr:`calibration_mask_kind_` ``== "sample"``).
+
+        Returns
+        -------
+        mask : ndarray of bool
+            The calibration clean-window or reference-sample mask.
+
+        See Also
+        --------
+        get_rejection_mask : retained-sample mask after optional window rejection.
+        """
         self._check_is_fitted()
-        return self.clean_window_mask_.copy()
+        return np.asarray(self.clean_window_mask_, dtype=bool).copy()
 
     def get_rejection_mask(self) -> np.ndarray:
-        """Return the retained-sample mask from final clean_windows-style rejection."""
+        """Return the retained-sample mask from final clean_windows-style rejection.
+
+        Returns
+        -------
+        mask : ndarray of bool, shape (n_times,)
+            ``True`` where samples were kept. Requires ``window_criterion`` to
+            have been enabled and ``transform`` to have been run.
+        """
         self._check_is_fitted()
         if not hasattr(self, "rejection_sample_mask_"):
             raise RuntimeError(
@@ -1391,27 +1485,59 @@ class ASR(BaseEstimator, TransformerMixin):
 
     def to_annotations(
         self,
+        kind: str = "repair",
         *,
         min_components: int = 1,
-        description: str = "ASR_REPAIR",
+        description: str | None = None,
     ) -> Any:
-        """Convert last-transform repaired windows into MNE annotations.
+        """Convert ASR decisions into MNE annotations.
+
+        One unified entry point for the three annotation kinds. ``"repair"`` and
+        ``"rejection"`` are available on every backend that has run
+        ``transform``; ``"calibration"`` is available only for sample-based
+        reference selection (:class:`JugglerASR`).
 
         Parameters
         ----------
+        kind : {'repair', 'rejection', 'calibration'}
+            Which decision to annotate:
+
+            - ``'repair'`` — windows where at least ``min_components`` principal
+              components were reconstructed (default).
+            - ``'rejection'`` — samples removed by the final
+              ``window_criterion`` clean-windows pass.
+            - ``'calibration'`` — samples selected as the calibration reference
+              (JugglerASR only).
         min_components : int
-            Minimum reconstructed component count required for annotation.
-        description : str
-            Annotation description.
+            Minimum reconstructed component count for ``kind='repair'``.
+        description : str | None
+            Annotation label. Defaults per kind: ``ASR_REPAIR`` / ``ASR_REJECT``
+            / ``ASR_REFERENCE``.
 
         Returns
         -------
         annotations : mne.Annotations
-            Annotation spans for the last transform.
+            Annotation spans for the requested decision.
         """
         self._check_is_fitted()
         if mne is None:
             raise RuntimeError("MNE is required to create annotations")
+        if kind == "repair":
+            return self._repair_annotations(
+                min_components=min_components,
+                description=description or "ASR_REPAIR",
+            )
+        if kind == "rejection":
+            return self._rejection_annotations(description=description or "ASR_REJECT")
+        if kind == "calibration":
+            return self._calibration_annotations(
+                description=description or "ASR_REFERENCE"
+            )
+        raise ValueError(
+            f"kind must be 'repair', 'rejection', or 'calibration', got {kind!r}"
+        )
+
+    def _repair_annotations(self, *, min_components: int, description: str) -> Any:
         if not hasattr(self, "diagnostics_"):
             raise RuntimeError("No transform diagnostics available")
         starts = self.diagnostics_["window_starts"]
@@ -1427,15 +1553,7 @@ class ASR(BaseEstimator, TransformerMixin):
         durations = [(e - s) / self.sfreq_ for s, e in spans]
         return mne.Annotations(onsets, durations, [description] * len(spans))
 
-    def to_rejection_annotations(
-        self,
-        *,
-        description: str = "ASR_REJECT",
-    ) -> Any:
-        """Convert final retained-sample mask into rejection annotations."""
-        self._check_is_fitted()
-        if mne is None:
-            raise RuntimeError("MNE is required to create annotations")
+    def _rejection_annotations(self, *, description: str) -> Any:
         if not hasattr(self, "rejection_sample_mask_"):
             raise RuntimeError(
                 "No final rejection mask is available. Enable window_criterion and "
@@ -1454,14 +1572,39 @@ class ASR(BaseEstimator, TransformerMixin):
         durations = [(e - s) / self.sfreq_ for s, e in spans]
         return mne.Annotations(onsets, durations, [description] * len(spans))
 
-    def _validate_estimator_params(self) -> None:
-        if self.method not in ("standard", "riemannian"):
-            raise NotImplementedError(
-                "Supported methods are 'standard' and experimental 'riemannian'."
+    def _calibration_annotations(self, *, description: str) -> Any:
+        """Calibration-reference annotations (sample-based backends only)."""
+        kind = getattr(self, "calibration_mask_kind_", "window")
+        if kind != "sample":
+            raise RuntimeError(
+                "Calibration annotations are only available for sample-based "
+                "reference selection (JugglerASR). This backend uses window-based "
+                "calibration; use get_calibration_mask() instead."
             )
+        mask = np.asarray(self.reference_sample_mask_, dtype=bool)
+        spans = _mask_to_sample_spans(mask)
+        onsets = [start / self.sfreq_ for start, _ in spans]
+        durations = [(stop - start) / self.sfreq_ for start, stop in spans]
+        return mne.Annotations(onsets, durations, [description] * len(spans))
+
+    def _validate_estimator_params(self) -> None:
+        if self.method not in ("standard", "riemannian", "riemannian_windowed"):
+            raise NotImplementedError(
+                "Supported methods are 'standard', 'riemannian_windowed', and "
+                "experimental 'riemannian'."
+            )
+        # 'riemannian_windowed' is promoted to a first-class backend: its
+        # processing is byte-identical to standard ASR (MATLAB-parity-tested)
+        # and its calibration covariance matches the rASR backend, with a
+        # direct MATLAB asr_process cross-check at relerr < 1e-13. See
+        # tests/parity/test_riemannian_windowed_parity.py. Only the legacy
+        # 'riemannian' backend (cutoff-invariant on real EEG) stays gated.
         if self.method == "riemannian" and not self.experimental:
             raise ValueError(
-                "Riemannian ASR is experimental. Set experimental=True to enable it."
+                "'riemannian' is experimental (cutoff-invariant on real EEG; "
+                "see reports/paper_validation/rasr/). Set experimental=True to "
+                "enable it, or use method='riemannian_windowed' for a "
+                "cutoff-sensitive Riemannian backend."
             )
         if self.lookahead is not None and self.lookahead < 0:
             raise ValueError("lookahead must be non-negative")
@@ -2267,6 +2410,141 @@ def _process_asr_riemannian(
     return X_clean, diagnostics
 
 
+def _process_asr_riemannian_windowed(
+    data_stream: np.ndarray,
+    X_stats: np.ndarray,
+    state: ASRState,
+    *,
+    n_times: int,
+    n_stream_input: int,
+    lookahead_samples: int,
+    update_at: np.ndarray,
+    max_bad: int,
+    stepsize: int,
+    win_len: int,
+    regularization: float,
+    store_reconstruction_matrices: bool,
+    use_rolling_covariance: bool,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Per-window rASR — cutoff-sensitive variant of ``_process_asr_riemannian``.
+
+    The original ``_process_asr_riemannian`` computes one covariance + one
+    reconstruction matrix across the entire stream, which makes the keep mask
+    ``theta2 > D`` cutoff-insensitive on contaminated data.
+
+    This function follows Blum 2019's actual recipe: **calibration** is
+    Riemannian (``state.M`` / ``state.T`` come from
+    ``_riemannian_nonlinear_eigenspace`` on the clean reference covariance),
+    but per-window **processing** uses the standard SPD eigendecomposition
+    of the rolling covariance. Using ``_riemannian_nonlinear_eigenspace`` for
+    per-window processing puts ``D`` on the tangent-space scale, which is
+    incommensurate with the ``theta2`` threshold and produces a
+    cutoff-invariant keep mask. Standard ``np.linalg.eigh`` on the rolling
+    covariance restores cutoff sensitivity while keeping the Riemannian
+    calibration's robustness benefits in ``state``.
+    """
+    n_channels = data_stream.shape[0]
+
+    if use_rolling_covariance:
+        covariance_iter = _iter_moving_covariances_at(X_stats, update_at, win_len)
+        Xcov_flat = None
+    else:
+        outer = np.einsum("it,jt->ijt", X_stats, X_stats, optimize=True)
+        Xcov_flat = outer.reshape(n_channels * n_channels, n_stream_input, order="F")
+        Xcov_flat, _ = _moving_average_clean_rawdata(win_len, Xcov_flat)
+        covariance_iter = None
+
+    sample_mask = np.zeros(n_times, dtype=bool)
+    n_reconstructed: list[int] = []
+    component_variances: list[np.ndarray] = []
+    component_thresholds: list[np.ndarray] = []
+    reconstruction_matrices: list[np.ndarray] = []
+    window_starts: list[int] = []
+    window_stops: list[int] = []
+
+    eye = np.eye(n_channels)
+    last_R = eye
+    last_trivial = True
+    last_n = 0
+    for n in update_at:
+        if covariance_iter is None:
+            Cw = Xcov_flat[:, n - 1].reshape(n_channels, n_channels, order="F")
+        else:
+            Cw = next(covariance_iter)
+        Cw = (Cw + Cw.T) / 2.0
+        # Standard SPD eigendecomposition (matches _process_asr_standard).
+        # See the docstring for why we do NOT use _riemannian_nonlinear_eigenspace
+        # at processing time.
+        D, V = np.linalg.eigh(Cw)
+        order = np.argsort(D)
+        D = D[order]
+        V = V[:, order]
+
+        theta2 = np.sum((state.T @ V) ** 2, axis=0)
+        keep = (theta2 > D) | (np.arange(1, n_channels + 1) < (n_channels - max_bad))
+        trivial = bool(np.all(keep))
+
+        n_bad = int(n_channels - np.count_nonzero(keep))
+        if trivial:
+            R = eye
+        else:
+            basis = keep[:, np.newaxis].astype(np.float64) * (V.T @ state.M)
+            R = state.M @ np.linalg.pinv(basis) @ V.T
+            R = np.real_if_close(R).astype(np.float64)
+
+        applied = (not trivial) or (not last_trivial)
+        if applied and n > last_n:
+            subrange = slice(last_n, n)
+            width = n - last_n
+            blend = (1.0 - np.cos(np.pi * np.arange(1, width + 1) / width)) / 2.0
+            segment = data_stream[:, subrange]
+            data_stream[:, subrange] = (R @ segment) * blend[np.newaxis, :] + (
+                last_R @ segment
+            ) * (1.0 - blend[np.newaxis, :])
+
+        start_out = max(last_n, lookahead_samples) - lookahead_samples
+        stop_out = min(n, lookahead_samples + n_times) - lookahead_samples
+        if stop_out > start_out:
+            window_starts.append(int(start_out))
+            window_stops.append(int(stop_out))
+            n_reconstructed.append(n_bad)
+            component_variances.append(D.copy())
+            component_thresholds.append(theta2.copy())
+            if applied:
+                sample_mask[start_out:stop_out] = True
+            if store_reconstruction_matrices:
+                reconstruction_matrices.append(R.copy())
+
+        last_n = int(n)
+        last_R = R
+        last_trivial = trivial
+
+    X_clean = data_stream[:, lookahead_samples : lookahead_samples + n_times].copy()
+    n_reconstructed_arr = np.asarray(n_reconstructed, dtype=int)
+    diagnostics = {
+        "window_starts": np.asarray(window_starts, dtype=int),
+        "window_stops": np.asarray(window_stops, dtype=int),
+        "sample_mask": sample_mask,
+        "n_components_reconstructed": n_reconstructed_arr,
+        "component_variances": np.asarray(component_variances, dtype=np.float64),
+        "component_thresholds": np.asarray(component_thresholds, dtype=np.float64),
+        "n_windows": int(len(n_reconstructed_arr)),
+        "fraction_reconstructed_windows": float(
+            np.mean(n_reconstructed_arr > 0) if n_reconstructed_arr.size else 0.0
+        ),
+        "fraction_reconstructed_samples": float(np.mean(sample_mask)),
+        "max_components_reconstructed": int(n_reconstructed_arr.max(initial=0)),
+        "lookahead_samples": int(lookahead_samples),
+        "stepsize_samples": int(stepsize),
+        "window_length_samples": int(win_len),
+        "covariance_geometry": "riemannian_windowed",
+        "riemannian_solver": "nonlinear_eigenspace",
+    }
+    if store_reconstruction_matrices:
+        diagnostics["reconstruction_matrices"] = np.asarray(reconstruction_matrices)
+    return X_clean, diagnostics
+
+
 def _max_mem_bytes(max_mem_mb: int | float | None) -> int | None:
     """Convert an optional megabyte memory cap to bytes."""
     if max_mem_mb is None:
@@ -2709,45 +2987,6 @@ def _fit_component_thresholds(
         "fit_interval": fit_intervals,
     }
     return thresholds, info
-
-
-def _fit_gennorm_quantiles(
-    values: np.ndarray,
-    beta_grid: np.ndarray,
-) -> tuple[float, float, float, float]:
-    values = np.asarray(values, dtype=np.float64)
-    mu = float(np.median(values))
-    empirical = np.quantile(values, [0.1, 0.25, 0.5, 0.75, 0.9])
-    best_beta = np.nan
-    best_scale = np.nan
-    best_error = np.inf
-    for beta in beta_grid:
-        theoretical = stats.gennorm.ppf([0.1, 0.25, 0.5, 0.75, 0.9], beta)
-        keep = np.abs(theoretical) > np.finfo(float).eps
-        if not np.any(keep):
-            continue
-        scale_estimates = np.abs(empirical[keep] - mu) / np.abs(theoretical[keep])
-        scale = float(np.median(scale_estimates[scale_estimates > 0]))
-        if not np.isfinite(scale) or scale <= 0:
-            continue
-        predicted = mu + scale * theoretical
-        error = float(np.mean(((empirical - predicted) / scale) ** 2))
-        if error < best_error:
-            best_error = error
-            best_beta = float(beta)
-            best_scale = scale
-
-    if not np.isfinite(best_scale) or best_scale <= 0:
-        mu, sigma = _robust_location_scale(values)
-        return mu, sigma, np.nan, np.nan
-
-    variance_factor = np.exp(
-        special.gammaln(3.0 / best_beta) - special.gammaln(1.0 / best_beta)
-    )
-    sigma = best_scale * float(np.sqrt(variance_factor))
-    if not np.isfinite(sigma) or sigma <= np.finfo(float).eps:
-        _, sigma = _robust_location_scale(values)
-    return mu, float(sigma), best_beta, best_error
 
 
 def _robust_location_scale(values: np.ndarray) -> tuple[float, float]:

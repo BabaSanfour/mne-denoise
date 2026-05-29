@@ -57,7 +57,7 @@ clean_standard = standard.fit_transform(data)
 clean_juggler = juggler.fit_transform(data)
 standard_mask = np.zeros(n_times, dtype=bool)
 standard_mask[standard.calibration_info_["clean_sample_mask"]] = True
-juggler_mask = juggler.get_reference_sample_mask()
+juggler_mask = juggler.get_calibration_mask()
 
 fig, axes = plt.subplots(3, 1, figsize=(11, 7), sharex=True, layout="constrained")
 

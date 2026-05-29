@@ -47,8 +47,8 @@ asr = AdaptiveASR(
     verbose=False,
 )
 asr.fit(data[:, :chunk])
-asr.update(data[:, chunk : 2 * chunk])
-cleaned = asr.reconstruct(data)
+asr.partial_fit(data[:, chunk : 2 * chunk])
+cleaned = asr.transform(data)
 
 fig, axes = plt.subplots(2, 1, figsize=(10, 5), sharex=True, layout="constrained")
 axes[0].plot(t, data[0], color="tab:red", lw=1.0, label="Noisy")

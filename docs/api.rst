@@ -93,6 +93,16 @@ Visualization
    :toctree: generated/
    :nosignatures:
 
+   mne_denoise.viz.plot_asr_overlay
+   mne_denoise.viz.plot_asr_cutoff_sweep
+   mne_denoise.viz.plot_asr_psd_comparison
+   mne_denoise.viz.plot_asr_variance_topomap
+   mne_denoise.viz.plot_asr_repair_timeline
+   mne_denoise.viz.plot_asr_calibration_fraction
+   mne_denoise.viz.plot_asr_component_reconstruction
+   mne_denoise.viz.plot_asr_blink_reduction
+   mne_denoise.viz.plot_asr_grand_average
+   mne_denoise.viz.plot_asr_method_comparison
    mne_denoise.viz.plot_component_summary
    mne_denoise.viz.plot_component_time_series
    mne_denoise.viz.plot_component_spectrogram
