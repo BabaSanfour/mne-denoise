@@ -931,7 +931,7 @@ def _write_csv(rows: list[dict[str, Any]], path: Path) -> None:
                 "psd_bump_after",
                 "traceback",
             )
-            and not isinstance(v, (list, dict))
+            and not isinstance(v, list | dict)
         }
     )
     with path.open("w", newline="", encoding="utf-8") as fid:
@@ -975,7 +975,7 @@ def _write_summary(summary: dict[str, Any], out_root: Path) -> None:
 def _json_safe(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(k): _json_safe(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return [_json_safe(v) for v in value]
     if isinstance(value, np.ndarray):
         return value.tolist()
