@@ -41,6 +41,19 @@ I/O, QC, and pipelines
 - ``plot_13_pipeline_filter_asr_ica.py``: A realistic ``filter -> ASR -> ICA``
   workflow on real EEG.
 
+Experimental research prototypes
+--------------------------------
+
+- ``plot_14_guided_asr.py``: DSS-guided soft ASR (``GuidedASR``), demonstrated
+  on synthetic data only.
+
+  .. warning::
+
+     ``GuidedASR`` is an unpublished, unvalidated research prototype. Its
+     current evidence is limited to unit tests and synthetic benchmarks. Do
+     not treat it as a validated EEG preprocessing method, and independently
+     verify signal preservation and artifact attenuation for your data.
+
 Notes
 -----
 
