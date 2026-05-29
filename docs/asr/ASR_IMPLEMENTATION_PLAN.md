@@ -1186,7 +1186,7 @@ Examples:
 
 | Example | Purpose |
 |---|---|
-| `examples/asr/plot_01_basic_usage.py` | Fit on Raw with auto calibration and inspect diagnostics. |
+| `examples/asr/plot_01_asr_basics.py` | Fit on Raw with auto calibration and inspect diagnostics. |
 | `examples/asr/plot_02_calibration_baseline.py` | Fit on explicit standing/rest baseline, transform task Raw. |
 | `examples/asr/plot_03_parameter_tuning.py` | Sweep `cutoff` and show variance/PSD/reconstruction fraction. |
 | `examples/asr/plot_04_mne_annotations.py` | Skip bad annotations and add ASR repair annotations. |
