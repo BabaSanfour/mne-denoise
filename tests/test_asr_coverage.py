@@ -849,3 +849,21 @@ def test_select_juggler_reference_samples_param_guards():
         select_juggler_reference_samples(X, SFREQ, strategy="gev", gev_grid_size=8)
     with pytest.raises(ValueError, match="min_reference_fraction"):
         select_juggler_reference_samples(X, SFREQ, min_reference_fraction=1.5)
+
+
+# ---------------------------------------------------------------------------
+# JugglerASR constructor-level parameter guards (_validate_juggler_params)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "kwargs,msg",
+    [
+        ({"dbscan_top_k": 0}, "dbscan_top_k"),
+        ({"gev_grid_size": 8}, "gev_grid_size"),
+        ({"min_reference_fraction": 1.5}, "min_reference_fraction"),
+    ],
+)
+def test_juggler_constructor_param_guards(kwargs, msg):
+    with pytest.raises(ValueError, match=msg):
+        JugglerASR(sfreq=SFREQ, picks=None, verbose=False, **kwargs).fit(_eeg())

@@ -196,3 +196,120 @@ def test_adaptive_estimator_works_with_timeline():
     )
     aasr.fit_transform(X)
     _assert_fig_ax(plot_asr_repair_timeline(aasr, show=False))
+
+
+# ---------------------------------------------------------------------------
+# Error / edge-path coverage for the viz helpers
+# ---------------------------------------------------------------------------
+
+from mne_denoise.viz.asr import _repair_spans_seconds, _to_array  # noqa: E402
+
+
+class _DummyEst:
+    """Minimal estimator stand-in for diagnostics edge-path tests."""
+
+    def __init__(self, diagnostics=None, sfreq=SFREQ):
+        if diagnostics is not None:
+            self.diagnostics_ = diagnostics
+        self.sfreq_ = sfreq
+
+
+def test_repair_spans_seconds_edge_cases():
+    assert _repair_spans_seconds(object()) == []  # no diagnostics_ / sfreq_
+    mismatched = _DummyEst({"window_starts": [0, 100], "window_stops": [50]})
+    assert _repair_spans_seconds(mismatched) == []  # starts/stops length mismatch
+
+
+def test_to_array_epochs_concatenates():
+    mne = pytest.importorskip("mne")
+    info = mne.create_info([f"E{i}" for i in range(4)], SFREQ, "eeg")
+    data = np.random.default_rng(0).standard_normal((3, 4, 500)) * 1e-6
+    epo = mne.EpochsArray(data, info, verbose=False)
+    arr, sf, _ = _to_array(epo)
+    assert arr.shape == (4, 1500)  # 3 epochs concatenated along time
+    assert sf == SFREQ
+
+
+def test_overlay_pick_by_name_without_mne_raises(burst_pair):
+    contaminated, cleaned, _ = burst_pair
+    with pytest.raises(ValueError, match="MNE input"):
+        plot_asr_overlay(contaminated, cleaned, sfreq=SFREQ, pick="Fp1", show=False)
+
+
+def test_overlay_show_true_under_agg(burst_pair):
+    contaminated, cleaned, asr = burst_pair
+    fig, _ = plot_asr_overlay(contaminated, cleaned, asr, sfreq=SFREQ, show=True)
+    plt.close(fig)
+
+
+def test_cutoff_sweep_empty_raises():
+    with pytest.raises(ValueError, match="no passed rows"):
+        plot_asr_cutoff_sweep(
+            [{"status": "failed", "variant": "x", "cutoff": 1.0}], show=False
+        )
+
+
+def test_cutoff_sweep_none_metric_value():
+    sweep = [
+        {
+            "variant": "standard",
+            "cutoff": k,
+            "pct_data_modified": None,
+            "pct_variance_reduced": 0.1,
+        }
+        for k in (1.0, 5.0, 20.0)
+    ]
+    _assert_fig_ax(plot_asr_cutoff_sweep(sweep, show=False))
+
+
+def test_psd_comparison_missing_sfreq_raises():
+    rng = np.random.default_rng(0)
+    with pytest.raises(ValueError, match="sfreq"):
+        plot_asr_psd_comparison(
+            rng.standard_normal((4, 1000)), rng.standard_normal((4, 1000)), show=False
+        )
+
+
+def test_psd_comparison_ax_reuse(burst_pair):
+    contaminated, cleaned, _ = burst_pair
+    fig, ax = plt.subplots()
+    _, out_ax = plot_asr_psd_comparison(
+        contaminated, cleaned, sfreq=SFREQ, ax=ax, show=False
+    )
+    assert out_ax is ax
+    plt.close(fig)
+
+
+def test_repair_timeline_no_windows_raises():
+    est = _DummyEst(
+        {"window_starts": [], "window_stops": [], "n_components_reconstructed": []}
+    )
+    with pytest.raises(ValueError, match="no processing windows"):
+        plot_asr_repair_timeline(est, show=False)
+
+
+def test_component_reconstruction_error_paths():
+    with pytest.raises(ValueError, match="diagnostics"):
+        plot_asr_component_reconstruction(
+            ASR(sfreq=SFREQ, picks=None, verbose=False), show=False
+        )
+    degenerate = _DummyEst({"component_variances": [], "component_thresholds": []})
+    with pytest.raises(ValueError, match="component_variances"):
+        plot_asr_component_reconstruction(degenerate, show=False)
+
+
+def test_calibration_fraction_nan_branch():
+    est = _DummyEst()
+    est.calibration_info_ = {}  # lacks fraction keys -> NaN bar
+    _assert_fig_ax(plot_asr_calibration_fraction(est, show=False))
+
+
+def test_grand_average_times_none_and_ax_reuse():
+    rng = np.random.default_rng(8)
+    before = [rng.standard_normal((4, 300)) for _ in range(3)]
+    after = [b * 0.6 for b in before]
+    _assert_fig_ax(plot_asr_grand_average(before, after, show=False))  # times=None
+    fig, ax = plt.subplots()
+    out_fig, _ = plot_asr_grand_average(before, after, ax=ax, show=False)
+    assert out_fig is fig
+    plt.close(fig)
