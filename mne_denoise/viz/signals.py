@@ -34,7 +34,7 @@ from .theme import (
 
 def _as_signal_array(inst):
     """Return signal data as a float array with shape (C, T) or (E, C, T)."""
-    if isinstance(inst, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked)):
+    if isinstance(inst, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked):
         data = np.asarray(inst.get_data(), dtype=float)
     else:
         data = np.asarray(inst, dtype=float)
@@ -72,7 +72,7 @@ def _variance_per_channel(data):
 
 def _as_channel_variance(inst_or_var):
     """Return a per-channel variance vector."""
-    if isinstance(inst_or_var, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked)):
+    if isinstance(inst_or_var, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked):
         return _variance_per_channel(_as_signal_array(inst_or_var))
 
     arr = np.asarray(inst_or_var, dtype=float)
@@ -87,7 +87,7 @@ def _as_channel_variance(inst_or_var):
 
 def _extract_overlay_trace(inst, pick):
     """Extract a single trace for overlay plotting from 2D/3D inputs."""
-    if isinstance(inst, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked)):
+    if isinstance(inst, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked):
         data = _as_signal_array(inst)
     else:
         data = np.asarray(inst, dtype=float)

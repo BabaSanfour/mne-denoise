@@ -553,7 +553,7 @@ def plot_signal_diagnostics_summary(
     n_times = None
     for name in group_order:
         data_in = signals[name]
-        if isinstance(data_in, (mne.io.BaseRaw, mne.Evoked, mne.BaseEpochs)):
+        if isinstance(data_in, mne.io.BaseRaw | mne.Evoked | mne.BaseEpochs):
             arr = np.asarray(data_in.get_data(), dtype=float)
         else:
             arr = np.asarray(data_in, dtype=float)

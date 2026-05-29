@@ -48,7 +48,7 @@ def _compute_array_psd(data, sfreq, fmin, fmax):
 
 def _compute_psd_matrix(inst, sfreq, fmin, fmax):
     """Return PSD matrix with shape ``(n_series, n_freqs)``."""
-    if isinstance(inst, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked)):
+    if isinstance(inst, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked):
         spectrum = inst.compute_psd(fmin=fmin, fmax=fmax)
         freqs = np.asarray(spectrum.freqs, dtype=float)
         psd = np.asarray(spectrum.get_data(return_freqs=False), dtype=float)
@@ -64,7 +64,7 @@ def _compute_psd_matrix(inst, sfreq, fmin, fmax):
 
 def _as_component_data(components):
     """Normalize component inputs to canonical 2D shape ``(n_components, n_times)``."""
-    if isinstance(components, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked)):
+    if isinstance(components, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked):
         data = np.asarray(components.get_data(), dtype=float)
     else:
         data = np.asarray(components, dtype=float)
@@ -959,7 +959,7 @@ def plot_component_psd_comparison(
 
     component_sfreq = sfreq
     if component_sfreq is None and isinstance(
-        components, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked)
+        components, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked
     ):
         component_sfreq = float(components.info["sfreq"])
     if component_sfreq is None:
@@ -1071,9 +1071,9 @@ def plot_spectrogram_comparison(
         raise ValueError("picks cannot be empty.")
 
     is_mne_before = isinstance(
-        inst_before, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked)
+        inst_before, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked
     )
-    is_mne_after = isinstance(inst_after, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked))
+    is_mne_after = isinstance(inst_after, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked)
     if is_mne_before != is_mne_after:
         raise ValueError("inst_before and inst_after must be both MNE or both arrays.")
 

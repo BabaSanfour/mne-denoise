@@ -32,7 +32,7 @@ def test_peak_attenuation_1d_basic():
     psd_before[mask] = 1.0
     psd_after[mask] = 0.5
     result = peak_attenuation_db(freqs, psd_before, psd_after, 50.0)
-    assert isinstance(result, (float, np.floating))
+    assert isinstance(result, float | np.floating)
     expected = 10 * np.log10(1.0 / 0.5)
     np.testing.assert_allclose(result, expected, atol=0.01)
 
