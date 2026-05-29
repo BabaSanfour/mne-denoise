@@ -220,12 +220,12 @@ def test_riemannian_windowed_vs_riemannian_diagnostics_keys_match():
         "riemannian_mean_update_norm",
     }
     # Allow only the documented legacy delta.
-    assert extra_in_rasr.issubset(
-        legacy_extras
-    ), f"riemannian has unexpected extra keys: {extra_in_rasr - legacy_extras}"
-    assert (
-        not extra_in_rasrw
-    ), f"riemannian_windowed has unexpected extra keys: {extra_in_rasrw}"
+    assert extra_in_rasr.issubset(legacy_extras), (
+        f"riemannian has unexpected extra keys: {extra_in_rasr - legacy_extras}"
+    )
+    assert not extra_in_rasrw, (
+        f"riemannian_windowed has unexpected extra keys: {extra_in_rasrw}"
+    )
 
 
 def test_riemannian_windowed_processing_identical_to_standard():
@@ -368,7 +368,7 @@ def test_riemannian_windowed_matches_matlab_asr_process():
         np.linalg.norm(matlab_cleaned), np.finfo(float).eps
     )
     corr = np.corrcoef(py_cleaned.ravel(), matlab_cleaned.ravel())[0, 1]
-    assert (
-        relerr < 1e-5
-    ), f"riemannian_windowed vs MATLAB asr_process relerr={relerr:.3e}"
+    assert relerr < 1e-5, (
+        f"riemannian_windowed vs MATLAB asr_process relerr={relerr:.3e}"
+    )
     assert corr > 0.99999, f"riemannian_windowed vs MATLAB asr_process corr={corr:.6f}"

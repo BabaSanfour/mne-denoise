@@ -80,7 +80,7 @@ def test_juggler_clean_input_keeps_most_samples():
         strategy="dbscan",
     )
     keep = float(np.mean(mask))
-    assert keep > 0.5, f"DBSCAN on clean input retained only {keep*100:.1f}%"
+    assert keep > 0.5, f"DBSCAN on clean input retained only {keep * 100:.1f}%"
     assert diag["reference_selected_samples"] == int(mask.sum())
     assert diag["reference_selection_strategy"] == "dbscan"
 
@@ -96,7 +96,7 @@ def test_juggler_dbscan_with_huge_eps_keeps_everything():
         dbscan_eps=1e12,
     )
     assert mask.mean() > 0.95, (
-        f"DBSCAN with eps=1e12 kept only {mask.mean()*100:.1f}%; "
+        f"DBSCAN with eps=1e12 kept only {mask.mean() * 100:.1f}%; "
         "expected near-100% since one cluster should swallow everything"
     )
 
@@ -111,7 +111,7 @@ def test_juggler_gev_on_clean_input():
         strategy="gev",
     )
     keep = float(np.mean(mask))
-    assert keep > 0.05, f"GEV retained only {keep*100:.1f}%"
+    assert keep > 0.05, f"GEV retained only {keep * 100:.1f}%"
     assert diag["reference_selection_strategy"] == "gev"
     assert np.isfinite(diag["juggler_gev_mode"])
     assert diag["juggler_gev_scale"] > 0

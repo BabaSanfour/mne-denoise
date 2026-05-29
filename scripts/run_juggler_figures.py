@@ -149,7 +149,7 @@ def _plot_dbscan_cluster(
     ax.set_title(
         f"{label} — Juggler DBSCAN feature space\n"
         f"eps={diag['juggler_dbscan_eps']:.2g}  min_samples={diag['juggler_dbscan_min_samples']}  "
-        f"retained {mask.mean()*100:.1f}%"
+        f"retained {mask.mean() * 100:.1f}%"
     )
     ax.grid(True, alpha=0.3)
     ax.legend(loc="upper right", fontsize=9)
@@ -211,7 +211,7 @@ def _plot_gev_mode(
         mode,
         color="green",
         alpha=0.10,
-        label=f"reference (retained {mask.mean()*100:.1f}%)",
+        label=f"reference (retained {mask.mean() * 100:.1f}%)",
     )
     ax.set_xlabel("Leading-channel amplitude (µV)")
     ax.set_ylabel("Density")
@@ -283,7 +283,7 @@ def _plot_selection_timeline(
             color="C2",
             ms=1.2,
             alpha=0.5,
-            label=f"selected reference ({mask.mean()*100:.1f}% overall)",
+            label=f"selected reference ({mask.mean() * 100:.1f}% overall)",
         )
     ax.set_xlabel("Time (s)")
     ax.set_ylabel(f"{demo_channel} (µV)")
@@ -385,8 +385,8 @@ def main() -> int:
             rec = _process_dataset(item, summary, out_dir, args)
             out_records.append(rec)
             print(
-                f"[{item['label']}] dbscan_frac={rec['dbscan']['reference_fraction']*100:.1f}% "
-                f"gev_frac={rec['gev']['reference_fraction']*100:.1f}%"
+                f"[{item['label']}] dbscan_frac={rec['dbscan']['reference_fraction'] * 100:.1f}% "
+                f"gev_frac={rec['gev']['reference_fraction'] * 100:.1f}%"
             )
         except Exception as exc:  # noqa: BLE001
             print(f"[{item['label']}] FAILED: {type(exc).__name__}: {exc}")

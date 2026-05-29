@@ -127,9 +127,9 @@ def test_rasr_windowed_cutoff_monotonicity():
     # Monotone non-increasing (allow ties)
     keys = sorted(fractions)
     for a, b in zip(keys[:-1], keys[1:]):
-        assert (
-            fractions[a] >= fractions[b] - 1e-6
-        ), f"non-monotone: k={a}->{fractions[a]}, k={b}->{fractions[b]}"
+        assert fractions[a] >= fractions[b] - 1e-6, (
+            f"non-monotone: k={a}->{fractions[a]}, k={b}->{fractions[b]}"
+        )
 
 
 # ============================================================================

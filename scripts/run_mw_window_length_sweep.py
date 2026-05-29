@@ -167,7 +167,7 @@ def main() -> int:
                 records.append(rec)
         print(
             f"  [trial {trial_id:02d}] done across "
-            f"{len(WINDOW_LENGTHS)*len(MODES)} (length, mode) combos"
+            f"{len(WINDOW_LENGTHS) * len(MODES)} (length, mode) combos"
         )
 
     # Aggregate per (length, mode)

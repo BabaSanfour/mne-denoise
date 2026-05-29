@@ -284,9 +284,9 @@ def test_icanclean_numpy_basic_cleaning(synthetic_dual_layer):
     # Artifact power should decrease
     residual_before = np.var(data[primary_idx] - truth["brain"])
     residual_after = np.var(cleaned[primary_idx] - truth["brain"])
-    assert (
-        residual_after < residual_before
-    ), f"Artifact power did not decrease: {residual_after:.4f} >= {residual_before:.4f}"
+    assert residual_after < residual_before, (
+        f"Artifact power did not decrease: {residual_after:.4f} >= {residual_before:.4f}"
+    )
 
 
 def test_icanclean_numpy_output_shape(synthetic_dual_layer):

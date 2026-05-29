@@ -35,7 +35,7 @@ def build_long_recording(
     t = np.arange(n_samples) / sfreq
 
     print(
-        f"Synthesising {duration_s/60:.1f}-minute base EEG "
+        f"Synthesising {duration_s / 60:.1f}-minute base EEG "
         f"({n_channels} ch x {n_samples} samples = "
         f"{n_channels * n_samples * 8 / 1e6:.1f} MB)…"
     )
@@ -86,7 +86,7 @@ def main() -> int:
     print(f"\nWrote {OUT_PATH} ({OUT_PATH.stat().st_size / 1e6:.1f} MB)")
     print(
         f"  n_eeg={len(raw.ch_names)}  sfreq={raw.info['sfreq']}Hz  "
-        f"duration={raw.n_times/raw.info['sfreq']/60:.1f} min"
+        f"duration={raw.n_times / raw.info['sfreq'] / 60:.1f} min"
     )
     return 0
 

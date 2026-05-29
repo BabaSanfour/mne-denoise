@@ -50,7 +50,7 @@ def convert_subject(subject_dir: Path) -> Path | None:
     print(
         f"  [{subject_dir.name}] {len(raw.ch_names)} ch, "
         f"sfreq={raw.info['sfreq']:.0f} Hz, "
-        f"duration={raw.n_times/raw.info['sfreq']:.0f} s -> {out_path.name}"
+        f"duration={raw.n_times / raw.info['sfreq']:.0f} s -> {out_path.name}"
     )
     return out_path
 

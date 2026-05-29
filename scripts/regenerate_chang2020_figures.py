@@ -288,7 +288,7 @@ def _plot_burst_demo(
             if r == 0:
                 ax.set_title(ch, fontsize=10)
             if c == 0:
-                ax.set_ylabel(f"Burst {r+1}\nµV", fontsize=9)
+                ax.set_ylabel(f"Burst {r + 1}\nµV", fontsize=9)
             if r == len(windows) - 1:
                 ax.set_xlabel("Time relative to burst onset (s)")
             ax.grid(True, alpha=0.3)

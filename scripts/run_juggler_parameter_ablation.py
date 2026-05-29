@@ -167,9 +167,9 @@ def main() -> int:
                 "gev_beats_standard": gev_beats_standard,
             }
         )
-        std_show = f"{std*100:>5.1f}%" if std is not None else "  FAIL"
-        dbs_show = f"{dbs*100:>5.1f}%" if dbs is not None else "  FAIL"
-        gev_show = f"{gev*100:>5.1f}%" if gev is not None else "  FAIL"
+        std_show = f"{std * 100:>5.1f}%" if std is not None else "  FAIL"
+        dbs_show = f"{dbs * 100:>5.1f}%" if dbs is not None else "  FAIL"
+        gev_show = f"{gev * 100:>5.1f}%" if gev is not None else "  FAIL"
         print(
             f"  n_bursts={n_bursts:>4d}  standard={std_show}  "
             f"DBSCAN={dbs_show}  GEV={gev_show}  "
@@ -204,7 +204,7 @@ def main() -> int:
                 "refrac": refrac,
             }
         )
-        print(f"  eps_mult={mult:>4.1f} eps={eps:.3g}  refrac={refrac*100:>5.1f}%")
+        print(f"  eps_mult={mult:>4.1f} eps={eps:.3g}  refrac={refrac * 100:>5.1f}%")
 
     # === Block 3: DBSCAN min_samples sweep at fixed burst count ===
     print("\n=== Block 3: DBSCAN min_samples sweep at n_bursts=40 ===")
@@ -221,7 +221,7 @@ def main() -> int:
                 "refrac": refrac,
             }
         )
-        print(f"  ms_mult={mult:>4.1f} ms={ms:>5d}  refrac={refrac*100:>5.1f}%")
+        print(f"  ms_mult={mult:>4.1f} ms={ms:>5d}  refrac={refrac * 100:>5.1f}%")
 
     payload = {
         "generated_utc": datetime.now(timezone.utc).isoformat(),
@@ -297,7 +297,7 @@ def main() -> int:
     ]
 
     def _fmt(v):
-        return f"{v*100:.1f}" if v is not None else "FAIL"
+        return f"{v * 100:.1f}" if v is not None else "FAIL"
 
     for r in burst_rows:
         md.append(
@@ -342,7 +342,7 @@ def main() -> int:
     for r in eps_rows:
         md.append(
             f"| {r['eps_multiplier_of_auto']:.1f}× | {r['eps_value']:.4g} | "
-            f"{r['refrac']*100:.1f} |"
+            f"{r['refrac'] * 100:.1f} |"
         )
     md.extend(
         [
@@ -358,7 +358,7 @@ def main() -> int:
     for r in ms_rows:
         md.append(
             f"| {r['min_samples_multiplier_of_auto']:.1f}× | "
-            f"{r['min_samples_value']} | {r['refrac']*100:.1f} |"
+            f"{r['min_samples_value']} | {r['refrac'] * 100:.1f} |"
         )
     md.append("")
     md.append("![burst density](juggler_parameter_ablation.png)")
