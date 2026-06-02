@@ -498,6 +498,10 @@ class DSS(BaseEstimator, TransformerMixin):
         data, _, mne_type, _, picks, ch_names = extract_data_from_mne(inst)
         self._mne_ch_names_ = ch_names
 
+        # MNE covariance computation requires the inst object to match the array
+        if picks is not None:
+            inst = inst.copy().pick(picks)
+
         if mne_type == "epochs":
             # DSS transpose preference
             data = np.transpose(data, (1, 2, 0))
