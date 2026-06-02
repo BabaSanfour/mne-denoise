@@ -47,12 +47,7 @@ from ..dss.denoisers.temporal import SmoothingBias
 from ..dss.linear import DSS
 from ..dss.utils.selection import auto_select_components_robust
 from ..utils import (
-    _HAS_MNE,
-    BaseEpochs,
-    BaseRaw,
-    Evoked,
     extract_data_from_mne,
-    mne,
     reconstruct_mne_object,
 )
 from .adaptive import (
@@ -248,122 +243,6 @@ class ZapLine(DSS):
         self._artifact_mixing_ = None
         self._mne_ch_names_ = None
 
-    def _get_mne_picks(self, inst) -> np.ndarray | None:
-        """Choose one homogeneous data channel type from an MNE object."""
-        if not (_HAS_MNE and isinstance(inst, BaseRaw | BaseEpochs | Evoked)):
-            return None
-
-        ch_types = inst.get_channel_types()
-        pick_specs = [
-            (
-                "mag",
-                {
-                    "meg": "mag",
-                    "eeg": False,
-                    "ref_meg": False,
-                    "stim": False,
-                    "misc": False,
-                },
-            ),
-            (
-                "grad",
-                {
-                    "meg": "grad",
-                    "eeg": False,
-                    "ref_meg": False,
-                    "stim": False,
-                    "misc": False,
-                },
-            ),
-            (
-                "eeg",
-                {
-                    "meg": False,
-                    "eeg": True,
-                    "ref_meg": False,
-                    "stim": False,
-                    "misc": False,
-                },
-            ),
-        ]
-
-        for ch_type, pick_kws in pick_specs:
-            if ch_type not in ch_types:
-                continue
-            picks = mne.pick_types(inst.info, exclude=(), **pick_kws)
-            if len(picks) == 0:  # pragma: no cover -- defensive: type present but
-                continue  # pick filter excludes everything (shouldn't happen)
-            if len(picks) == len(inst.ch_names):
-                return None
-            logger.info(
-                "ZapLine fitting %d/%d %s channels and preserving other channels.",
-                len(picks),
-                len(inst.ch_names),
-                ch_type,
-            )
-            return np.asarray(picks, dtype=int)
-
-        return None
-
-    def _extract_data_for_fit(self, X):
-        """Extract data, auto-selecting homogeneous MNE channel picks if needed."""
-        picks = self._get_mne_picks(X)
-        if picks is None:
-            data, sfreq, mne_type, orig_inst = extract_data_from_mne(X)
-            self._mne_ch_names_ = None
-            return data, sfreq, mne_type, orig_inst, None
-
-        data = X.get_data(picks=picks)
-        if isinstance(X, BaseEpochs):
-            mne_type = "epochs"
-        elif isinstance(X, Evoked):
-            mne_type = "evoked"
-        else:
-            mne_type = "raw"
-
-        self._mne_ch_names_ = [X.ch_names[pick] for pick in picks]
-        return data, X.info["sfreq"], mne_type, X, picks
-
-    def _extract_data_for_transform(self, X):
-        """Extract transform data using fitted MNE channel names when present."""
-        if (
-            _HAS_MNE
-            and self._mne_ch_names_ is not None
-            and isinstance(X, BaseRaw | BaseEpochs | Evoked)
-        ):
-            missing = [ch for ch in self._mne_ch_names_ if ch not in X.ch_names]
-            if missing:
-                raise ValueError(
-                    "Input MNE object is missing channels used during fit: "
-                    f"{missing[:5]}"
-                )
-
-            picks = np.array([X.ch_names.index(ch) for ch in self._mne_ch_names_])
-            data = X.get_data(picks=picks)
-            if isinstance(X, BaseEpochs):
-                mne_type = "epochs"
-            elif isinstance(X, Evoked):
-                mne_type = "evoked"
-            else:
-                mne_type = "raw"
-            return data, X.info["sfreq"], mne_type, X, picks
-
-        data, sfreq, mne_type, orig_inst = extract_data_from_mne(X)
-        return data, sfreq, mne_type, orig_inst, None
-
-    def _reconstruct_output(self, cleaned, orig_inst, mne_type, picks):
-        """Reinsert cleaned picked data into the original MNE object."""
-        if picks is None or orig_inst is None:
-            return reconstruct_mne_object(cleaned, orig_inst, mne_type)
-
-        data_full = orig_inst.get_data().copy()
-        if mne_type == "epochs":
-            data_full[:, picks, :] = cleaned
-        else:
-            data_full[picks, :] = cleaned
-
-        return reconstruct_mne_object(data_full, orig_inst, mne_type)
-
     def fit(self, X, y=None):
         """Fit ZapLine spatial filters to data.
 
@@ -405,7 +284,8 @@ class ZapLine(DSS):
                 "Use fit_transform() instead."
             )
 
-        data, extracted_sfreq, _, _, _ = self._extract_data_for_fit(X)
+        data, extracted_sfreq, _, _, _, ch_names = extract_data_from_mne(X)
+        self._mne_ch_names_ = ch_names
 
         # Validate sfreq consistency
         if extracted_sfreq is not None and not np.isclose(extracted_sfreq, self.sfreq):
@@ -470,8 +350,8 @@ class ZapLine(DSS):
         if self.filters_ is None:
             raise RuntimeError("Not fitted")
 
-        data, extracted_sfreq, mne_type, orig_inst, picks = (
-            self._extract_data_for_transform(X)
+        data, extracted_sfreq, mne_type, orig_inst, picks, _ = extract_data_from_mne(
+            X, ch_names=getattr(self, "_mne_ch_names_", None)
         )
 
         # Validate sfreq consistency
@@ -491,7 +371,7 @@ class ZapLine(DSS):
         else:
             cleaned = self._apply_standard_cleaning(data)
 
-        return self._reconstruct_output(cleaned, orig_inst, mne_type, picks)
+        return reconstruct_mne_object(cleaned, orig_inst, mne_type, picks=picks)
 
     def fit_transform(self, X, y=None, **fit_params):
         """Fit and transform data in one step.
@@ -529,9 +409,10 @@ class ZapLine(DSS):
         - ``line_freq``: Detected line frequency
         - ``chunk_info``: List of per-chunk processing information
         """
-        data, extracted_sfreq, mne_type, orig_inst, picks = self._extract_data_for_fit(
-            X
+        data, extracted_sfreq, mne_type, orig_inst, picks, ch_names = (
+            extract_data_from_mne(X)
         )
+        self._mne_ch_names_ = ch_names
 
         if extracted_sfreq is not None and not np.isclose(extracted_sfreq, self.sfreq):
             warnings.warn(
@@ -559,7 +440,7 @@ class ZapLine(DSS):
             if data.ndim == 3:
                 cleaned = cleaned.reshape(n_ch, n_ep, n_t).transpose(1, 0, 2)
 
-            return self._reconstruct_output(cleaned, orig_inst, mne_type, picks)
+            return reconstruct_mne_object(cleaned, orig_inst, mne_type, picks=picks)
         else:
             # Standard logic
             return super().fit_transform(X, y=y, **fit_params)

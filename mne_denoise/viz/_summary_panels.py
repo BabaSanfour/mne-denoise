@@ -555,6 +555,8 @@ def _plot_before_after_psd_panel(
     psd_after = np.asarray(psd_after, dtype=float)
     mean_before = psd_before.reshape(-1, psd_before.shape[-1]).mean(axis=0)
     mean_after = psd_after.reshape(-1, psd_after.shape[-1]).mean(axis=0)
+    mean_before = np.clip(mean_before, a_min=1e-30, a_max=None)
+    mean_after = np.clip(mean_after, a_min=1e-30, a_max=None)
     ax.semilogy(freqs, mean_before, color=COLORS["before"], lw=1.8, label=before_label)
     ax.semilogy(freqs, mean_after, color=COLORS["after"], lw=1.2, label=after_label)
     if line_freq is not None:

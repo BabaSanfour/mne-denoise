@@ -721,6 +721,7 @@ def test_panels_topomaps(fitted_dss):
     plt.close(fig)
 
 
+@pytest.mark.filterwarnings("ignore:Data has no positive values")
 def test_panels_fallbacks():
     """Test specific fallbacks and options in panels."""
     fig = plt.figure()
@@ -741,10 +742,10 @@ def test_panels_fallbacks():
     # PSD with/without line frequency
     ax.clear()
     summary_panels._plot_before_after_psd_panel(
-        ax, freqs=[1, 2], psd_before=[1, 1], psd_after=[1, 1], line_freq=50
+        ax, freqs=[1, 2], psd_before=[1, 2], psd_after=[1, 2], line_freq=50
     )
     summary_panels._plot_before_after_psd_panel(
-        ax, freqs=[1, 2], psd_before=[1, 1], psd_after=[1, 1], line_freq=None
+        ax, freqs=[1, 2], psd_before=[1, 2], psd_after=[1, 2], line_freq=None
     )
 
     # Segment counts from n_selected

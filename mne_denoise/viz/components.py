@@ -566,6 +566,7 @@ def plot_component_summary(
             verbose=False,
         )
         mean_psd = np.mean(psd_spec, axis=0)
+        mean_psd = np.clip(mean_psd, a_min=1e-30, a_max=None)
 
         ax_psd.semilogy(freqs, mean_psd, color=COLORS["primary"])
         ax_psd.set_title("PSD")

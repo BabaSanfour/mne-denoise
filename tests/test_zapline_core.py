@@ -577,7 +577,9 @@ def test_zapline_mne_transform_requires_fitted_channels():
     est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
     est.fit(raw)
 
-    with pytest.raises(ValueError, match="missing channels used during fit"):
+    with pytest.raises(
+        ValueError, match="Input MNE object is missing required channels"
+    ):
         est.transform(raw.copy().drop_channels(["EEG002"]))
 
 
@@ -858,5 +860,6 @@ def test_zapline_no_supported_channel_types_falls_back():
     est.fit(raw)
 
     # No mag/grad/eeg -> no picking; estimator processes the misc channels.
-    assert est._mne_ch_names_ is None
+    # We now properly track the names of whatever channels we process
+    assert est._mne_ch_names_ == ["MISC001", "MISC002", "MISC003"]
     assert est.n_removed_ == 1

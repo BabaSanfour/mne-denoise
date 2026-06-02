@@ -495,7 +495,9 @@ class DSS(BaseEstimator, TransformerMixin):
         kws.setdefault("rank", self.rank)
         kws.setdefault("verbose", False)
 
-        data, _, mne_type, _ = extract_data_from_mne(inst)
+        data, _, mne_type, _, picks, ch_names = extract_data_from_mne(inst)
+        self._mne_ch_names_ = ch_names
+
         if mne_type == "epochs":
             # DSS transpose preference
             data = np.transpose(data, (1, 2, 0))
@@ -589,7 +591,9 @@ class DSS(BaseEstimator, TransformerMixin):
             X_in = X
 
         # Helper to extract data
-        data, _, mne_type, orig_inst = extract_data_from_mne(X_in)
+        data, _, mne_type, orig_inst, picks, _ = extract_data_from_mne(
+            X_in, ch_names=getattr(self, "_mne_ch_names_", None)
+        )
 
         # DSS internal convention for Epochs: (n_channels, n_times, n_epochs)
         if mne_type == "epochs":
@@ -641,7 +645,9 @@ class DSS(BaseEstimator, TransformerMixin):
         if mne_type == "epochs":
             rec = np.transpose(rec, (2, 0, 1))
 
-        return reconstruct_mne_object(rec, orig_inst, mne_type, verbose=False)
+        return reconstruct_mne_object(
+            rec, orig_inst, mne_type, picks=picks, verbose=False
+        )
 
     def inverse_transform(
         self, sources: np.ndarray, component_indices: np.ndarray | None = None

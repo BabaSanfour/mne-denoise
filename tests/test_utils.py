@@ -20,7 +20,7 @@ class TestExtractDataFromMne:
     def test_raw(self):
         info = mne.create_info(ch_names=["C1", "C2"], sfreq=100.0, ch_types="eeg")
         raw = mne.io.RawArray(np.random.randn(2, 200), info)
-        data, sfreq, mne_type, orig = extract_data_from_mne(raw)
+        data, sfreq, mne_type, orig, picks, ch_names = extract_data_from_mne(raw)
         assert data.shape == (2, 200)
         assert sfreq == 100.0
         assert mne_type == "raw"
@@ -33,7 +33,7 @@ class TestExtractDataFromMne:
             [np.arange(5) * 100, np.zeros(5, int), np.ones(5, int)]
         )
         epochs = mne.EpochsArray(data_3d, info, events=events)
-        data, sfreq, mne_type, orig = extract_data_from_mne(epochs)
+        data, sfreq, mne_type, orig, picks, ch_names = extract_data_from_mne(epochs)
         assert data.shape == (5, 2, 100)
         assert sfreq == 100.0
         assert mne_type == "epochs"
@@ -43,20 +43,22 @@ class TestExtractDataFromMne:
         info = mne.create_info(ch_names=["C1", "C2"], sfreq=100.0, ch_types="eeg")
         data_2d = np.random.randn(2, 100)
         evoked = mne.EvokedArray(data_2d, info, tmin=0.0)
-        data, sfreq, mne_type, orig = extract_data_from_mne(evoked)
+        data, sfreq, mne_type, orig, picks, ch_names = extract_data_from_mne(evoked)
         assert data.shape == (2, 100)
         assert mne_type == "evoked"
 
     def test_ndarray(self):
         arr = np.random.randn(3, 50)
-        data, sfreq, mne_type, orig = extract_data_from_mne(arr)
+        data, sfreq, mne_type, orig, picks, ch_names = extract_data_from_mne(arr)
         assert data.shape == (3, 50)
         assert sfreq is None
         assert mne_type == "array"
         assert orig is None
 
     def test_list_input(self):
-        data, sfreq, mne_type, orig = extract_data_from_mne([[1, 2], [3, 4]])
+        data, sfreq, mne_type, orig, picks, ch_names = extract_data_from_mne(
+            [[1, 2], [3, 4]]
+        )
         assert isinstance(data, np.ndarray)
         assert mne_type == "array"
 
