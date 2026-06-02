@@ -181,12 +181,16 @@ def test_compute_dss_error_no_variance():
         compute_dss(c, c)
 
 
-def test_compute_dss_error_tiny_eigenvalues():
-    """compute_dss should raise error when all eigenvalues are tiny."""
-    c = np.eye(5) * 1e-20
+def test_compute_dss_tiny_positive_covariance_is_scale_invariant():
+    """Tiny SI-unit covariances should not be treated as zero variance."""
+    cov = np.diag([5.0, 2.0, 1.0, 0.5, 0.25])
+    tiny_cov = cov * 1e-26
 
-    with pytest.raises(ValueError, match="no significant variance|No components"):
-        compute_dss(c, c)
+    filters, patterns, eigenvalues = compute_dss(tiny_cov, tiny_cov)
+
+    assert filters.shape == (5, 5)
+    assert patterns.shape == (5, 5)
+    assert_allclose(eigenvalues, np.ones(5), atol=1e-12)
 
 
 # =============================================================================
@@ -1066,3 +1070,32 @@ def test_dss_get_normalized_patterns():
     norm_patterns = dss.get_normalized_patterns()
     assert norm_patterns.shape == (10, 2)
     assert_allclose(np.linalg.norm(norm_patterns, axis=0), 1.0)
+
+
+def test_compute_dss_warns_on_heavy_rank_reduction(caplog):
+    """``compute_dss`` warns when ``reg`` discards >75% of components.
+
+    Mimics MEG-style fT-scale covariances whose eigenvalues span many
+    decades: only a handful survive the default relative ``reg`` threshold,
+    and we want the user to see actionable workaround suggestions.
+    """
+    import logging
+
+    n_channels = 40
+    # Six eigenvalues at 1.0, the rest at 1e-15 -- well below the default
+    # reg=1e-9 cutoff, so n_keep ends up at 6 (< n_channels // 4 = 10).
+    eigvals = np.concatenate([np.ones(6), np.full(n_channels - 6, 1e-15)])
+    rng = np.random.default_rng(0)
+    Q, _ = np.linalg.qr(rng.standard_normal((n_channels, n_channels)))
+    cov = Q @ np.diag(eigvals) @ Q.T
+    cov = (cov + cov.T) / 2
+
+    with caplog.at_level(logging.WARNING, logger="mne_denoise.dss.linear"):
+        compute_dss(cov, cov)
+
+    assert any(
+        "components kept after rank reduction" in rec.getMessage()
+        for rec in caplog.records
+    )
+    assert any("lowering reg" in rec.getMessage() for rec in caplog.records)
+    assert not any("raising reg" in rec.getMessage() for rec in caplog.records)

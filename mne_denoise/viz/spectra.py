@@ -19,6 +19,7 @@ import mne
 import numpy as np
 from scipy import signal
 
+from ..utils import _get_homogeneous_picks
 from .theme import (
     COLORS,
     DIVERGING_CMAP,
@@ -46,10 +47,14 @@ def _compute_array_psd(data, sfreq, fmin, fmax):
     return freqs[keep], psd[..., keep]
 
 
-def _compute_psd_matrix(inst, sfreq, fmin, fmax):
+def _compute_psd_matrix(inst, sfreq, fmin, fmax, picks=None):
     """Return PSD matrix with shape ``(n_series, n_freqs)``."""
     if isinstance(inst, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked)):
-        spectrum = inst.compute_psd(fmin=fmin, fmax=fmax)
+        if picks is None:
+            picks = _get_homogeneous_picks(inst)
+            if picks is None:
+                picks = "data"
+        spectrum = inst.compute_psd(fmin=fmin, fmax=fmax, picks=picks)
         freqs = np.asarray(spectrum.freqs, dtype=float)
         psd = np.asarray(spectrum.get_data(return_freqs=False), dtype=float)
     else:
@@ -291,6 +296,7 @@ def plot_psd_comparison(
     inst_after,
     fmin=0,
     fmax=np.inf,
+    picks=None,
     sfreq=None,
     line_freq=None,
     show=True,
@@ -308,6 +314,10 @@ def plot_psd_comparison(
         input is an array, ``sfreq`` must be provided.
     fmin, fmax : float
         Frequency bounds to display.
+    picks : str | array-like | slice | None
+        Channels to include. For MNE objects, if None, one homogeneous channel type
+        is automatically picked ('mag', 'grad', or 'eeg' in order) to prevent
+        averaging dissimilar scales.
     sfreq : float | None
         Sampling frequency for array inputs.
     line_freq : float | None
@@ -354,7 +364,9 @@ def plot_psd_comparison(
         (inst_before, "Before", COLORS["before"]),
         (inst_after, "After", COLORS["after"]),
     ]:
-        freqs, psd = _compute_psd_matrix(inst, sfreq=sfreq, fmin=fmin, fmax=fmax)
+        freqs, psd = _compute_psd_matrix(
+            inst, sfreq=sfreq, fmin=fmin, fmax=fmax, picks=picks
+        )
         if average:
             axis = tuple(range(psd.ndim - 1))
             psd_mean = np.mean(psd, axis=axis)

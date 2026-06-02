@@ -242,7 +242,7 @@ raw_fname = data_path / "MEG" / "sample" / "sample_audvis_raw.fif"
 raw = mne.io.read_raw_fif(
     raw_fname, verbose=False
 )  # list_url=[] prevents download print spam usually
-raw.crop(0, 60).pick_types(meg=True, eeg=False, eog=True, stim=False).load_data()
+raw.crop(0, 60).pick_types(meg="grad", eeg=False, eog=True, stim=False).load_data()
 
 # Filter to remove drifts and high freq noise
 raw.filter(1, 40, verbose=False)
@@ -250,7 +250,7 @@ raw.filter(1, 40, verbose=False)
 # Prepare MEG-only data for BSS
 # We want to find artifacts *in the MEG channels*, ensuring we
 # don't just pick up the EOG channel itself.
-raw_meg = raw.copy().pick_types(meg=True, eeg=False, eog=False, stim=False)
+raw_meg = raw.copy().pick_types(meg="grad", eeg=False, eog=False, stim=False)
 print(f"Data shape (MEG only): {raw_meg.get_data().shape}")
 
 # Fit DSS-Tanh (Blind Decomposition)

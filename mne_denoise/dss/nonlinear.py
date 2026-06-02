@@ -314,7 +314,7 @@ def iterative_dss(
     .. [1] Särelä & Valpola (2005). Denoising Source Separation. JMLR, 6, 233-272.
     """
     # Use helper for validation/extraction
-    data, _, mne_type, _ = extract_data_from_mne(data)
+    data, _, mne_type, _, picks, ch_names = extract_data_from_mne(data)
 
     # Flatten if 3D (assume n_epochs, n_channels, n_times)
     if data.ndim == 3:
@@ -776,7 +776,8 @@ class IterativeDSS:
             The fitted transformer.
         """
         # Validate and extract data using shared helper
-        data, _, mne_type, mne_info = extract_data_from_mne(X)
+        data, _, mne_type, mne_info, picks, ch_names = extract_data_from_mne(X)
+        self._mne_ch_names_ = ch_names
 
         # Store MNE info for later use if available
         if (
@@ -844,7 +845,9 @@ class IterativeDSS:
             raise RuntimeError("IterativeDSS not fitted. Call fit() first.")
 
         # Validate and extract data
-        data, _, mne_type, _ = extract_data_from_mne(X)
+        data, _, mne_type, _, picks, _ = extract_data_from_mne(
+            X, ch_names=getattr(self, "_mne_ch_names_", None)
+        )
 
         original_shape = data.shape
 
