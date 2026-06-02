@@ -28,9 +28,7 @@ def test_extract_data_from_mne_raw():
 def test_extract_data_from_mne_epochs():
     info = mne.create_info(ch_names=["C1", "C2"], sfreq=100.0, ch_types="eeg")
     data_3d = np.random.randn(5, 2, 100)
-    events = np.column_stack(
-        [np.arange(5) * 100, np.zeros(5, int), np.ones(5, int)]
-    )
+    events = np.column_stack([np.arange(5) * 100, np.zeros(5, int), np.ones(5, int)])
     epochs = mne.EpochsArray(data_3d, info, events=events)
     data, sfreq, mne_type, orig, picks, ch_names = extract_data_from_mne(epochs)
     assert data.shape == (5, 2, 100)
@@ -105,9 +103,7 @@ def test_reconstruct_mne_object_raw_with_annotations():
 def test_reconstruct_mne_object_epochs_reconstruction():
     info = mne.create_info(ch_names=["C1", "C2"], sfreq=100.0, ch_types="eeg")
     data_3d = np.random.randn(5, 2, 100)
-    events = np.column_stack(
-        [np.arange(5) * 100, np.zeros(5, int), np.ones(5, int)]
-    )
+    events = np.column_stack([np.arange(5) * 100, np.zeros(5, int), np.ones(5, int)])
     epochs = mne.EpochsArray(data_3d, info, events=events, event_id={"stim": 1})
     new_data = np.random.randn(5, 2, 100)
     out = reconstruct_mne_object(new_data, epochs, "epochs")
@@ -151,10 +147,15 @@ def test_mne_available():
 
 def test_auto_pick_single_type():
     from mne_denoise.utils import _get_homogeneous_picks
+
     # Only grad and eog
-    info = mne.create_info(ch_names=["grad1", "grad2", "eog1"], sfreq=100.0, ch_types=["grad", "grad", "eog"])
+    info = mne.create_info(
+        ch_names=["grad1", "grad2", "eog1"],
+        sfreq=100.0,
+        ch_types=["grad", "grad", "eog"],
+    )
     raw = mne.io.RawArray(np.random.randn(3, 100), info)
-    
+
     # Should return picks for the 2 grad channels, ignoring EOG
     picks = _get_homogeneous_picks(raw)
     assert len(picks) == 2
@@ -163,10 +164,13 @@ def test_auto_pick_single_type():
 
 def test_auto_pick_mixed_types_warn():
     from mne_denoise.utils import _get_homogeneous_picks
+
     # Mixed mag and grad
-    info = mne.create_info(ch_names=["mag1", "grad1"], sfreq=100.0, ch_types=["mag", "grad"])
+    info = mne.create_info(
+        ch_names=["mag1", "grad1"], sfreq=100.0, ch_types=["mag", "grad"]
+    )
     raw = mne.io.RawArray(np.random.randn(2, 100), info)
-    
+
     # By default (auto_pick='auto'), it should warn and pick 'mag' (the first one)
     with pytest.warns(UserWarning, match="Found multiple data channel types"):
         picks = _get_homogeneous_picks(raw)
@@ -176,10 +180,13 @@ def test_auto_pick_mixed_types_warn():
 
 def test_auto_pick_mixed_types_raise():
     from mne_denoise.utils import _get_homogeneous_picks
+
     # Mixed mag and grad
-    info = mne.create_info(ch_names=["mag1", "grad1"], sfreq=100.0, ch_types=["mag", "grad"])
+    info = mne.create_info(
+        ch_names=["mag1", "grad1"], sfreq=100.0, ch_types=["mag", "grad"]
+    )
     raw = mne.io.RawArray(np.random.randn(2, 100), info)
-    
+
     # If auto_pick='raise', it should raise ValueError
     with pytest.raises(ValueError, match="Found multiple data channel types"):
         _get_homogeneous_picks(raw, auto_pick="raise")

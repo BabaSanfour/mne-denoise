@@ -665,19 +665,23 @@ def test_plot_spectrogram_comparison_edges(synthetic_data):
             data[0], data[0], picks=[100], times=epochs.times, sfreq=100, show=False
         )
 
+
 def test_compute_psd_matrix_auto_picks():
     """Test that _compute_psd_matrix auto-picks homogeneous channels if none are provided."""
     import mne
     import numpy as np
     import pytest
+
     from mne_denoise.viz.spectra import _compute_psd_matrix
-    
-    info = mne.create_info(ch_names=["mag1", "grad1", "eog1"], sfreq=100.0, ch_types=["mag", "grad", "eog"])
+
+    info = mne.create_info(
+        ch_names=["mag1", "grad1", "eog1"], sfreq=100.0, ch_types=["mag", "grad", "eog"]
+    )
     raw = mne.io.RawArray(np.random.randn(3, 100), info)
-    
+
     # Since it has mag and grad, _get_homogeneous_picks will warn and pick mag
     with pytest.warns(UserWarning, match="Found multiple data channel types"):
         freqs, psd = _compute_psd_matrix(raw, sfreq=100.0, fmin=1, fmax=40, picks=None)
-    
+
     # Since it picked mag, it should only have 1 series in the output
     assert psd.shape[0] == 1
