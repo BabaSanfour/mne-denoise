@@ -27,11 +27,14 @@ except ImportError:
     _HAS_MNE = False
 
 import logging
+import warnings
 
 logger = logging.getLogger(__name__)
 
 
-def _get_homogeneous_picks(inst: Any) -> np.ndarray | None:
+def _get_homogeneous_picks(
+    inst: Any, auto_pick: bool | str = "auto"
+) -> np.ndarray | None:
     """Choose one homogeneous data channel type from an MNE object."""
     if not (_HAS_MNE and isinstance(inst, BaseRaw | BaseEpochs | Evoked)):
         return None
@@ -70,21 +73,42 @@ def _get_homogeneous_picks(inst: Any) -> np.ndarray | None:
         ),
     ]
 
+    present_types = []
+    best_picks = None
+    best_type = None
+
     for ch_type, pick_kws in pick_specs:
         if ch_type not in ch_types:
             continue
         picks = mne.pick_types(inst.info, exclude=(), **pick_kws)
-        if len(picks) == 0:  # pragma: no cover
-            continue
-        if len(picks) == len(inst.ch_names):
+        if len(picks) > 0:
+            present_types.append(ch_type)
+            if best_picks is None:
+                best_picks = np.asarray(picks, dtype=int)
+                best_type = ch_type
+
+    if len(present_types) > 1:
+        msg = (
+            f"Found multiple data channel types {present_types} in the object. "
+            "MNE-Denoise estimators should be fitted on a single homogeneous channel type. "
+            "Please use `inst.pick()` or `inst.pick_types()` to select a single data channel type before fitting."
+        )
+        if auto_pick == "auto" or auto_pick is True:
+            msg += f" Automatically picking '{best_type}'."
+            warnings.warn(msg, UserWarning, stacklevel=2)
+        else:
+            raise ValueError(msg)
+
+    if best_picks is not None:
+        if len(best_picks) == len(inst.ch_names):
             return None
         logger.info(
             "Auto-picking %d/%d %s channels and preserving other channels.",
-            len(picks),
+            len(best_picks),
             len(inst.ch_names),
-            ch_type,
+            best_type,
         )
-        return np.asarray(picks, dtype=int)
+        return best_picks
 
     return None
 
@@ -139,8 +163,8 @@ def extract_data_from_mne(
             data = X.get_data(picks=picks)
             extracted_ch_names = [X.ch_names[p] for p in picks]
         else:
-            if auto_pick:
-                picks = _get_homogeneous_picks(X)
+            if auto_pick is not False:
+                picks = _get_homogeneous_picks(X, auto_pick=auto_pick)
             else:
                 picks = None
 

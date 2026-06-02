@@ -143,7 +143,7 @@ epochs = mne.Epochs(
 )
 
 # Pick MEG data for DSS
-epochs_meg = epochs.copy().pick_types(meg=True, eeg=False, eog=False, exclude="bads")
+epochs_meg = epochs.copy().pick_types(meg="grad", eeg=False, eog=False, exclude="bads")
 epochs_meg_topomap_picks = mne.pick_types(
     epochs_meg.info, meg="grad", eeg=False, eog=False, exclude="bads"
 )
