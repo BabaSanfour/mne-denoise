@@ -475,3 +475,30 @@ def test_plot_window_score_traces():
     # Invalid correlations shape
     with pytest.raises(ValueError, match="2D array"):
         plot_window_score_traces(np.random.rand(5), show=False)
+
+def test_plot_component_summary_safe_indexing():
+    """Test that plot_component_summary safely handles shortened pattern arrays."""
+    import mne
+    import numpy as np
+    from mne_denoise.viz.components import plot_component_summary
+    
+    info = mne.create_info(ch_names=["Fp1", "Fp2", "EOG"], sfreq=100.0, ch_types=["eeg", "eeg", "eog"])
+    montage = mne.channels.make_standard_montage("standard_1020")
+    info.set_montage(montage, on_missing="ignore")
+    # Pretend estimator only fitted on the 2 eeg channels
+    patterns = np.random.randn(2, 1) 
+    sources = np.random.randn(1, 100)
+    
+    class DummyEstimator:
+        patterns_ = patterns
+        sources_ = sources
+        method = "dummy"
+    
+    estimator = DummyEstimator()
+    # User asks to plot topomap for eeg channels
+    # The picks indices in info are [0, 1]
+    picks = [0, 1]
+    
+    # This should not raise IndexError
+    fig = plot_component_summary(estimator, data=None, info=info, picks=picks, sfreq=100.0, show=False)
+    assert fig is not None
