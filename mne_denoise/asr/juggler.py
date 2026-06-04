@@ -249,7 +249,9 @@ class JugglerASR(ASR):
         self._validate_juggler_params()
 
         fit_input = X if calibration is None else calibration
-        data, sfreq, mne_type, orig_inst = extract_data_from_mne(fit_input)
+        data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
+            fit_input, auto_pick=False
+        )
         if mne_type == "evoked":
             raise ValueError(
                 "JugglerASR.fit() does not support Evoked calibration data"

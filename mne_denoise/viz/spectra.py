@@ -19,6 +19,7 @@ import mne
 import numpy as np
 from scipy import signal
 
+from ..utils import _get_homogeneous_picks
 from .theme import (
     COLORS,
     DIVERGING_CMAP,
@@ -46,10 +47,14 @@ def _compute_array_psd(data, sfreq, fmin, fmax):
     return freqs[keep], psd[..., keep]
 
 
-def _compute_psd_matrix(inst, sfreq, fmin, fmax):
+def _compute_psd_matrix(inst, sfreq, fmin, fmax, picks=None):
     """Return PSD matrix with shape ``(n_series, n_freqs)``."""
-    if isinstance(inst, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked):
-        spectrum = inst.compute_psd(fmin=fmin, fmax=fmax)
+    if isinstance(inst, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked)):
+        if picks is None:
+            picks = _get_homogeneous_picks(inst)
+            if picks is None:
+                picks = "data"
+        spectrum = inst.compute_psd(fmin=fmin, fmax=fmax, picks=picks)
         freqs = np.asarray(spectrum.freqs, dtype=float)
         psd = np.asarray(spectrum.get_data(return_freqs=False), dtype=float)
     else:
@@ -64,7 +69,7 @@ def _compute_psd_matrix(inst, sfreq, fmin, fmax):
 
 def _as_component_data(components):
     """Normalize component inputs to canonical 2D shape ``(n_components, n_times)``."""
-    if isinstance(components, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked):
+    if isinstance(components, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked)):
         data = np.asarray(components.get_data(), dtype=float)
     else:
         data = np.asarray(components, dtype=float)
@@ -291,6 +296,7 @@ def plot_psd_comparison(
     inst_after,
     fmin=0,
     fmax=np.inf,
+    picks=None,
     sfreq=None,
     line_freq=None,
     show=True,
@@ -308,6 +314,10 @@ def plot_psd_comparison(
         input is an array, ``sfreq`` must be provided.
     fmin, fmax : float
         Frequency bounds to display.
+    picks : str | array-like | slice | None
+        Channels to include. For MNE objects, if None, one homogeneous channel type
+        is automatically picked ('mag', 'grad', or 'eeg' in order) to prevent
+        averaging dissimilar scales.
     sfreq : float | None
         Sampling frequency for array inputs.
     line_freq : float | None
@@ -354,7 +364,9 @@ def plot_psd_comparison(
         (inst_before, "Before", COLORS["before"]),
         (inst_after, "After", COLORS["after"]),
     ]:
-        freqs, psd = _compute_psd_matrix(inst, sfreq=sfreq, fmin=fmin, fmax=fmax)
+        freqs, psd = _compute_psd_matrix(
+            inst, sfreq=sfreq, fmin=fmin, fmax=fmax, picks=picks
+        )
         if average:
             axis = tuple(range(psd.ndim - 1))
             psd_mean = np.mean(psd, axis=axis)
@@ -959,7 +971,7 @@ def plot_component_psd_comparison(
 
     component_sfreq = sfreq
     if component_sfreq is None and isinstance(
-        components, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked
+        components, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked)
     ):
         component_sfreq = float(components.info["sfreq"])
     if component_sfreq is None:
@@ -1071,9 +1083,9 @@ def plot_spectrogram_comparison(
         raise ValueError("picks cannot be empty.")
 
     is_mne_before = isinstance(
-        inst_before, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked
+        inst_before, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked)
     )
-    is_mne_after = isinstance(inst_after, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked)
+    is_mne_after = isinstance(inst_after, (mne.io.BaseRaw, mne.BaseEpochs, mne.Evoked))
     if is_mne_before != is_mne_after:
         raise ValueError("inst_before and inst_after must be both MNE or both arrays.")
 

@@ -519,7 +519,12 @@ def plot_component_summary(
         ax_topo = fig.add_subplot(gs[row_idx, 0])
         if picks is not None:
             topo_info = mne.pick_info(info, picks)
-            topo_data = patterns[picks, comp_idx]
+            # If the estimator was fitted on the exact subset of channels specified by picks,
+            # patterns is already the correct size.
+            if patterns.shape[0] == len(picks):
+                topo_data = patterns[:, comp_idx]
+            else:
+                topo_data = patterns[picks, comp_idx]
             mne.viz.plot_topomap(topo_data, topo_info, axes=ax_topo, show=False)
             ax_topo.set_title(f"Comp {comp_idx} Pattern")
         else:
@@ -566,6 +571,7 @@ def plot_component_summary(
             verbose=False,
         )
         mean_psd = np.mean(psd_spec, axis=0)
+        mean_psd = np.clip(mean_psd, a_min=1e-30, a_max=None)
 
         ax_psd.semilogy(freqs, mean_psd, color=COLORS["primary"])
         ax_psd.set_title("PSD")

@@ -45,7 +45,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Medical Science Apps.",
 ]
 dependencies = [
-  "mne>=1.8",
+  "mne>=1.9",
   "numpy>=1.22",
   "scipy>=1.8",
   "matplotlib>=3.5",
@@ -54,7 +54,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/mne-tools/mne-denoise"
-Documentation = "https://mne-tools.github.io/mne-denoise/"
+Documentation = "https://mne.tools/mne-denoise/"
 Repository = "https://github.com/mne-tools/mne-denoise"
 Issues = "https://github.com/mne-tools/mne-denoise/issues"
 Changelog = "https://github.com/mne-tools/mne-denoise/blob/main/CHANGELOG.md"
@@ -78,7 +78,7 @@ dev = [
   "towncrier",
 ]
 docs = [
-  "mne>=1.8",
+  "mne>=1.9",
   "numpydoc>=1.6.0",
   "pydata-sphinx-theme>=0.15.2",
   "sphinx>=7.2.0",

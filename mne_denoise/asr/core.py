@@ -526,8 +526,8 @@ def compute_asr_qa_metrics(
         Scalar and per-channel metrics summarizing variance change and ASR
         repair extent.
     """
-    before, _, _, _ = extract_data_from_mne(data_before)
-    after, _, _, _ = extract_data_from_mne(data_after)
+    before, _, _, _, _, _ = extract_data_from_mne(data_before, auto_pick=False)
+    after, _, _, _, _, _ = extract_data_from_mne(data_after, auto_pick=False)
     before = np.asarray(before, dtype=np.float64)
     after = np.asarray(after, dtype=np.float64)
     if before.shape != after.shape:
@@ -1259,7 +1259,9 @@ class ASR(BaseEstimator, TransformerMixin):
         del y
         self._validate_estimator_params()
         fit_input = X if calibration is None else calibration
-        data, sfreq, mne_type, orig_inst = extract_data_from_mne(fit_input)
+        data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
+            fit_input, auto_pick=False
+        )
         if mne_type == "evoked":
             raise ValueError("ASR.fit() does not support Evoked calibration data")
         sfreq = self._resolve_sfreq(sfreq)
@@ -1356,7 +1358,9 @@ class ASR(BaseEstimator, TransformerMixin):
         """
         del y, copy
         self._check_is_fitted()
-        data, sfreq, mne_type, orig_inst = extract_data_from_mne(X)
+        data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
+            X, auto_pick=False
+        )
         sfreq = self._resolve_sfreq(sfreq, fitted=True)
         if not np.isclose(sfreq, self.sfreq_):
             raise ValueError(

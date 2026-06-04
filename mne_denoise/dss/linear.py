@@ -15,6 +15,7 @@ References
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 import numpy as np
@@ -32,6 +33,8 @@ except ImportError:
 from ..utils import extract_data_from_mne, reconstruct_mne_object
 from .denoisers import LinearDenoiser
 from .utils import compute_covariance
+
+logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # 1. Core Algorithm
@@ -144,7 +147,7 @@ def compute_dss(
 
     # Apply threshold
     max_ev = np.max(eigenvalues_white)
-    if max_ev < 1e-15:
+    if not np.isfinite(max_ev) or max_ev <= 0:
         raise ValueError("Covariance matrix has no significant variance")
 
     keep_mask = eigenvalues_white / max_ev > reg
@@ -155,6 +158,22 @@ def compute_dss(
     n_keep = np.sum(keep_mask)
     if n_keep == 0:
         raise ValueError("No components above regularization threshold")
+
+    if n_keep < n_channels // 4:
+        logger.warning(
+            "DSS: only %d/%d components kept after rank reduction "
+            "(reg=%g, max_eigval=%.3g, smallest_kept_eigval=%.3g). "
+            "This is common for MEG data with a large dynamic range "
+            "(e.g., raw CTF magnetometers in Tesla). Consider passing "
+            "normalize_input=True to DSS, lowering reg, or fitting "
+            "homogeneous channel types separately instead of mixing channels "
+            "with different physical units.",
+            int(n_keep),
+            int(n_channels),
+            float(reg),
+            float(max_ev),
+            float(eigenvalues_white[n_keep - 1]),
+        )
 
     eigenvalues_white = eigenvalues_white[keep_mask]
     eigenvectors_white = eigenvectors_white[:, keep_mask]
@@ -476,7 +495,13 @@ class DSS(BaseEstimator, TransformerMixin):
         kws.setdefault("rank", self.rank)
         kws.setdefault("verbose", False)
 
-        data, _, mne_type, _ = extract_data_from_mne(inst)
+        data, _, mne_type, _, picks, ch_names = extract_data_from_mne(inst)
+        self._mne_ch_names_ = ch_names
+
+        # MNE covariance computation requires the inst object to match the array
+        if picks is not None:
+            inst = inst.copy().pick(picks)
+
         if mne_type == "epochs":
             # DSS transpose preference
             data = np.transpose(data, (1, 2, 0))
@@ -570,7 +595,9 @@ class DSS(BaseEstimator, TransformerMixin):
             X_in = X
 
         # Helper to extract data
-        data, _, mne_type, orig_inst = extract_data_from_mne(X_in)
+        data, _, mne_type, orig_inst, picks, _ = extract_data_from_mne(
+            X_in, ch_names=getattr(self, "_mne_ch_names_", None)
+        )
 
         # DSS internal convention for Epochs: (n_channels, n_times, n_epochs)
         if mne_type == "epochs":
@@ -622,7 +649,9 @@ class DSS(BaseEstimator, TransformerMixin):
         if mne_type == "epochs":
             rec = np.transpose(rec, (2, 0, 1))
 
-        return reconstruct_mne_object(rec, orig_inst, mne_type, verbose=False)
+        return reconstruct_mne_object(
+            rec, orig_inst, mne_type, picks=picks, verbose=False
+        )
 
     def inverse_transform(
         self, sources: np.ndarray, component_indices: np.ndarray | None = None

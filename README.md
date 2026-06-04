@@ -6,7 +6,7 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/mne-denoise.svg)](https://pypi.org/project/mne-denoise/)
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 [![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://mne-tools.github.io/mne-denoise/)
+[![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://mne.tools/mne-denoise/)
 [![Downloads](https://pepy.tech/badge/mne-denoise)](https://pepy.tech/project/mne-denoise)
 
 **Advanced denoising algorithms for M/EEG data in MNE-Python.**
@@ -116,11 +116,11 @@ print(f"Detected line frequency: {zapline_plus.detected_freq_} Hz")
 
 ## Documentation
 
-Full documentation is available at **[mne-tools.github.io/mne-denoise](https://mne-tools.github.io/mne-denoise/)**.
+Full documentation is available at **[mne.tools/mne-denoise](https://mne.tools/mne-denoise/)**.
 
-- [Getting Started Guide](https://mne-tools.github.io/mne-denoise/getting-started.html)
-- [API Reference](https://mne-tools.github.io/mne-denoise/api.html)
-- [Example Gallery](https://mne-tools.github.io/mne-denoise/auto_examples/index.html)
+- [Getting Started Guide](https://mne.tools/mne-denoise/getting-started.html)
+- [API Reference](https://mne.tools/mne-denoise/api.html)
+- [Example Gallery](https://mne.tools/mne-denoise/auto_examples/index.html)
 
 ## 🏗️ Architecture
 

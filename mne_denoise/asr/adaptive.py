@@ -745,7 +745,9 @@ class AdaptiveASR(ASR):
         del y
         self._validate_adaptive_params()
         fit_input = X if calibration is None else calibration
-        data, sfreq, mne_type, orig_inst = extract_data_from_mne(fit_input)
+        data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
+            fit_input, auto_pick=False
+        )
         if mne_type == "evoked":
             raise ValueError(
                 "AdaptiveASR.fit() does not support Evoked calibration data"
@@ -836,7 +838,9 @@ class AdaptiveASR(ASR):
         if not hasattr(self, "state_"):
             return self.fit(X, calibration_mask=calibration_mask)
 
-        data, sfreq, mne_type, orig_inst = extract_data_from_mne(X)
+        data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
+            X, auto_pick=False
+        )
         if mne_type == "evoked":
             raise ValueError("AdaptiveASR.partial_fit() does not support Evoked data")
         sfreq = self._resolve_sfreq(sfreq, fitted=True)
@@ -888,7 +892,9 @@ class AdaptiveASR(ASR):
         """Clean data using the current adaptive ASR state."""
         del y, copy
         self._check_is_fitted()
-        data, sfreq, mne_type, orig_inst = extract_data_from_mne(X)
+        data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
+            X, auto_pick=False
+        )
         if mne_type == "evoked":
             raise ValueError("AdaptiveASR.transform() does not support Evoked data")
         sfreq = self._resolve_sfreq(sfreq, fitted=True)
@@ -1011,7 +1017,9 @@ class AdaptiveASR(ASR):
         self._validate_estimator_params()
         self._validate_adaptive_params()
         fit_input = X if calibration is None else calibration
-        data, sfreq, mne_type, orig_inst = extract_data_from_mne(fit_input)
+        data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
+            fit_input, auto_pick=False
+        )
         if mne_type == "evoked":
             raise ValueError(
                 "AdaptiveASR.fit_transform() does not support Evoked input "

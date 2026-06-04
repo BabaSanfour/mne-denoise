@@ -70,7 +70,7 @@ def _to_array(data: Any) -> tuple[np.ndarray, float | None, Any]:
     if mne is not None and isinstance(
         data, mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked
     ):
-        arr, sfreq, mne_type, orig = extract_data_from_mne(data)
+        arr, sfreq, mne_type, orig, _, _ = extract_data_from_mne(data, auto_pick=False)
         info = getattr(orig, "info", None)
         if mne_type == "epochs" and arr.ndim == 3:
             arr = np.concatenate(list(arr), axis=1)

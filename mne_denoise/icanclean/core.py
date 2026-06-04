@@ -703,7 +703,9 @@ class ICanClean(BaseEstimator, TransformerMixin):
         """
         self._reset_qc_attrs()
 
-        data, sfreq_data, mne_type, orig_inst = extract_data_from_mne(X)
+        data, sfreq_data, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
+            X, auto_pick=False
+        )
         sfreq = sfreq_data if sfreq_data is not None else self.sfreq
         channel_data = data[0] if mne_type == "epochs" else data
         primary_idx, ref_idx = self._resolve_channels(channel_data, orig_inst)
@@ -713,7 +715,9 @@ class ICanClean(BaseEstimator, TransformerMixin):
         else:
             cleaned = self._clean_continuous(data, sfreq, primary_idx, ref_idx)
 
-        return reconstruct_mne_object(cleaned, orig_inst, mne_type, verbose=False)
+        return reconstruct_mne_object(
+            cleaned, orig_inst, mne_type, picks=picks, verbose=False
+        )
 
     def fit_transform(self, X: Any, y=None, **fit_params) -> Any:
         """Fit and apply ICanClean in one step.

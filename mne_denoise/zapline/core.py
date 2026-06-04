@@ -45,8 +45,11 @@ import numpy as np
 from ..dss.denoisers.spectral import LineNoiseBias
 from ..dss.denoisers.temporal import SmoothingBias
 from ..dss.linear import DSS
-from ..dss.utils.selection import iterative_outlier_removal
-from ..utils import extract_data_from_mne, reconstruct_mne_object
+from ..dss.utils.selection import auto_select_components_robust
+from ..utils import (
+    extract_data_from_mne,
+    reconstruct_mne_object,
+)
 from .adaptive import (
     apply_hybrid_cleanup,
     check_artifact_presence,
@@ -106,6 +109,15 @@ class ZapLine(DSS):
         Regularization parameter for DSS covariance inversion.
     threshold : float, default=3.0
         Sigma threshold for iterative outlier removal when ``n_remove='auto'``.
+    knee_rel_floor : float, default=0.01
+        Relative-to-max anchor for the knee-detection fallback used when
+        ``n_remove='auto'``. Eigenvalues below this fraction of the largest
+        are excluded from knee selection. See
+        :func:`mne_denoise.dss.utils.detect_eigenvalue_knee`.
+    knee_min_ratio : float, default=3.0
+        Minimum linear-scale drop between consecutive eigenvalues required to
+        qualify as a knee. Defaults to a factor-of-3 drop. Lower values make
+        knee detection more permissive; higher values make it stricter.
     adaptive : bool, default=False
         If ``True``, use adaptive ZapLine-plus mode [2]_ with:
         - Automatic frequency detection
@@ -189,6 +201,8 @@ class ZapLine(DSS):
         rank: int | None = None,
         reg: float = 1e-9,
         threshold: float = 3.0,
+        knee_rel_floor: float = 0.01,
+        knee_min_ratio: float = 3.0,
         adaptive: bool = False,
         adaptive_params: dict | None = None,
     ):
@@ -199,6 +213,8 @@ class ZapLine(DSS):
         self.nfft = nfft
         self.nkeep = nkeep
         self.threshold = threshold
+        self.knee_rel_floor = knee_rel_floor
+        self.knee_min_ratio = knee_min_ratio
         self.adaptive = adaptive
         self.adaptive_params = adaptive_params if adaptive_params is not None else {}
 
@@ -225,6 +241,7 @@ class ZapLine(DSS):
         self.n_removed_ = None
         self.adaptive_results_ = None
         self._artifact_mixing_ = None
+        self._mne_ch_names_ = None
 
     def fit(self, X, y=None):
         """Fit ZapLine spatial filters to data.
@@ -267,7 +284,8 @@ class ZapLine(DSS):
                 "Use fit_transform() instead."
             )
 
-        data, extracted_sfreq, _, _ = extract_data_from_mne(X)
+        data, extracted_sfreq, _, _, _, ch_names = extract_data_from_mne(X)
+        self._mne_ch_names_ = ch_names
 
         # Validate sfreq consistency
         if extracted_sfreq is not None and not np.isclose(extracted_sfreq, self.sfreq):
@@ -332,7 +350,9 @@ class ZapLine(DSS):
         if self.filters_ is None:
             raise RuntimeError("Not fitted")
 
-        data, extracted_sfreq, mne_type, orig_inst = extract_data_from_mne(X)
+        data, extracted_sfreq, mne_type, orig_inst, picks, _ = extract_data_from_mne(
+            X, ch_names=getattr(self, "_mne_ch_names_", None)
+        )
 
         # Validate sfreq consistency
         if extracted_sfreq is not None and not np.isclose(extracted_sfreq, self.sfreq):
@@ -351,7 +371,7 @@ class ZapLine(DSS):
         else:
             cleaned = self._apply_standard_cleaning(data)
 
-        return reconstruct_mne_object(cleaned, orig_inst, mne_type)
+        return reconstruct_mne_object(cleaned, orig_inst, mne_type, picks=picks)
 
     def fit_transform(self, X, y=None, **fit_params):
         """Fit and transform data in one step.
@@ -389,7 +409,10 @@ class ZapLine(DSS):
         - ``line_freq``: Detected line frequency
         - ``chunk_info``: List of per-chunk processing information
         """
-        data, extracted_sfreq, mne_type, orig_inst = extract_data_from_mne(X)
+        data, extracted_sfreq, mne_type, orig_inst, picks, ch_names = (
+            extract_data_from_mne(X)
+        )
+        self._mne_ch_names_ = ch_names
 
         if extracted_sfreq is not None and not np.isclose(extracted_sfreq, self.sfreq):
             warnings.warn(
@@ -417,7 +440,7 @@ class ZapLine(DSS):
             if data.ndim == 3:
                 cleaned = cleaned.reshape(n_ch, n_ep, n_t).transpose(1, 0, 2)
 
-            return reconstruct_mne_object(cleaned, orig_inst, mne_type)
+            return reconstruct_mne_object(cleaned, orig_inst, mne_type, picks=picks)
         else:
             # Standard logic
             return super().fit_transform(X, y=y, **fit_params)
@@ -460,8 +483,19 @@ class ZapLine(DSS):
 
         # 4. Determine n_remove
         if self.n_remove == "auto":
-            self.n_removed_ = iterative_outlier_removal(
-                self.eigenvalues_, self.threshold
+            self.n_removed_ = auto_select_components_robust(
+                self.eigenvalues_,
+                sigma=self.threshold,
+                knee_rel_floor=self.knee_rel_floor,
+                knee_min_ratio=self.knee_min_ratio,
+            )
+            logger.info(
+                "ZapLine auto-selected %d/%d components "
+                "(eigenvalues: max=%.3g, min=%.3g)",
+                self.n_removed_,
+                len(self.eigenvalues_),
+                float(self.eigenvalues_[0]),
+                float(self.eigenvalues_[-1]),
             )
         else:
             self.n_removed_ = min(int(self.n_remove), len(self.eigenvalues_))
@@ -811,6 +845,8 @@ class ZapLine(DSS):
                 line_freq=fine_freq,
                 n_remove="auto",
                 threshold=current_sigma,
+                knee_rel_floor=self.knee_rel_floor,
+                knee_min_ratio=self.knee_min_ratio,
                 adaptive=False,
             )
 
@@ -829,6 +865,8 @@ class ZapLine(DSS):
                     sfreq=self.sfreq,
                     line_freq=fine_freq,
                     n_remove=int(n_rem),
+                    knee_rel_floor=self.knee_rel_floor,
+                    knee_min_ratio=self.knee_min_ratio,
                     adaptive=False,
                 )
                 est.fit(chunk)

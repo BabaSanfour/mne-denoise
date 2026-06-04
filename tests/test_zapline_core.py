@@ -383,6 +383,206 @@ def test_zapline_sfreq_mismatch_warning_fit_transform():
         est.fit_transform(raw)
 
 
+def test_zapline_mne_eeg_raw_reduces_line_noise():
+    """EEG-only MNE Raw inputs should keep the existing all-channel behavior."""
+    import mne
+
+    rng = np.random.default_rng(33)
+    sfreq = 400.0
+    n_eeg = 4
+    n_times = int(20 * sfreq)
+    times = np.arange(n_times) / sfreq
+
+    eeg_noise = rng.normal(0, 0.2, (n_eeg, n_times))
+    eeg_line = 2.0 * np.sin(2 * np.pi * 50 * times)[None, :]
+    eeg_data = eeg_noise + eeg_line
+
+    info = mne.create_info(
+        ch_names=[f"EEG{i:03d}" for i in range(n_eeg)],
+        sfreq=sfreq,
+        ch_types="eeg",
+    )
+    raw = mne.io.RawArray(eeg_data, info, verbose=False)
+
+    def line_power(x):
+        freqs, psd = signal.welch(x, fs=sfreq, nperseg=int(4 * sfreq), axis=-1)
+        idx = np.argmin(np.abs(freqs - 50.0))
+        return float(np.mean(psd[:, idx]))
+
+    before = line_power(eeg_data)
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    cleaned = est.fit_transform(raw)
+
+    assert 10 * np.log10(before / line_power(cleaned.get_data())) > 10
+    assert est.n_removed_ == 1
+
+
+def test_zapline_mne_mixed_channels_cleans_magnetometers_only():
+    """Mixed-unit MNE objects should clean MEG channels without touching misc."""
+    import mne
+
+    rng = np.random.default_rng(34)
+    sfreq = 400.0
+    n_mag = 8
+    n_times = int(20 * sfreq)
+    times = np.arange(n_times) / sfreq
+
+    phases = rng.uniform(0, 2 * np.pi, n_mag)
+    mag_noise = rng.normal(0, 0.2e-13, (n_mag, n_times))
+    mag_line = 2e-13 * np.sin(2 * np.pi * 50 * times[None, :] + phases[:, None])
+    mag_data = mag_noise + mag_line
+    misc_data = rng.normal(0, 1.0, (1, n_times))
+    data = np.vstack([mag_data, misc_data])
+
+    info = mne.create_info(
+        ch_names=[f"MEG{i:03d}" for i in range(n_mag)] + ["MISC001"],
+        sfreq=sfreq,
+        ch_types=["mag"] * n_mag + ["misc"],
+    )
+    raw = mne.io.RawArray(data, info, verbose=False)
+
+    def line_power(x):
+        freqs, psd = signal.welch(x, fs=sfreq, nperseg=int(4 * sfreq), axis=-1)
+        idx = np.argmin(np.abs(freqs - 50.0))
+        return float(np.mean(psd[:, idx]))
+
+    before = line_power(mag_data)
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=2, n_harmonics=1, nfft=400)
+    cleaned = est.fit_transform(raw)
+
+    cleaned_mag = cleaned.get_data(picks="mag")
+    cleaned_misc = cleaned.get_data(picks="misc")
+
+    assert 10 * np.log10(before / line_power(cleaned_mag)) > 10
+    assert_allclose(cleaned_misc, misc_data, atol=0, rtol=0)
+    assert est.n_removed_ == 2
+
+
+def test_zapline_mne_mixed_channels_prefers_gradiometers_when_no_mags():
+    """Mixed MNE inputs should clean gradiometers when magnetometers are absent."""
+    import mne
+
+    rng = np.random.default_rng(35)
+    sfreq = 400.0
+    n_grad = 4
+    n_times = int(10 * sfreq)
+    times = np.arange(n_times) / sfreq
+
+    grad_noise = rng.normal(0, 0.2e-13, (n_grad, n_times))
+    grad_line = 2e-13 * np.sin(2 * np.pi * 50 * times)[None, :]
+    grad_data = grad_noise + grad_line
+    misc_data = rng.normal(0, 1.0, (1, n_times))
+
+    info = mne.create_info(
+        ch_names=[f"MEG{i:03d}" for i in range(n_grad)] + ["MISC001"],
+        sfreq=sfreq,
+        ch_types=["grad"] * n_grad + ["misc"],
+    )
+    raw = mne.io.RawArray(np.vstack([grad_data, misc_data]), info, verbose=False)
+
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    cleaned = est.fit_transform(raw)
+
+    assert est._mne_ch_names_ == [f"MEG{i:03d}" for i in range(n_grad)]
+    assert_allclose(cleaned.get_data(picks="misc"), misc_data, atol=0, rtol=0)
+
+
+def test_zapline_mne_mixed_epochs_preserves_misc_channels():
+    """Mixed Epochs should clean EEG picks and reinsert them into full data."""
+    import mne
+
+    rng = np.random.default_rng(36)
+    sfreq = 400.0
+    n_epochs = 3
+    n_eeg = 4
+    n_times = int(4 * sfreq)
+    times = np.arange(n_times) / sfreq
+
+    eeg_noise = rng.normal(0, 0.2, (n_epochs, n_eeg, n_times))
+    eeg_line = 2.0 * np.sin(2 * np.pi * 50 * times)[None, None, :]
+    eeg_data = eeg_noise + eeg_line
+    misc_data = rng.normal(0, 1.0, (n_epochs, 1, n_times))
+    data = np.concatenate([eeg_data, misc_data], axis=1)
+
+    info = mne.create_info(
+        ch_names=[f"EEG{i:03d}" for i in range(n_eeg)] + ["MISC001"],
+        sfreq=sfreq,
+        ch_types=["eeg"] * n_eeg + ["misc"],
+    )
+    events = np.column_stack(
+        [
+            np.arange(n_epochs) * n_times,
+            np.zeros(n_epochs, dtype=int),
+            np.ones(n_epochs, dtype=int),
+        ]
+    )
+    epochs = mne.EpochsArray(data, info, events=events, tmin=0, verbose=False)
+
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    cleaned = est.fit_transform(epochs)
+
+    assert cleaned.get_data().shape == data.shape
+    assert_allclose(cleaned.get_data(picks="misc"), misc_data, atol=0, rtol=0)
+
+
+def test_zapline_mne_mixed_evoked_transform_preserves_misc_channels():
+    """Mixed Evoked transform should use fitted channel names and preserve misc."""
+    import mne
+
+    rng = np.random.default_rng(37)
+    sfreq = 400.0
+    n_eeg = 4
+    n_times = int(10 * sfreq)
+    times = np.arange(n_times) / sfreq
+
+    eeg_noise = rng.normal(0, 0.2, (n_eeg, n_times))
+    eeg_line = 2.0 * np.sin(2 * np.pi * 50 * times)[None, :]
+    eeg_data = eeg_noise + eeg_line
+    misc_data = rng.normal(0, 1.0, (1, n_times))
+
+    info = mne.create_info(
+        ch_names=[f"EEG{i:03d}" for i in range(n_eeg)] + ["MISC001"],
+        sfreq=sfreq,
+        ch_types=["eeg"] * n_eeg + ["misc"],
+    )
+    evoked = mne.EvokedArray(np.vstack([eeg_data, misc_data]), info, tmin=0)
+
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    est.fit(evoked)
+    cleaned = est.transform(evoked)
+
+    assert cleaned.data.shape == evoked.data.shape
+    assert_allclose(cleaned.get_data(picks="misc"), misc_data, atol=0, rtol=0)
+
+
+def test_zapline_mne_transform_requires_fitted_channels():
+    """Transform should fail clearly if fitted MNE channels are missing."""
+    import mne
+
+    rng = np.random.default_rng(38)
+    sfreq = 400.0
+    n_times = int(4 * sfreq)
+    times = np.arange(n_times) / sfreq
+    eeg_data = rng.normal(0, 0.2, (2, n_times))
+    eeg_data += 2.0 * np.sin(2 * np.pi * 50 * times)[None, :]
+    misc_data = rng.normal(0, 1.0, (1, n_times))
+
+    info = mne.create_info(
+        ch_names=["EEG001", "EEG002", "MISC001"],
+        sfreq=sfreq,
+        ch_types=["eeg", "eeg", "misc"],
+    )
+    raw = mne.io.RawArray(np.vstack([eeg_data, misc_data]), info, verbose=False)
+
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    est.fit(raw)
+
+    with pytest.raises(
+        ValueError, match="Input MNE object is missing required channels"
+    ):
+        est.transform(raw.copy().drop_channels(["EEG002"]))
+
+
 def test_zapline_fit_none_line_freq_error():
     """ZapLine fit() should raise error if line_freq is None."""
     data = np.random.randn(4, 1000)
@@ -583,3 +783,83 @@ def test_linenoise_bias_method_errors():
     # Should return data unchanged
     data = np.random.randn(1, 100)
     assert np.array_equal(bias.apply(data), data)
+
+
+def test_zapline_auto_meg_like_many_coequal_components():
+    """Regression for Issue #34: auto-mode must detect MEG-style line noise.
+
+    Mimics high-channel-count MEG environmental pickup: each sensor sees
+    the 50 / 100 / 150 Hz field through a different lead-field path, so
+    amplitudes and phases vary across channels. This produces multiple
+    independent line-noise sources, and DSS yields several co-equal strong
+    components -- the regime where the pre-fix outlier selector underdetected.
+    """
+    rng = np.random.default_rng(34)
+    sfreq = 400
+    n_channels = 64
+    n_times = 8000  # 20 s
+    times = np.arange(n_times) / sfreq
+
+    line = np.zeros((n_channels, n_times))
+    for freq in (50.0, 100.0, 150.0):
+        phases = rng.uniform(0, 2 * np.pi, n_channels)
+        amps = rng.normal(1.0, 0.3, n_channels) * 5.0
+        line += amps[:, None] * np.sin(
+            2 * np.pi * freq * times[None, :] + phases[:, None]
+        )
+
+    background = rng.normal(0, 1, (n_channels, n_times))
+    data = background + line
+
+    est = ZapLine(line_freq=50.0, sfreq=sfreq, n_remove="auto", n_harmonics=3)
+    est.fit(data)
+    cleaned = est.transform(data)
+
+    # Should detect multiple line-noise components. With 3 harmonics and
+    # per-channel phase variation, we expect ~6 strong components (sin and
+    # cos at each harmonic). >=3 is a conservative lower bound.
+    assert est.n_removed_ >= 3, (
+        f"Expected n_removed_ >= 3 for MEG-like coherent line noise, "
+        f"got {est.n_removed_}. Eigenvalues (top 10): {est.eigenvalues_[:10]}"
+    )
+
+    # Power at 50 Hz should drop substantially.
+    def get_power_at(d, freq, fs):
+        f, psd = signal.welch(d, fs=fs, nperseg=int(fs), axis=-1)
+        idx = np.argmin(np.abs(f - freq))
+        return np.mean(psd[:, idx])
+
+    power_before = get_power_at(data, 50.0, sfreq)
+    power_after = get_power_at(cleaned, 50.0, sfreq)
+    reduction_db = 10 * np.log10(power_before / max(power_after, 1e-30))
+    assert reduction_db > 10.0, (
+        f"Expected >10 dB drop at 50 Hz, got {reduction_db:.1f} dB"
+    )
+
+
+def test_zapline_no_supported_channel_types_falls_back():
+    """If no mag/grad/eeg channels are present, ZapLine processes all channels."""
+    import mne
+
+    rng = np.random.default_rng(3)
+    sfreq = 400.0
+    n_times = int(2 * sfreq)
+    times = np.arange(n_times) / sfreq
+
+    line = 5.0 * np.sin(2 * np.pi * 50 * times)
+    data = rng.normal(0, 0.5, (3, n_times)) + line[None, :]
+
+    info = mne.create_info(
+        ch_names=["MISC001", "MISC002", "MISC003"],
+        sfreq=sfreq,
+        ch_types=["misc"] * 3,
+    )
+    raw = mne.io.RawArray(data, info, verbose=False)
+
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    est.fit(raw)
+
+    # No mag/grad/eeg -> no picking; estimator processes the misc channels.
+    # We now properly track the names of whatever channels we process
+    assert est._mne_ch_names_ == ["MISC001", "MISC002", "MISC003"]
+    assert est.n_removed_ == 1
