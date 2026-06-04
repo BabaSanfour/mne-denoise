@@ -186,26 +186,28 @@ A quick decision guide (see
 Visualizing results
 -------------------
 
-``mne_denoise.viz`` provides ten ASR-specific plotting helpers. They accept the
-fitted estimator and/or before/after data (MNE objects or NumPy arrays), return
-``(fig, ax)``, and honour ``ax=`` / ``show=`` / ``fname=``:
+``mne_denoise.viz`` ships three ASR-specific diagnostics that have no generic
+equivalent --- :func:`~mne_denoise.viz.plot_asr_repair_timeline`,
+:func:`~mne_denoise.viz.plot_asr_component_reconstruction`, and
+:func:`~mne_denoise.viz.plot_asr_calibration_fraction`. They take the fitted
+estimator and honour ``ax=`` / ``show=`` / ``fname=``:
 
 .. code-block:: python
 
-   from mne_denoise.viz import plot_asr_overlay, plot_asr_repair_timeline
+   from mne_denoise.viz import plot_asr_repair_timeline, plot_signal_overlay
 
    asr = ASR(sfreq=250.0, cutoff=20.0).fit(raw)
    clean = asr.transform(raw)
-   plot_asr_overlay(raw, clean, asr, pick="Fp1")   # before/after + repair spans
-   plot_asr_repair_timeline(asr)                    # which windows were repaired
+   plot_signal_overlay(raw, clean, raw.times, pick="Fp1")  # generic before/after
+   plot_asr_repair_timeline(asr)                            # repaired windows
 
-See :doc:`api` (Visualization) for the full list:
-``plot_asr_overlay``, ``plot_asr_cutoff_sweep``, ``plot_asr_psd_comparison``,
-``plot_asr_variance_topomap``, ``plot_asr_repair_timeline``,
-``plot_asr_calibration_fraction``, ``plot_asr_component_reconstruction``,
-``plot_asr_blink_reduction``, ``plot_asr_grand_average``,
-``plot_asr_method_comparison``. The ``plot_05_asr_visualization.py`` gallery
-example exercises them end-to-end.
+For before/after overlays, PSD comparison, and per-channel variance
+topographies, reuse the generic helpers
+:func:`~mne_denoise.viz.plot_signal_overlay`,
+:func:`~mne_denoise.viz.plot_psd_comparison`, and
+:func:`~mne_denoise.viz.plot_power_ratio_map` (they accept MNE objects or NumPy
+arrays). The ``plot_05_asr_visualization.py`` gallery example exercises the
+full set end-to-end.
 
 Real-data validation
 --------------------

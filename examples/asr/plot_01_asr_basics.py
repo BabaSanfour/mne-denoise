@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from mne_denoise.asr import ASR, compute_asr_qa_metrics
+from mne_denoise.viz import plot_signal_overlay
 
 # %%
 # Synthetic EEG with Bursts
@@ -67,20 +68,31 @@ print(f"Variance removed: {metrics['variance_removed_pct']:.2f}%")
 # %%
 # Plot One Channel
 # ----------------
-fig, ax = plt.subplots(figsize=(10, 4))
-ax.plot(times, data[0], color="0.7", lw=1.0, label="Noisy")
-ax.plot(times, clean[0], color="C0", lw=1.0, label="ASR cleaned")
+# ``plot_signal_overlay`` draws the before/after pair; we then overlay the
+# ground-truth reference and shade the burst windows on the returned axis.
+fig = plot_signal_overlay(
+    data,
+    clean,
+    times,
+    pick=0,
+    scale_after=False,
+    before_label="Noisy",
+    after_label="ASR cleaned",
+    x_label="Time (s)",
+    y_label="Amplitude (a.u.)",
+    title="ASR burst repair",
+    show=False,
+)
+ax = fig.axes[0]
 ax.plot(times, brain[0], color="C2", lw=1.0, alpha=0.8, label="Reference signal")
 ax.fill_between(
     times,
-    ax.get_ylim()[0],
-    ax.get_ylim()[1],
+    *ax.get_ylim(),
     where=burst_mask,
     color="C3",
     alpha=0.12,
     label="Burst artifact",
 )
-ax.set(xlabel="Time (s)", ylabel="Amplitude (a.u.)", title="ASR burst repair")
 ax.legend(loc="upper right")
 fig.tight_layout()
 

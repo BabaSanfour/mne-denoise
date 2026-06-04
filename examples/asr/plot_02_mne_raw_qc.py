@@ -15,6 +15,7 @@ import mne
 import numpy as np
 
 from mne_denoise.asr import ASR, compute_asr_qa_metrics
+from mne_denoise.viz import plot_signal_overlay
 
 # %%
 # Synthetic Raw
@@ -82,9 +83,18 @@ channel = "EEG 00"
 noisy = raw.get_data(picks=[channel])[0]
 clean = raw_clean.get_data(picks=[channel])[0]
 
-fig, ax = plt.subplots(figsize=(11, 4))
-ax.plot(times, noisy, color="0.75", lw=1.0, label="Noisy EEG")
-ax.plot(times, clean, color="C0", lw=1.0, label="ASR cleaned EEG")
+fig = plot_signal_overlay(
+    noisy,
+    clean,
+    times,
+    scale_after=False,
+    before_label="Noisy EEG",
+    after_label="ASR cleaned EEG",
+    x_label="Time (s)",
+    y_label="Amplitude (a.u.)",
+    show=False,
+)
+ax = fig.axes[0]
 ax.plot(times, brain[0], color="C2", lw=1.0, alpha=0.8, label="Reference EEG")
 
 for idx, (onset, duration) in enumerate(

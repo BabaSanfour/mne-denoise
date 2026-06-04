@@ -4,15 +4,22 @@ Visualizing ASR with mne_denoise.viz
 
 After cleaning EEG with ASR you usually want to *see* what happened: which
 segments were repaired, how aggressive the cleaning was, and how the variants
-compare. This example showcases the ``mne_denoise.viz`` ASR plotting helpers on
-synthetic burst data, across three backends:
+compare. ``mne_denoise.viz`` keeps three ASR-specific diagnostics that have no
+generic equivalent --- the per-window repair timeline, the
+window-by-component reconstruction map, and the calibration / reference
+fraction --- and reuses the **generic** before/after plots
+(:func:`~mne_denoise.viz.plot_signal_overlay`,
+:func:`~mne_denoise.viz.plot_psd_comparison`,
+:func:`~mne_denoise.viz.plot_power_ratio_map`) for everything else.
+
+This example showcases that split on synthetic burst data, across two
+backends:
 
 - standard ASR (``method="standard"``),
-- per-window Riemannian ASR (``method="riemannian_windowed"``),
 - Juggler GEV reference selection (``JugglerASR(strategy="gev")``).
 
-Every ``plot_asr_*`` helper returns ``(fig, ax)``, accepts MNE objects or NumPy
-arrays, and honours ``ax=`` / ``show=`` / ``fname=``.
+Every helper accepts MNE objects or NumPy arrays and honours
+``show=`` / ``fname=`` (the ASR-specific helpers also take ``ax=``).
 """
 
 # %%
@@ -23,12 +30,11 @@ import numpy as np
 
 from mne_denoise.asr import ASR, JugglerASR
 from mne_denoise.viz import (
-    plot_asr_cutoff_sweep,
-    plot_asr_method_comparison,
-    plot_asr_overlay,
-    plot_asr_psd_comparison,
+    plot_asr_calibration_fraction,
+    plot_asr_component_reconstruction,
     plot_asr_repair_timeline,
-    plot_asr_variance_topomap,
+    plot_psd_comparison,
+    plot_signal_overlay,
 )
 
 rng = np.random.default_rng(2026)
@@ -55,89 +61,48 @@ for start in np.linspace(1000, n_times - 800, 8).astype(int):
     contaminated[:, start : start + 300] += 12.0 * np.outer(spatial, temporal)
 
 # %%
-# Clean with standard ASR and overlay before/after
-# -------------------------------------------------
+# Clean with standard ASR and overlay before/after (generic helper)
+# -----------------------------------------------------------------
+# ``plot_signal_overlay`` is the generic before/after trace viewer; ASR no
+# longer ships its own overlay wrapper.
 asr = ASR(sfreq=sfreq, cutoff=20.0, picks=None, verbose=False)
 cleaned = np.asarray(asr.fit_transform(contaminated))
 
-plot_asr_overlay(
+plot_signal_overlay(
     contaminated,
     cleaned,
-    asr,
+    t,
     pick=0,
-    sfreq=sfreq,
-    title="Standard ASR — channel 0 (repairs shaded)",
+    before_label="contaminated",
+    after_label="ASR-cleaned",
+    x_label="Time (s)",
+    y_label="Amplitude (a.u.)",
+    title="Standard ASR — channel 0",
     show=False,
 )
 
 # %%
-# Repair timeline + PSD before/after
-# ----------------------------------
-plot_asr_repair_timeline(asr, show=False)
-plot_asr_psd_comparison(contaminated, cleaned, sfreq=sfreq, show=False)
+# PSD before/after (generic helper)
+# ---------------------------------
+plot_psd_comparison(contaminated, cleaned, sfreq=sfreq, fmax=60.0, show=False)
 
 # %%
-# Per-channel variance reduction
+# Repair timeline (ASR-specific)
 # ------------------------------
-# Without a montage this falls back to a bar chart (one bar per channel).
-plot_asr_variance_topomap(contaminated, cleaned, show=False)
+# Which windows were reconstructed, and how many components each lost.
+plot_asr_repair_timeline(asr, show=False)
 
 # %%
-# Cutoff sweep across two backends
-# --------------------------------
-# Build a small sweep table by running each backend at several cutoffs and
-# reading the fraction of windows modified + variance reduced.
-sweep = []
-for variant, kwargs in (
-    ("standard", {}),
-    ("riemannian_windowed", {"method": "riemannian_windowed"}),
-):
-    for k in (1.0, 5.0, 20.0, 50.0, 100.0):
-        est = ASR(sfreq=sfreq, cutoff=k, picks=None, verbose=False, **kwargs)
-        out = np.asarray(est.fit_transform(contaminated))
-        diag = est.get_diagnostics()
-        var_red = (np.var(contaminated) - np.var(out)) / np.var(contaminated)
-        sweep.append(
-            {
-                "variant": variant,
-                "cutoff": k,
-                "pct_data_modified": diag.get("fraction_reconstructed_windows", 0.0),
-                "pct_variance_reduced": var_red,
-            }
-        )
-
-plot_asr_cutoff_sweep(sweep, title="Standard vs Riemannian-windowed", show=False)
+# Component-reconstruction map (ASR-specific)
+# -------------------------------------------
+# A window x component heatmap of the per-window principal-subspace rejection.
+plot_asr_component_reconstruction(asr, show=False)
 
 # %%
-# Method comparison: per-channel variance reduction, standard vs Riemannian
-# -------------------------------------------------------------------------
-rasr = ASR(
-    sfreq=sfreq,
-    cutoff=20.0,
-    method="riemannian_windowed",
-    picks=None,
-    verbose=False,
-)
-cleaned_rasr = np.asarray(rasr.fit_transform(contaminated))
-
-var0 = np.var(contaminated, axis=1)
-red_standard = (var0 - np.var(cleaned, axis=1)) / var0 * 100
-red_rasr = (var0 - np.var(cleaned_rasr, axis=1)) / var0 * 100
-
-plot_asr_method_comparison(
-    red_standard,
-    red_rasr,
-    label_a="standard",
-    label_b="riemannian_windowed",
-    metric_name="% variance reduced (per channel)",
-    show=False,
-)
-
-# %%
-# Juggler reference fraction for severe contamination
-# ---------------------------------------------------
+# Calibration / reference fraction across variants (ASR-specific)
+# ---------------------------------------------------------------
 # JugglerASR selects calibration samples point-by-point, which survives heavy
-# contamination where the standard clean-windows criterion would fail.
+# contamination where the standard clean-windows criterion would struggle.
 juggler = JugglerASR(
     sfreq=sfreq, cutoff=20.0, strategy="gev", picks=None, verbose=False
 )
@@ -145,6 +110,13 @@ juggler.fit_transform(contaminated)
 print(
     "Juggler GEV reference fraction: "
     f"{juggler.calibration_info_['reference_selected_fraction'] * 100:.1f}%"
+)
+
+plot_asr_calibration_fraction(
+    [asr, juggler],
+    labels=["standard", "juggler-gev"],
+    title="Calibration fraction by variant",
+    show=False,
 )
 
 plt.show()

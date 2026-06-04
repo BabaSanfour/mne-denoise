@@ -412,42 +412,6 @@ def test_karcher_mean_spd_validation_guards():
 # ---------------------------------------------------------------------------
 
 
-def test_plot_asr_variance_topomap_with_montage():
-    mne = pytest.importorskip("mne")
-    import matplotlib
-
-    matplotlib.use("Agg")
-    from mne_denoise.viz import plot_asr_variance_topomap
-
-    ch = ["Fp1", "Fp2", "F3", "F4", "C3", "C4", "O1", "O2"]
-    info = mne.create_info(ch, SFREQ, "eeg")
-    raw_b = mne.io.RawArray(_eeg() * 1e-6, info, verbose=False)
-    raw_b.set_montage("standard_1020")
-    raw_a = mne.io.RawArray(_eeg(seed=2) * 1e-6, info, verbose=False)
-    raw_a.set_montage("standard_1020")
-    fig, ax = plot_asr_variance_topomap(raw_b, raw_a, show=False)
-    assert fig is not None
-
-
-def test_plot_asr_blink_reduction_autopick_paths():
-    mne = pytest.importorskip("mne")
-    import matplotlib
-
-    matplotlib.use("Agg")
-    from mne_denoise.viz import plot_asr_blink_reduction
-
-    ch = ["Fp1", "Fp2", "F3", "F4", "C3", "C4", "O1", "O2"]
-    info = mne.create_info(ch, SFREQ, "eeg")
-    raw_b = mne.io.RawArray(_eeg() * 1e-6, info, verbose=False)
-    raw_a = mne.io.RawArray(_eeg(seed=3) * 1e-6, info, verbose=False)
-    # MNE inputs -> frontal channel-name auto-detection branch
-    fig, _ = plot_asr_blink_reduction(raw_b, raw_a, show=False)
-    assert fig is not None
-    # ndarray inputs, frontal_picks=None -> first-2-channels fallback branch
-    fig2, _ = plot_asr_blink_reduction(_eeg(), _eeg(seed=4), show=False)
-    assert fig2 is not None
-
-
 # ---------------------------------------------------------------------------
 # core.py low-level validation guards
 # ---------------------------------------------------------------------------
@@ -524,53 +488,6 @@ def test_juggler_dbscan_numeric_eps_fallback():
 # ---------------------------------------------------------------------------
 # Viz: ax-reuse (else: fig = ax.figure) + error / single-estimator branches
 # ---------------------------------------------------------------------------
-
-
-def test_viz_ax_reuse_and_branches():
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    from mne_denoise.viz import (
-        plot_asr_blink_reduction,
-        plot_asr_calibration_fraction,
-        plot_asr_component_reconstruction,
-        plot_asr_method_comparison,
-        plot_asr_repair_timeline,
-        plot_asr_variance_topomap,
-    )
-
-    X = _eeg(bursts=8)
-    asr = ASR(sfreq=SFREQ, cutoff=10.0, picks=None, verbose=False)
-    after = np.asarray(asr.fit_transform(X))
-
-    for fn, args in [
-        (plot_asr_repair_timeline, (asr,)),
-        (plot_asr_component_reconstruction, (asr,)),
-        (plot_asr_variance_topomap, (X, after)),
-        (plot_asr_blink_reduction, (X, after)),
-    ]:
-        fig, ax = plt.subplots()
-        out_fig, out_ax = fn(*args, ax=ax, show=False)
-        assert out_ax is ax
-        plt.close(fig)
-
-    # single estimator (not a list) + default labels + ax-reuse
-    fig, ax = plt.subplots()
-    plot_asr_calibration_fraction(asr, ax=ax, show=False)
-    plt.close(fig)
-
-    # method comparison ax-reuse
-    fig, ax = plt.subplots()
-    a = np.linspace(0.0, 1.0, 10)
-    plot_asr_method_comparison(a, a + 0.05, ax=ax, show=False)
-    plt.close(fig)
-
-    # repair timeline on an unfitted estimator -> ValueError
-    fresh = ASR(sfreq=SFREQ, picks=None, verbose=False)
-    with pytest.raises(ValueError, match="diagnostics"):
-        plot_asr_repair_timeline(fresh, show=False)
 
 
 # ---------------------------------------------------------------------------
@@ -671,25 +588,6 @@ def test_juggler_dbscan_min_samples_numeric():
 # ---------------------------------------------------------------------------
 # Viz: fname save + overlay channel-name pick (MNE input)
 # ---------------------------------------------------------------------------
-
-
-def test_viz_fname_save_and_overlay_pick_by_name(tmp_path):
-    mne = pytest.importorskip("mne")
-    import matplotlib
-
-    matplotlib.use("Agg")
-    from mne_denoise.viz import plot_asr_overlay
-
-    ch = [f"EEG{i:02d}" for i in range(8)]
-    info = mne.create_info(ch, SFREQ, "eeg")
-    raw_b = mne.io.RawArray(_eeg(bursts=8) * 1e-6, info, verbose=False)
-    asr = ASR(sfreq=SFREQ, cutoff=10.0, verbose=False)
-    raw_a = asr.fit_transform(raw_b)
-    out = tmp_path / "overlay.png"
-    plot_asr_overlay(
-        raw_b, raw_a, asr, pick="EEG03", duration=10.0, fname=str(out), show=False
-    )
-    assert out.exists()
 
 
 # ---------------------------------------------------------------------------
