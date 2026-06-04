@@ -10,7 +10,6 @@ auditability.
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -28,6 +27,7 @@ from ._spd import (
     _sqrt_and_eig,
     _sqrtm_spd,
 )
+from ._types import ASRState
 
 try:
     import mne
@@ -36,46 +36,6 @@ try:
     from mne.io import BaseRaw
 except ImportError:  # pragma: no cover - MNE is a required project dependency
     mne = None
-
-
-@dataclass
-class ASRState:
-    """Fitted ASR calibration state.
-
-    Parameters
-    ----------
-    M : ndarray, shape (n_channels, n_channels)
-        Matrix square root of the robust calibration covariance.
-    T : ndarray, shape (n_channels, n_channels)
-        Direction-dependent threshold matrix.
-    thresholds : ndarray, shape (n_channels,)
-        Per-calibration-component RMS thresholds.
-    calibration_patterns : ndarray, shape (n_channels, n_channels)
-        Calibration covariance eigenvectors.
-    filter_b : ndarray
-        Numerator coefficients for the statistics-only filter.
-    filter_a : ndarray
-        Denominator coefficients for the statistics-only filter.
-    cov : ndarray, shape (n_channels, n_channels)
-        Robust calibration covariance.
-    rank : int
-        Numerical rank after regularization.
-    method : {'standard', 'riemannian'}
-        Covariance geometry used by the fitted state.
-    riemannian_solver : str | None
-        Experimental eigenspace strategy used for Riemannian ASR.
-    """
-
-    M: np.ndarray
-    T: np.ndarray
-    thresholds: np.ndarray
-    calibration_patterns: np.ndarray
-    filter_b: np.ndarray
-    filter_a: np.ndarray
-    cov: np.ndarray
-    rank: int
-    method: str = "standard"
-    riemannian_solver: str | None = None
 
 
 def calibrate_asr(
