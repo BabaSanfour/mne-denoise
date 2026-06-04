@@ -151,7 +151,7 @@ def extract_data_from_mne(
     picks = None
     extracted_ch_names = None
 
-    if _HAS_MNE and isinstance(X, (BaseRaw, BaseEpochs, Evoked)):  # noqa: UP038
+    if _HAS_MNE and isinstance(X, BaseRaw | BaseEpochs | Evoked):
         orig_inst = X
         sfreq = X.info["sfreq"]
 

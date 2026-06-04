@@ -1,3 +1,0 @@
-Added a real-data ASR validation script that runs public ASR variants on local
-EEG recordings, injects known burst artifacts, and reports CPU, RSS memory,
-ASR memory modes, metadata preservation, and artifact-reduction metrics.

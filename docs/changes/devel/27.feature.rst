@@ -1,8 +1,0 @@
-Added the ``mne_denoise.asr`` module with a standard ASR estimator, array-level
-calibration/processing helpers, clean_rawdata-compatible clean-RMS distribution
-fitting and processing parity fixtures, ASR-specific QA metrics, diagnostics,
-tests, docs, synthetic gallery examples, and local Python-reference
-benchmarking helpers. Added MATLAB-backed ``AdaptiveASR`` PSP/PSW variants with
-``update()`` / ``reconstruct()`` aliases, adaptive parity fixtures from the
-local ``AASR`` reference repository, and a gallery example for chunkwise
-adaptive updates.

@@ -17,7 +17,7 @@ from mne_denoise.asr import (
     process_asr,
     select_juggler_reference_samples,
 )
-from mne_denoise.asr.core import _expm_sym, _karcher_mean_spd, _logm_spd
+from mne_denoise.asr._spd import _expm_sym, _karcher_mean_spd, _logm_spd
 
 
 @pytest.fixture()

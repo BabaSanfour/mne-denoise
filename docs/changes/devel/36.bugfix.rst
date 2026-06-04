@@ -1,0 +1,4 @@
+Made ASR calibration, standard processing, and ``AdaptiveASR`` processing honor
+``max_mem_mb`` with memory-bounded covariance aggregation and bounded covariance
+updates, preserving the existing full-memory path for small datasets and adding
+diagnostics for the selected memory mode.

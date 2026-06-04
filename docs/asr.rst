@@ -319,14 +319,3 @@ between burst repair and later segment rejection:
 This step does not delete samples from the returned object. It records the
 retained/rejected mask and exposes it for downstream QC, annotation, or
 manual trimming.
-
-Implementation plan
--------------------
-
-The detailed engineering plan and research synthesis are kept in
-:doc:`asr/ASR_IMPLEMENTATION_PLAN`.
-
-.. toctree::
-   :hidden:
-
-   asr/ASR_IMPLEMENTATION_PLAN

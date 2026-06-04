@@ -1,9 +1,19 @@
-"""Adaptive ASR variants backed by the AASR MATLAB reference.
+"""Adaptive Artifact Subspace Reconstruction (AASR) variants.
 
-This module implements the Hebbian/anti-Hebbian adaptive ASR variants from
-the local ``refs/asr/repos/AASR`` reference repository. The adaptive variants
-reuse standard ASR burst reconstruction while updating the calibration
-subspace between chunks using similarity-matching learning rules.
+This module implements the adaptive ASR variants from the ``AASR`` reference
+(Hebbian / anti-Hebbian similarity-matching learning), exposed as
+:class:`AdaptiveASR`. The estimator keeps standard ASR's burst reconstruction
+but updates the clean-subspace model between data chunks:
+
+- ``variant="psp"`` -- plasticity-stabilized (Hebbian) similarity matching;
+- ``variant="psw"`` -- plasticity-stabilized whitening (anti-Hebbian);
+- ``variant="mw"`` -- moving-window calibration (``mw_mode`` selects the
+  ``"final_state"`` or per-segment ``"sliding"`` semantics).
+
+It follows the package scikit-learn-style API: ``fit`` for the initial
+calibration, ``partial_fit`` for streaming chunk updates, and ``transform``
+for burst repair with the current adaptive state. The AASR pre-emphasis
+statistics filter is designed in :mod:`mne_denoise.asr._aasr_filter`.
 """
 
 from __future__ import annotations
@@ -13,9 +23,10 @@ from typing import Any
 
 import numpy as np
 from scipy import signal
-from scipy.linalg import toeplitz
 
 from ..utils import extract_data_from_mne, reconstruct_mne_object
+from ._aasr_filter import design_aasr_filter as _design_aasr_filter
+from ._spd import _regularize_spd, _sqrtm_spd
 from .core import (
     ASR,
     ASRState,
@@ -30,22 +41,21 @@ from .core import (
     _max_mem_bytes,
     _moving_average_clean_rawdata,
     _process_memory_info,
-    _regularize_spd,
     _resolve_max_dims_clean_rawdata,
     _round_half_up,
     _sample_mask_from_removed_windows,
-    _sqrtm_spd,
     _validate_array_2d,
     fit_eeg_distribution,
 )
 
 try:
-    import mne
     from mne.epochs import BaseEpochs
     from mne.evoked import Evoked
     from mne.io import BaseRaw
 except ImportError:  # pragma: no cover - MNE is a required project dependency
-    mne = None
+    BaseEpochs = Any
+    BaseRaw = Any
+    Evoked = Any
 
 
 _AASR_BETA_GRID = np.arange(1.7, 3.5 + 1e-12, 0.15, dtype=np.float64)
@@ -88,106 +98,6 @@ class _AdaptiveSimilarityMatcher:
         components = (self.Minv @ self.W).T
         q, _ = np.linalg.qr(components, mode="reduced")
         return q.astype(np.float64, copy=False)
-
-
-def _polystab(a: np.ndarray) -> np.ndarray:
-    roots = np.roots(a)
-    keep = roots != 0
-    reflect = 0.5 * (np.sign(np.abs(roots[keep]) - 1.0) + 1.0)
-    roots[keep] = (1.0 - reflect) * roots[keep] + reflect / np.conj(roots[keep])
-    nz = np.flatnonzero(a != 0)
-    b = a[nz[0]] * np.poly(roots)
-    if not np.any(np.imag(a)):
-        b = np.real(b)
-    return np.asarray(b, dtype=np.float64)
-
-
-def _numf(h: np.ndarray, a: np.ndarray, nb: int) -> np.ndarray:
-    nh = int(np.max(h.size))
-    impulse = np.zeros(nh, dtype=np.float64)
-    impulse[0] = 1.0
-    impr = signal.lfilter(np.array([1.0]), a, impulse)
-    rhs = np.concatenate(([1.0], np.zeros(nb, dtype=np.float64)))
-    return np.linalg.lstsq(toeplitz(impr, rhs), h.T, rcond=None)[0].T
-
-
-def _denf(R: np.ndarray, na: int) -> np.ndarray:
-    nr = int(np.max(np.size(R)))
-    Rm = toeplitz(R[na : nr - 1], R[na:0:-1])
-    rhs = -R[na + 1 : nr]
-    return np.concatenate(([1.0], np.linalg.lstsq(Rm, rhs.T, rcond=None)[0].T))
-
-
-def _yulewalk(
-    order: int, F: np.ndarray, M: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """Design the AASR statistics filter."""
-    F = np.asarray(F, dtype=np.float64)
-    M = np.asarray(M, dtype=np.float64)
-    npt = 513
-    lap = int(np.fix((npt - 1) / 25))
-    Ht = np.zeros(npt, dtype=np.float64)
-    Ht[0] = M[0]
-    df = np.diff(F)
-
-    nb = 0
-    for idx in range(F.size - 1):
-        if df[idx] == 0:
-            nb = nb - int(lap / 2)
-            ne = nb + lap
-        else:
-            ne = int(np.fix(F[idx + 1] * npt)) - 1
-        j = np.arange(nb, ne + 1)
-        inc = 0.0 if ne == nb else (j - nb) / (ne - nb)
-        Ht[nb : ne + 1] = inc * M[idx + 1] + (1.0 - inc) * M[idx]
-        nb = ne + 1
-
-    Ht = np.concatenate([Ht, Ht[-2:0:-1]])
-    n = Ht.size
-    n2 = int(np.fix((n + 1) / 2))
-    nr = 4 * order
-    nt = np.arange(nr, dtype=np.float64)
-
-    R = np.real(np.fft.ifft(Ht * Ht))
-    R = R[:nr] * (0.54 + 0.46 * np.cos(np.pi * nt / max(nr - 1, 1)))
-
-    Rwindow = np.concatenate(
-        (
-            np.array([0.5], dtype=np.float64),
-            np.ones(max(n2 - 1, 0), dtype=np.float64),
-            np.zeros(max(n - n2, 0), dtype=np.float64),
-        )
-    )
-    A = _polystab(_denf(R, order))
-    Qh = _numf(np.concatenate(([R[0] / 2.0], R[1:nr])), A, order)
-
-    _, Ss = signal.freqz(Qh, A, worN=n, whole=True)
-    Ss = np.maximum(2.0 * np.real(Ss), np.finfo(float).eps)
-    hh = np.fft.ifft(np.exp(np.fft.fft(Rwindow * np.fft.ifft(np.log(Ss)))))
-    B = np.real(_numf(hh[:nr], A, order))
-    return np.asarray(B, dtype=np.float64), np.asarray(A, dtype=np.float64)
-
-
-def _design_aasr_filter(sfreq: float) -> tuple[np.ndarray, np.ndarray]:
-    freqs = (
-        np.array(
-            [
-                0.0,
-                2.0,
-                3.0,
-                13.0,
-                16.0,
-                40.0,
-                min(80.0, (sfreq / 2.0) - 1.0),
-                sfreq / 2.0,
-            ],
-            dtype=np.float64,
-        )
-        * 2.0
-        / sfreq
-    )
-    mags = np.array([3.0, 0.75, 0.33, 0.33, 1.0, 1.0, 3.0, 3.0], dtype=np.float64)
-    return _yulewalk(8, freqs, mags)
 
 
 def _lfilter_channels(

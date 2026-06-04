@@ -19,6 +19,16 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 from ..utils import extract_data_from_mne, reconstruct_mne_object
 
+# SPD / Riemannian primitives live in mne_denoise.asr._spd.
+from ._spd import (
+    _geometric_median,
+    _geometric_median_chunked,
+    _regularize_spd,
+    _riemannian_nonlinear_eigenspace,
+    _sqrt_and_eig,
+    _sqrtm_spd,
+)
+
 try:
     import mne
     from mne.epochs import BaseEpochs
@@ -1076,8 +1086,11 @@ class ASR(BaseEstimator, TransformerMixin):
         ``'manual'`` uses all supplied calibration samples.
     picks : str | list | None
         Channels to clean for MNE objects. Default ``'eeg'`` excludes channels
-        in ``info['bads']``. For NumPy arrays, ``None`` or ``'all'`` uses all
-        rows and a list of integers selects rows.
+        in ``info['bads']``. Also accepts ``'mag'``, ``'grad'``, ``'meg'``,
+        ``'all'``, a list of channel names, or a list of integer indices (the
+        ASR algorithm is unit/scale agnostic, so MEG works the same as EEG).
+        For NumPy arrays, ``None`` or a channel-type string uses all rows and a
+        list of integers selects rows.
     calibration_window_length : float
         Window length in seconds for automatic clean-window selection.
     calibration_window_overlap : float
@@ -1647,7 +1660,14 @@ class ASR(BaseEstimator, TransformerMixin):
     ) -> tuple[np.ndarray, list[str] | None]:
         if mne_type == "array":
             n_channels = data.shape[0]
-            if self.picks is None or self.picks in ("all", "data", "eeg"):
+            if self.picks is None or self.picks in (
+                "all",
+                "data",
+                "eeg",
+                "meg",
+                "mag",
+                "grad",
+            ):
                 picks = np.arange(n_channels, dtype=int)
             else:
                 picks = np.asarray(self.picks, dtype=int)
@@ -1671,9 +1691,14 @@ class ASR(BaseEstimator, TransformerMixin):
                 misc=False,
                 exclude="bads",
             )
+        elif self.picks == "meg":
+            picks = mne.pick_types(info, meg=True, eeg=False, exclude="bads")
+        elif self.picks in ("mag", "grad"):
+            picks = mne.pick_types(info, meg=self.picks, eeg=False, exclude="bads")
         elif isinstance(self.picks, str):
-            picks = mne.pick_types(
-                info, meg=False, eeg=self.picks == "eeg", exclude="bads"
+            raise ValueError(
+                f"Unsupported picks string {self.picks!r}; use 'eeg', 'mag', "
+                "'grad', 'meg', 'all', a list of channel names, or indices."
             )
         elif all(isinstance(pick, str) for pick in self.picks):
             picks = mne.pick_channels(
@@ -1955,8 +1980,14 @@ def _validate_array_2d(X: np.ndarray) -> np.ndarray:
         raise ValueError(f"Channels contain too many non-finite samples: {bad}")
     X = np.nan_to_num(X, copy=True)
     variances = np.var(X, axis=1)
-    if np.any(variances <= np.finfo(float).eps):
-        bad = np.where(variances <= np.finfo(float).eps)[0].tolist()
+    max_var = float(np.max(variances))
+    # Relative floor so legitimately small-amplitude data (e.g. MEG in Tesla,
+    # variance ~1e-26) is not rejected, while genuinely flat/dead channels
+    # (variance ~0 relative to the rest) still are.
+    if max_var <= 0.0:
+        raise ValueError("All channels have zero or near-zero variance")
+    bad = np.where(variances <= max_var * 1e-12)[0].tolist()
+    if bad:
         raise ValueError(f"Channels with zero or near-zero variance: {bad}")
     return X
 
@@ -2724,202 +2755,6 @@ def _aggregate_covariances(covariances: np.ndarray, method: str) -> np.ndarray:
     if method == "median":
         return np.median(covariances, axis=0)
     return _geometric_median(covariances)
-
-
-def _geometric_median(
-    covariances: np.ndarray,
-    *,
-    max_iter: int = 128,
-    tol: float = 1e-7,
-) -> np.ndarray:
-    current = np.mean(covariances, axis=0)
-    for _ in range(max_iter):
-        distances = np.linalg.norm(
-            (covariances - current).reshape(covariances.shape[0], -1),
-            axis=1,
-        )
-        distances = np.maximum(distances, np.finfo(float).eps)
-        weights = 1.0 / distances
-        update = np.tensordot(weights, covariances, axes=(0, 0)) / np.sum(weights)
-        if np.linalg.norm(update - current) <= tol * max(np.linalg.norm(current), 1.0):
-            current = update
-            break
-        current = update
-    return current
-
-
-def _geometric_median_chunked(
-    iter_factory,
-    chunk_blocks: int,
-    n_channels: int,
-    *,
-    max_iter: int = 128,
-    tol: float = 1e-7,
-) -> np.ndarray:
-    """Compute a covariance geometric median without storing all blocks."""
-    total = np.zeros((n_channels, n_channels), dtype=np.float64)
-    count = 0
-    for chunk in iter_factory(chunk_blocks):
-        total += np.sum(chunk, axis=0)
-        count += chunk.shape[0]
-    current = total / max(count, 1)
-
-    for _ in range(max_iter):
-        numerator = np.zeros_like(current)
-        denominator = 0.0
-        for chunk in iter_factory(chunk_blocks):
-            distances = np.linalg.norm(
-                (chunk - current).reshape(chunk.shape[0], -1),
-                axis=1,
-            )
-            distances = np.maximum(distances, np.finfo(float).eps)
-            weights = 1.0 / distances
-            numerator += np.tensordot(weights, chunk, axes=(0, 0))
-            denominator += float(np.sum(weights))
-        update = numerator / max(denominator, np.finfo(float).eps)
-        if np.linalg.norm(update - current) <= tol * max(np.linalg.norm(current), 1.0):
-            current = update
-            break
-        current = update
-    return current
-
-
-def _regularize_spd(C: np.ndarray, regularization: float) -> np.ndarray:
-    C = (C + C.T) / 2
-    w, V = np.linalg.eigh(C)
-    floor = regularization * max(float(np.trace(C)) / C.shape[0], np.max(w), 1.0)
-    w = np.maximum(w, floor)
-    return (V * w) @ V.T
-
-
-def _sqrtm_spd(C: np.ndarray, regularization: float) -> np.ndarray:
-    C = _regularize_spd(C, regularization)
-    w, V = np.linalg.eigh(C)
-    return (V * np.sqrt(np.maximum(w, np.finfo(float).eps))) @ V.T
-
-
-def _invsqrtm_spd(C: np.ndarray, regularization: float) -> np.ndarray:
-    C = _regularize_spd(C, regularization)
-    w, V = np.linalg.eigh(C)
-    w = np.maximum(w, np.finfo(float).eps)
-    return (V * (1.0 / np.sqrt(w))) @ V.T
-
-
-def _logm_spd(C: np.ndarray, regularization: float) -> np.ndarray:
-    C = _regularize_spd(C, regularization)
-    w, V = np.linalg.eigh(C)
-    w = np.maximum(w, np.finfo(float).eps)
-    return (V * np.log(w)) @ V.T
-
-
-def _expm_sym(S: np.ndarray) -> np.ndarray:
-    S = (S + S.T) / 2.0
-    w, V = np.linalg.eigh(S)
-    return (V * np.exp(w)) @ V.T
-
-
-def _karcher_mean_spd(
-    covariances: np.ndarray,
-    *,
-    regularization: float,
-    init: np.ndarray | None = None,
-    sample_weight: np.ndarray | None = None,
-    max_iter: int = 32,
-    tol: float = 1e-7,
-) -> tuple[np.ndarray, dict[str, Any]]:
-    """Compute the affine-invariant Karcher mean of SPD matrices."""
-    covariances = np.asarray(covariances, dtype=np.float64)
-    if covariances.ndim != 3:
-        raise ValueError(
-            "covariances must have shape (n_matrices, n_channels, n_channels)"
-        )
-    n_matrices = covariances.shape[0]
-    if n_matrices < 1:
-        raise ValueError("At least one covariance matrix is required")
-
-    if sample_weight is None:
-        weights = np.full(n_matrices, 1.0 / n_matrices, dtype=np.float64)
-    else:
-        weights = np.asarray(sample_weight, dtype=np.float64)
-        if weights.shape != (n_matrices,):
-            raise ValueError(
-                f"sample_weight must have shape ({n_matrices},), got {weights.shape}"
-            )
-        if np.any(weights < 0):
-            raise ValueError("sample_weight must be non-negative")
-        weight_sum = np.sum(weights)
-        if weight_sum <= 0:
-            raise ValueError("sample_weight must sum to a positive value")
-        weights = weights / weight_sum
-
-    current = (
-        _regularize_spd(init, regularization)
-        if init is not None
-        else _regularize_spd(np.mean(covariances, axis=0), regularization)
-    )
-    converged = False
-    update_norm = np.inf
-    iteration_count = 0
-    for _ in range(max_iter):
-        iteration_count += 1
-        sqrt_current = _sqrtm_spd(current, regularization)
-        invsqrt_current = _invsqrtm_spd(current, regularization)
-        tangent = np.zeros_like(current)
-        for weight, cov in zip(weights, covariances):
-            centered = (
-                invsqrt_current @ _regularize_spd(cov, regularization) @ invsqrt_current
-            )
-            tangent += weight * _logm_spd(centered, regularization)
-        update_norm = float(np.linalg.norm(tangent, ord="fro"))
-        if update_norm <= tol * max(float(np.linalg.norm(current, ord="fro")), 1.0):
-            converged = True
-            break
-        current = sqrt_current @ _expm_sym(tangent) @ sqrt_current
-        current = _regularize_spd(current, regularization)
-
-    info = {
-        "riemannian_mean_iterations": int(iteration_count),
-        "riemannian_mean_converged": bool(converged),
-        "riemannian_mean_update_norm": float(update_norm),
-    }
-    return current, info
-
-
-def _sqrt_and_eig(
-    C: np.ndarray,
-    regularization: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    w, V = np.linalg.eigh(C)
-    order = np.argsort(w)
-    w = w[order]
-    V = V[:, order]
-    floor = regularization * max(np.max(w), 1.0)
-    w = np.maximum(w, floor)
-    M = (V * np.sqrt(w)) @ V.T
-    return M, w, V
-
-
-def _riemannian_nonlinear_eigenspace(
-    L: np.ndarray,
-    regularization: float,
-    *,
-    alpha: float = 1.0,
-) -> tuple[np.ndarray, np.ndarray]:
-    r"""Approximate rASR's nonlinear eigenspace for the full-basis case.
-
-    The MATLAB ``rasr_nonlinear_eigenspace`` helper is called with ``k=C`` in
-    both calibration and processing. In that regime, the initialization step
-    dominates and yields a deterministic modified eigenproblem based on
-    ``L + alpha * diag(L \\ 1)``.
-    """
-    L = _regularize_spd(L, regularization)
-    ones = np.ones(L.shape[0], dtype=np.float64)
-    correction = np.linalg.solve(L, ones)
-    modified = L + alpha * np.diag(correction)
-    modified = (modified + modified.T) / 2.0
-    D, V = np.linalg.eigh(modified)
-    order = np.argsort(D)
-    return D[order], V[:, order]
 
 
 def _concatenate_windows(

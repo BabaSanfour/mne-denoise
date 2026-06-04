@@ -392,7 +392,7 @@ def test_riemannian_low_memory_runs():
 
 
 def test_karcher_mean_spd_validation_guards():
-    from mne_denoise.asr.core import _karcher_mean_spd
+    from mne_denoise.asr._spd import _karcher_mean_spd
 
     spd = np.stack([np.eye(3), 2.0 * np.eye(3)])
     with pytest.raises(ValueError, match="shape"):
@@ -867,3 +867,38 @@ def test_select_juggler_reference_samples_param_guards():
 def test_juggler_constructor_param_guards(kwargs, msg):
     with pytest.raises(ValueError, match=msg):
         JugglerASR(sfreq=SFREQ, picks=None, verbose=False, **kwargs).fit(_eeg())
+
+
+# ---------------------------------------------------------------------------
+# MEG support: ASR is unit/scale agnostic, so picks="mag"/"grad"/"meg" work
+# ---------------------------------------------------------------------------
+
+
+def test_asr_supports_meg_picks():
+    mne = pytest.importorskip("mne")
+    rng = np.random.default_rng(0)
+    n = 6000
+    t = np.arange(n) / SFREQ
+    X = np.zeros((12, n))
+    for c in range(12):
+        X[c] = (
+            0.6 * np.sin(2 * np.pi * 10 * t + rng.uniform(0, 6.28))
+            + 0.05 * rng.standard_normal(n)
+        ) * 1e-13  # magnetometer (Tesla) scale
+    for s in (1200, 3000, 4500):
+        sp = rng.standard_normal(12)
+        sp /= np.linalg.norm(sp)
+        X[:, s : s + 150] += 10e-13 * np.outer(sp, rng.standard_normal(150))
+    info = mne.create_info([f"MEG{i:02d}" for i in range(12)], SFREQ, "mag")
+    raw = mne.io.RawArray(X, info, verbose=False)
+    out = ASR(sfreq=SFREQ, cutoff=20.0, picks="mag", verbose=False).fit_transform(raw)
+    assert out.get_data().shape == raw.get_data().shape
+    assert np.all(np.isfinite(out.get_data()))
+
+
+def test_asr_unknown_picks_string_raises():
+    mne = pytest.importorskip("mne")
+    info = mne.create_info([f"EEG{i:02d}" for i in range(8)], SFREQ, "eeg")
+    raw = mne.io.RawArray(_eeg() * 1e-6, info, verbose=False)
+    with pytest.raises(ValueError, match="Unsupported picks"):
+        ASR(sfreq=SFREQ, picks="bogus", verbose=False).fit(raw)

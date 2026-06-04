@@ -3,6 +3,8 @@
 % Prerequisites:
 %   1. Run generate_asr_input.py from the repository root.
 %   2. Ensure refs/asr/repos/rASRMatlab is present locally.
+%   3. Ensure Manopt (https://www.manopt.org) is on the MATLAB path; it
+%      provides grassmannfactory and the Karcher-mean solver used by rASR.
 %
 % Outputs:
 %   - rasr_reference_results.mat (legacy first-case artifact)
@@ -13,7 +15,6 @@ repo_root = fileparts(fileparts(fileparts(here)));
 legacy_input_file = fullfile(here, 'asr_input_fixture.mat');
 legacy_output_file = fullfile(here, 'rasr_reference_results.mat');
 rasr_path = fullfile(repo_root, 'refs', 'asr', 'repos', 'rASRMatlab', 'rASRToolbox');
-shim_path = fullfile(here, 'rasr_matlab_shims');
 
 if ~exist(legacy_input_file, 'file')
     error('Missing %s. Run generate_asr_input.py first.', legacy_input_file);
@@ -22,7 +23,6 @@ if ~exist(rasr_path, 'dir')
     error('Missing rASR toolbox path: %s', rasr_path);
 end
 
-addpath(shim_path);
 addpath(rasr_path);
 
 if exist('clean_windows', 'file') ~= 2
