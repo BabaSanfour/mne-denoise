@@ -13,10 +13,30 @@ import warnings
 from typing import Any
 
 import numpy as np
-from scipy import special
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from ..utils import extract_data_from_mne, reconstruct_mne_object
+from ._covariance import (
+    _aggregate_block_covariances,
+    _aggregate_covariances,
+    _block_covariances_clean_rawdata,
+    _block_covariances_rasr,
+    _covariance_chunk_blocks,
+    _covariance_stack_bytes,
+    _iter_block_covariances_clean_rawdata,
+    _iter_block_covariances_rasr,
+    _iter_moving_covariances_at,
+    _max_mem_bytes,
+    _moving_average_clean_rawdata,
+    _process_memory_info,
+    _window_covariances,
+)
+from ._distribution import (
+    _fit_eeg_distribution_clean_rawdata,
+    _histc_scaled_bins,
+    _robust_location_scale,
+    fit_eeg_distribution,
+)
 from ._filters import (
     _append_clean_rawdata_tail,
     _apply_statistics_filter,
@@ -27,8 +47,6 @@ from ._filters import (
 
 # SPD / Riemannian primitives live in mne_denoise.asr._spd.
 from ._spd import (
-    _geometric_median,
-    _geometric_median_chunked,
     _regularize_spd,
     _riemannian_nonlinear_eigenspace,
     _sqrt_and_eig,
@@ -270,224 +288,6 @@ def calibrate_asr(
     diagnostics.update(memory_info)
     diagnostics.update(riemannian_info)
     return state, diagnostics
-
-
-def fit_eeg_distribution(
-    values: np.ndarray,
-    *,
-    min_clean_fraction: float = 0.25,
-    max_dropout_fraction: float = 0.1,
-    fit_quantiles: tuple[float, float] = (0.022, 0.6),
-    beta_grid: np.ndarray | None = None,
-    return_info: bool = False,
-) -> tuple[float, float] | tuple[float, float, dict[str, Any]]:
-    """Fit robust clean EEG RMS statistics.
-
-    This implements the truncated generalized-Gaussian grid search used by
-    clean_rawdata's ASR calibration. The fitter sorts finite RMS values,
-    searches over plausible low-tail dropout offsets and clean interval
-    widths, and selects the generalized-Gaussian shape with minimum
-    histogram KL divergence.
-
-    Parameters
-    ----------
-    values : ndarray, shape (n_windows,)
-        RMS or amplitude statistics for one component/channel.
-    min_clean_fraction : float
-        Minimum fraction of values assumed to be clean.
-    max_dropout_fraction : float
-        Maximum low-tail fraction that may be ignored as dropouts.
-    fit_quantiles : tuple of float
-        Lower and upper quantile span used for the clean interval search.
-        The upper value also controls the preferred interval width.
-    beta_grid : ndarray | None
-        Generalized-Gaussian shape grid. If ``None``, use values from 1.7 to
-        3.5, matching the range commonly cited for ASR ports.
-    return_info : bool
-        If True, return an additional diagnostics dictionary.
-
-    Returns
-    -------
-    mu : float
-        Robust location estimate of the clean RMS distribution.
-    sigma : float
-        Robust standard-deviation estimate of the clean RMS distribution.
-    info : dict
-        Returned only when ``return_info=True``. Contains ``beta``,
-        ``fit_error``, ``fit_interval``, and ``n_fit_samples``.
-    """
-    if not (0 <= max_dropout_fraction < 1):
-        raise ValueError("max_dropout_fraction must be in [0, 1)")
-    if not (0 < min_clean_fraction <= 1):
-        raise ValueError("min_clean_fraction must be in (0, 1]")
-    if max_dropout_fraction + min_clean_fraction >= 1:
-        raise ValueError(
-            "max_dropout_fraction + min_clean_fraction must be less than 1"
-        )
-    q_low, q_high = fit_quantiles
-    if not (0 <= q_low < q_high <= 1):
-        raise ValueError("fit_quantiles must satisfy 0 <= low < high <= 1")
-
-    finite = np.asarray(values, dtype=np.float64)
-    finite = finite[np.isfinite(finite)]
-    if finite.size == 0:
-        raise ValueError("Cannot fit ASR thresholds from empty RMS distribution")
-    finite = np.sort(finite)
-
-    beta_grid = (
-        1.7 + 0.15 * np.arange(13, dtype=np.float64)
-        if beta_grid is None
-        else np.asarray(beta_grid, dtype=np.float64)
-    )
-    if beta_grid.size == 0:
-        raise ValueError("beta_grid must contain positive values")
-    if np.any(beta_grid <= 1) or np.any(beta_grid >= 7):
-        raise ValueError("beta_grid values must be in the open interval (1, 7)")
-
-    best = _fit_eeg_distribution_clean_rawdata(
-        finite,
-        min_clean_fraction=min_clean_fraction,
-        max_dropout_fraction=max_dropout_fraction,
-        fit_quantiles=(q_low, q_high),
-        beta_grid=beta_grid,
-    )
-
-    if return_info:
-        info = {
-            "beta": float(best["beta"]),
-            "fit_error": float(best["fit_error"]),
-            "fit_interval": tuple(best["fit_interval"]),
-            "n_fit_samples": int(best["n_fit_samples"]),
-            "score": float(best["score"]),
-        }
-        return float(best["mu"]), float(best["sigma"]), info
-    return float(best["mu"]), float(best["sigma"])
-
-
-def _fit_eeg_distribution_clean_rawdata(
-    values: np.ndarray,
-    *,
-    min_clean_fraction: float,
-    max_dropout_fraction: float,
-    fit_quantiles: tuple[float, float],
-    beta_grid: np.ndarray,
-) -> dict[str, Any]:
-    """Port of clean_rawdata's ASR EEG distribution fitter."""
-    q_low, q_high = fit_quantiles
-    step_sizes = (0.01, 0.01)
-    n_values = values.size
-
-    bounds_by_beta = []
-    rescale = np.empty(beta_grid.size, dtype=np.float64)
-    for idx, beta in enumerate(beta_grid):
-        sign = np.sign(np.asarray([q_low, q_high]) - 0.5)
-        gamma_arg = sign * (2.0 * np.asarray([q_low, q_high]) - 1.0)
-        bounds = sign * special.gammaincinv(1.0 / beta, gamma_arg) ** (1.0 / beta)
-        bounds_by_beta.append(bounds)
-        rescale[idx] = beta / (2.0 * special.gamma(1.0 / beta))
-
-    max_width = q_high - q_low
-    min_width = min_clean_fraction * max_width
-    n_range = _round_half_up(n_values * max_width)
-    offsets = np.asarray(
-        [
-            _round_half_up(n_values * offset)
-            for offset in np.arange(
-                q_low,
-                q_low + max_dropout_fraction + np.finfo(float).eps,
-                step_sizes[0],
-            )
-        ],
-        dtype=int,
-    )
-    row_idx = np.arange(n_range, dtype=int)[:, np.newaxis]
-    sample_idx = row_idx + offsets[np.newaxis, :]
-    sample_idx = np.minimum(sample_idx, n_values - 1)
-    ranges = values[sample_idx]
-    range_start = ranges[0].copy()
-    ranges = ranges - range_start[np.newaxis, :]
-
-    opt_val = np.inf
-    opt_beta = np.nan
-    opt_bounds = None
-    opt_lu = None
-    opt_m = 0
-    widths = np.arange(max_width, min_width - np.finfo(float).eps, -step_sizes[1])
-    for width in widths:
-        m = _round_half_up(n_values * width)
-        if m < 2 or m > ranges.shape[0]:
-            continue
-        denominators = ranges[m - 1]
-        valid = denominators > np.finfo(float).eps
-        if not np.any(valid):
-            continue
-        nbins = max(1, _round_half_up(3.0 * np.log2(1.0 + m / 2.0)))
-        scaled = np.empty((m, ranges.shape[1]), dtype=np.float64)
-        scaled[:, valid] = ranges[:m, valid] * (nbins / denominators[valid])
-        scaled[:, ~valid] = np.nan
-        counts = _histc_scaled_bins(scaled, nbins)
-        logq = np.log(counts + 0.01)
-
-        for beta_idx, beta in enumerate(beta_grid):
-            bounds = bounds_by_beta[beta_idx]
-            x = bounds[0] + ((np.arange(nbins) + 0.5) / nbins) * np.diff(bounds)[0]
-            p = np.exp(-(np.abs(x) ** beta)) * rescale[beta_idx]
-            p = p / np.sum(p)
-            kl = np.sum(p[:, np.newaxis] * (np.log(p)[:, np.newaxis] - logq), axis=0)
-            kl = kl + np.log(m)
-            kl[~valid] = np.inf
-            idx = int(np.argmin(kl))
-            min_val = float(kl[idx])
-            if min_val < opt_val:
-                opt_val = min_val
-                opt_beta = float(beta)
-                opt_bounds = bounds
-                opt_lu = (
-                    float(range_start[idx]),
-                    float(range_start[idx] + ranges[m - 1, idx]),
-                )
-                opt_m = int(m)
-
-    if opt_lu is None or opt_bounds is None:
-        mu, sigma = _robust_location_scale(values)
-        return {
-            "mu": mu,
-            "sigma": sigma,
-            "beta": np.nan,
-            "fit_error": np.nan,
-            "score": np.nan,
-            "fit_interval": (0.0, 1.0),
-            "n_fit_samples": int(n_values),
-        }
-
-    alpha = (opt_lu[1] - opt_lu[0]) / np.diff(opt_bounds)[0]
-    mu = opt_lu[0] - opt_bounds[0] * alpha
-    sigma = np.sqrt(
-        (alpha**2) * special.gamma(3.0 / opt_beta) / special.gamma(1.0 / opt_beta)
-    )
-    return {
-        "mu": float(mu),
-        "sigma": float(sigma),
-        "beta": float(opt_beta),
-        "fit_error": float(opt_val),
-        "score": float(opt_val),
-        "fit_interval": (float(opt_lu[0]), float(opt_lu[1])),
-        "n_fit_samples": int(opt_m),
-    }
-
-
-def _histc_scaled_bins(values: np.ndarray, nbins: int) -> np.ndarray:
-    """Histogram columns like MATLAB ``histc(H, [0:nbins-1, Inf])``."""
-    counts = np.zeros((nbins, values.shape[1]), dtype=np.float64)
-    for col in range(values.shape[1]):
-        finite = values[:, col]
-        finite = finite[np.isfinite(finite)]
-        if finite.size == 0:
-            continue
-        bins = np.floor(finite).astype(int)
-        bins = np.clip(bins, 0, nbins - 1)
-        counts[:, col] = np.bincount(bins, minlength=nbins)
-    return counts
 
 
 def compute_asr_qa_metrics(
@@ -1975,71 +1775,6 @@ def _resolve_max_bad_channels_count(
     return min(resolved, n_channels)
 
 
-def _process_memory_info(
-    *,
-    n_channels: int,
-    n_stream_input: int,
-    max_mem_mb: int | float | None,
-    memory_mode: str,
-    peak_cov_buffer_bytes: int,
-    chunk_samples: int,
-    used_memory_bound: bool,
-) -> dict[str, Any]:
-    """Create process-time covariance memory diagnostics."""
-    return {
-        "memory_mode": memory_mode,
-        "max_mem_mb": max_mem_mb,
-        "used_memory_bound": bool(used_memory_bound),
-        "estimated_full_cov_bytes": _covariance_stack_bytes(
-            n_stream_input,
-            n_channels,
-        ),
-        "peak_cov_buffer_bytes": int(peak_cov_buffer_bytes),
-        "chunk_samples": int(chunk_samples),
-    }
-
-
-def _iter_moving_covariances_at(
-    X: np.ndarray,
-    update_at: np.ndarray,
-    window_length: int,
-):
-    """Yield trailing moving covariances at ASR update sample counts."""
-    n_channels, _ = X.shape
-    cov_sum = np.zeros((n_channels, n_channels), dtype=np.float64)
-    current_n = 0
-    for target_n in update_at:
-        target_n = int(target_n)
-        while current_n < target_n:
-            sample = X[:, current_n]
-            cov_sum += np.outer(sample, sample)
-            remove_idx = current_n - window_length
-            if remove_idx >= 0:
-                old_sample = X[:, remove_idx]
-                cov_sum -= np.outer(old_sample, old_sample)
-            current_n += 1
-        yield cov_sum / window_length
-
-
-def _moving_average_clean_rawdata(
-    window_length: int,
-    X: np.ndarray,
-    zi: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Moving-average filter equivalent to clean_rawdata's helper."""
-    if zi is None:
-        zi = np.zeros((X.shape[0], window_length), dtype=np.float64)
-    Y = np.concatenate([zi, X], axis=1)
-    diffs = (Y[:, window_length:] - Y[:, :-window_length]) / window_length
-    out = np.cumsum(diffs, axis=1)
-    zf_first = Y[:, [-window_length]] - out[:, [-1]] * window_length
-    zf_tail = (
-        Y[:, -window_length + 1 :] if window_length > 1 else np.empty((X.shape[0], 0))
-    )
-    zf = np.concatenate([zf_first, zf_tail], axis=1)
-    return out, zf
-
-
 def _empty_process_diagnostics(n_times: int) -> dict[str, Any]:
     """Return identity-processing diagnostics."""
     return {
@@ -2084,19 +1819,6 @@ def _select_clean_windows(
         penalty = np.mean(np.maximum(zscores - max(ref_tolerances), 0.0), axis=1)
         clean[np.argmin(penalty)] = True
     return clean, diagnostics["window_rms_zscores"]
-
-
-def _window_covariances(
-    X: np.ndarray,
-    starts: np.ndarray,
-    win_len: int,
-) -> np.ndarray:
-    covariances = np.empty((len(starts), X.shape[0], X.shape[0]), dtype=np.float64)
-    for idx, start in enumerate(starts):
-        window = X[:, start : start + win_len]
-        window = window - window.mean(axis=1, keepdims=True)
-        covariances[idx] = (window @ window.T) / max(win_len - 1, 1)
-    return covariances
 
 
 def _clean_windows_grid_diagnostics(
@@ -2416,183 +2138,6 @@ def _process_asr_riemannian_windowed(
     return X_clean, diagnostics
 
 
-def _max_mem_bytes(max_mem_mb: int | float | None) -> int | None:
-    """Convert an optional megabyte memory cap to bytes."""
-    if max_mem_mb is None:
-        return None
-    max_mem_mb = float(max_mem_mb)
-    if not np.isfinite(max_mem_mb) or max_mem_mb < 0:
-        raise ValueError("max_mem_mb must be non-negative or None")
-    return int(max_mem_mb * 1024 * 1024)
-
-
-def _covariance_stack_bytes(n_items: int, n_channels: int) -> int:
-    """Return bytes needed for a float64 covariance stack."""
-    return int(n_items * n_channels * n_channels * np.dtype(np.float64).itemsize)
-
-
-def _covariance_chunk_blocks(n_channels: int, max_mem_bytes: int | None) -> int:
-    """Resolve a conservative covariance chunk size under a memory cap."""
-    per_block = _covariance_stack_bytes(1, n_channels)
-    if max_mem_bytes is None:
-        return np.iinfo(np.int32).max
-    budget = max(per_block, max_mem_bytes // 4)
-    return max(1, int(budget // per_block))
-
-
-def _iter_block_covariances_clean_rawdata(
-    X: np.ndarray,
-    blocksize: int,
-    chunk_blocks: int,
-):
-    """Yield clean_rawdata-style padded block covariances in chunks."""
-    n_channels, n_times = X.shape
-    n_blocks = max(1, int(np.ceil(n_times / blocksize)))
-    X_t = X.T
-    for start_block in range(0, n_blocks, chunk_blocks):
-        stop_block = min(start_block + chunk_blocks, n_blocks)
-        block_ids = np.arange(start_block, stop_block, dtype=int)
-        covariances = np.zeros(
-            (block_ids.size, n_channels, n_channels), dtype=np.float64
-        )
-        for offset in range(blocksize):
-            sample_idx = np.minimum(n_times - 1, offset + block_ids * blocksize)
-            samples = X_t[sample_idx]
-            covariances += np.einsum("bi,bj->bij", samples, samples, optimize=True)
-        yield covariances / blocksize
-
-
-def _iter_block_covariances_rasr(
-    X: np.ndarray,
-    blocksize: int,
-    chunk_blocks: int,
-):
-    """Yield rASRMatlab-style contiguous block covariances in chunks."""
-    n_channels, n_times = X.shape
-    starts = np.arange(0, n_times, blocksize, dtype=int)
-    for start_block in range(0, len(starts), chunk_blocks):
-        stop_block = min(start_block + chunk_blocks, len(starts))
-        covariances = np.empty(
-            (stop_block - start_block, n_channels, n_channels),
-            dtype=np.float64,
-        )
-        for out_idx, sample_start in enumerate(starts[start_block:stop_block]):
-            sample_stop = min(sample_start + blocksize, n_times)
-            block = X[:, sample_start:sample_stop]
-            covariances[out_idx] = (block @ block.T) / blocksize
-        yield covariances
-
-
-def _aggregate_block_covariances(
-    X: np.ndarray,
-    blocksize: int,
-    method: str,
-    *,
-    covariance_kind: str,
-    max_mem_mb: int | float | None,
-) -> tuple[np.ndarray, dict[str, Any]]:
-    """Aggregate ASR calibration covariances with optional memory bounding."""
-    n_channels, n_times = X.shape
-    if covariance_kind == "rasr":
-        n_blocks = len(np.arange(0, n_times, blocksize, dtype=int))
-        iter_factory = lambda chunk_blocks: _iter_block_covariances_rasr(
-            X,
-            blocksize,
-            chunk_blocks,
-        )
-        full_factory = _block_covariances_rasr
-    elif covariance_kind == "clean_rawdata":
-        n_blocks = max(1, int(np.ceil(n_times / blocksize)))
-        iter_factory = lambda chunk_blocks: _iter_block_covariances_clean_rawdata(
-            X,
-            blocksize,
-            chunk_blocks,
-        )
-        full_factory = _block_covariances_clean_rawdata
-    else:
-        raise ValueError("covariance_kind must be 'clean_rawdata' or 'rasr'")
-
-    estimated_bytes = _covariance_stack_bytes(n_blocks, n_channels)
-    max_bytes = _max_mem_bytes(max_mem_mb)
-    use_chunked = max_bytes is not None and estimated_bytes > max_bytes
-    if not use_chunked:
-        covariances = full_factory(X, blocksize)
-        info = {
-            "memory_mode": "full",
-            "max_mem_mb": max_mem_mb,
-            "used_memory_bound": False,
-            "estimated_full_cov_bytes": estimated_bytes,
-            "peak_cov_buffer_bytes": estimated_bytes,
-            "chunk_samples": int(n_times),
-            "covariance_chunk_blocks": int(n_blocks),
-        }
-        return _aggregate_covariances(covariances, method), info
-
-    if method == "median":
-        raise ValueError(
-            "cov_estimator='median' requires full covariance storage; increase "
-            "max_mem_mb or use cov_estimator='geometric_median' or 'mean'."
-        )
-
-    chunk_blocks = _covariance_chunk_blocks(n_channels, max_bytes)
-    if method == "mean":
-        total = np.zeros((n_channels, n_channels), dtype=np.float64)
-        count = 0
-        for chunk in iter_factory(chunk_blocks):
-            total += np.sum(chunk, axis=0)
-            count += chunk.shape[0]
-        C = total / max(count, 1)
-    else:
-        C = _geometric_median_chunked(iter_factory, chunk_blocks, n_channels)
-
-    info = {
-        "memory_mode": "chunked",
-        "max_mem_mb": max_mem_mb,
-        "used_memory_bound": True,
-        "estimated_full_cov_bytes": estimated_bytes,
-        "peak_cov_buffer_bytes": _covariance_stack_bytes(chunk_blocks, n_channels),
-        "chunk_samples": int(chunk_blocks * blocksize),
-        "covariance_chunk_blocks": int(chunk_blocks),
-    }
-    return C, info
-
-
-def _block_covariances_clean_rawdata(X: np.ndarray, blocksize: int) -> np.ndarray:
-    """Match clean_rawdata's padded trailing-block covariance accumulation."""
-    n_channels, n_times = X.shape
-    n_blocks = max(1, int(np.ceil(n_times / blocksize)))
-    covariances = np.zeros((n_blocks, n_channels, n_channels), dtype=np.float64)
-    X_t = X.T
-    for offset in range(blocksize):
-        sample_idx = np.minimum(
-            n_times - 1,
-            np.arange(offset, n_times + offset, blocksize, dtype=int),
-        )
-        samples = X_t[sample_idx]
-        covariances += np.einsum("bi,bj->bij", samples, samples)
-    return covariances / blocksize
-
-
-def _block_covariances_rasr(X: np.ndarray, blocksize: int) -> np.ndarray:
-    """Match rASRMatlab's contiguous blocks with a full blocksize divisor."""
-    n_channels, n_times = X.shape
-    starts = np.arange(0, n_times, blocksize, dtype=int)
-    covariances = np.empty((len(starts), n_channels, n_channels), dtype=np.float64)
-    for idx, start in enumerate(starts):
-        stop = min(start + blocksize, n_times)
-        block = X[:, start:stop]
-        covariances[idx] = (block @ block.T) / blocksize
-    return covariances
-
-
-def _aggregate_covariances(covariances: np.ndarray, method: str) -> np.ndarray:
-    if method == "mean":
-        return np.mean(covariances, axis=0)
-    if method == "median":
-        return np.median(covariances, axis=0)
-    return _geometric_median(covariances)
-
-
 def _concatenate_windows(
     X: np.ndarray,
     starts: np.ndarray,
@@ -2664,18 +2209,6 @@ def _fit_component_thresholds(
     return thresholds, info
 
 
-def _robust_location_scale(values: np.ndarray) -> tuple[float, float]:
-    values = np.asarray(values, dtype=np.float64)
-    mu = float(np.median(values))
-    mad = float(np.median(np.abs(values - mu)))
-    sigma = 1.4826 * mad
-    if sigma <= np.finfo(float).eps:
-        sigma = float(np.std(values, ddof=1)) if values.size > 1 else 0.0
-    if sigma <= np.finfo(float).eps:
-        sigma = max(abs(mu) * 1e-6, np.finfo(float).eps)
-    return mu, sigma
-
-
 def _good_raw_sample_mask(raw: Any, prefixes: tuple[str, ...]) -> np.ndarray:
     n_times = raw.n_times
     mask = np.ones(n_times, dtype=bool)
@@ -2724,6 +2257,23 @@ def _mask_to_sample_spans(mask: np.ndarray) -> list[tuple[int, int]]:
 
 
 __all__ = [
+    "fit_eeg_distribution",
+    "_fit_eeg_distribution_clean_rawdata",
+    "_histc_scaled_bins",
+    "_robust_location_scale",
+    "_process_memory_info",
+    "_iter_moving_covariances_at",
+    "_moving_average_clean_rawdata",
+    "_window_covariances",
+    "_max_mem_bytes",
+    "_covariance_stack_bytes",
+    "_covariance_chunk_blocks",
+    "_iter_block_covariances_clean_rawdata",
+    "_iter_block_covariances_rasr",
+    "_aggregate_block_covariances",
+    "_block_covariances_clean_rawdata",
+    "_block_covariances_rasr",
+    "_aggregate_covariances",
     "_validate_common_params",
     "_validate_array_2d",
     "_check_enough_samples",
