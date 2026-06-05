@@ -37,6 +37,7 @@ from ._covariance import (
 from ._distribution import fit_eeg_distribution
 from ._estimator import ASR
 from ._filters import _append_clean_rawdata_tail
+from ._logging import set_log_level_from_verbose
 from ._reconstruction import _empty_process_diagnostics
 from ._spd import _regularize_spd, _sqrtm_spd
 from ._types import ASRState
@@ -657,6 +658,7 @@ class AdaptiveASR(ASR):
     ) -> AdaptiveASR:
         """Fit the initial adaptive ASR state from calibration data."""
         del y
+        set_log_level_from_verbose(self.verbose)
         self._validate_adaptive_params()
         fit_input = X if calibration is None else calibration
         data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
@@ -742,6 +744,7 @@ class AdaptiveASR(ASR):
     ) -> AdaptiveASR:
         """Update the adaptive calibration state on a new clean chunk."""
         del y
+        set_log_level_from_verbose(self.verbose)
         if self.variant == "mw":
             raise NotImplementedError(
                 "AdaptiveASR(variant='mw') does not support partial_fit. "
@@ -805,6 +808,7 @@ class AdaptiveASR(ASR):
     ) -> Any:
         """Clean data using the current adaptive ASR state."""
         del y, copy
+        set_log_level_from_verbose(self.verbose)
         self._check_is_fitted()
         data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
             X, auto_pick=False

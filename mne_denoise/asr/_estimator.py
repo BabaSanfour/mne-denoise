@@ -16,6 +16,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 from ..utils import extract_data_from_mne, reconstruct_mne_object
 from ._calibration import calibrate_asr
+from ._logging import logger, set_log_level_from_verbose
 from ._qa import compute_asr_rejection_mask
 from ._reconstruction import process_asr
 from ._validation import _validate_common_params
@@ -134,7 +135,10 @@ class ASR(BaseEstimator, TransformerMixin):
     n_jobs : int | None
         Reserved for future parallel processing.
     verbose : bool | str | int | None
-        Verbosity placeholder for API compatibility.
+        Controls progress logging on the ``mne_denoise.asr`` logger. ``True``
+        enables INFO messages (e.g. the calibration summary), ``False``
+        restricts to warnings, a level name/int sets that level, and ``None``
+        leaves the current logging configuration unchanged.
 
     Attributes
     ----------
@@ -262,6 +266,7 @@ class ASR(BaseEstimator, TransformerMixin):
             Fitted estimator.
         """
         del y
+        set_log_level_from_verbose(self.verbose)
         self._validate_estimator_params()
         fit_input = X if calibration is None else calibration
         data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
@@ -324,6 +329,12 @@ class ASR(BaseEstimator, TransformerMixin):
         self.clean_window_scores_ = cal_info["clean_window_scores"]
         self.calibration_mask_kind_ = "window"
         self.calibration_info_ = cal_info
+        logger.info(
+            "ASR calibrated: method=%s, %d channels, rank %d.",
+            self.method,
+            self.n_channels_,
+            self.rank_,
+        )
         self.history_ = {
             "method": self.method,
             "calibration": self.calibration,
@@ -362,6 +373,7 @@ class ASR(BaseEstimator, TransformerMixin):
             Returned only when ``return_diagnostics=True``.
         """
         del y, copy
+        set_log_level_from_verbose(self.verbose)
         self._check_is_fitted()
         data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
             X, auto_pick=False

@@ -17,6 +17,7 @@ from ..utils import extract_data_from_mne
 from ._calibration import calibrate_asr
 from ._estimator import ASR
 from ._filters import _apply_statistics_filter, _design_statistics_filter
+from ._logging import set_log_level_from_verbose
 from ._validation import _validate_array_2d
 from ._windows import _good_raw_sample_mask
 
@@ -242,6 +243,7 @@ class JugglerASR(ASR):
     ) -> JugglerASR:
         """Fit Juggler's ASR from a contaminated or clean calibration stream."""
         del y
+        set_log_level_from_verbose(self.verbose)
         self._validate_estimator_params()
         self._validate_juggler_params()
 
