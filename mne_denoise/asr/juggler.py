@@ -14,14 +14,11 @@ from scipy import optimize, stats
 from sklearn.cluster import DBSCAN
 
 from ..utils import extract_data_from_mne
-from .core import (
-    ASR,
-    _apply_statistics_filter,
-    _design_statistics_filter,
-    _good_raw_sample_mask,
-    _validate_array_2d,
-    calibrate_asr,
-)
+from ._calibration import calibrate_asr
+from ._estimator import ASR
+from ._filters import _apply_statistics_filter, _design_statistics_filter
+from ._validation import _validate_array_2d
+from ._windows import _good_raw_sample_mask
 
 try:
     from mne.epochs import BaseEpochs
