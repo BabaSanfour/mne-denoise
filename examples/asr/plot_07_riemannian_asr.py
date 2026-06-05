@@ -18,12 +18,12 @@ design and is not stressed here.
 
 References
 ----------
-.. [1] Blum, S., Jacobsen, N. S. J., Bleichner, M. G., & Debener, S. (2019).
-   A Riemannian Modification of Artifact Subspace Reconstruction for EEG
-   Artifact Handling. Frontiers in Human Neuroscience, 13, 141.
-   doi:10.3389/fnhum.2019.00141
-.. [2] Chang, C.-Y., et al. (2020). Evaluation of Artifact Subspace
-   Reconstruction... IEEE TBME, 67(4), 1114-1121. doi:10.1109/TBME.2019.2930186
+* Blum, S., Jacobsen, N. S. J., Bleichner, M. G., & Debener, S. (2019).
+  A Riemannian Modification of Artifact Subspace Reconstruction for EEG
+  Artifact Handling. Frontiers in Human Neuroscience, 13, 141.
+  doi:10.3389/fnhum.2019.00141
+* Chang, C.-Y., et al. (2020). Evaluation of Artifact Subspace
+  Reconstruction... IEEE TBME, 67(4), 1114-1121. doi:10.1109/TBME.2019.2930186
 """
 
 # %%
@@ -85,7 +85,7 @@ plot_signal_overlay(
 
 # %%
 # Blink removal: decoupling the frontal EEG from the EOG (cf. Blum 2019, Fig. 3)
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # A blink-specific score: mean absolute correlation between the 8 most
 # blink-correlated EEG channels and the EOG, before vs after cleaning (lower is
 # better). Both backends collapse it from ~0.65 to <0.1 --- comparable here,

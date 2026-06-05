@@ -10,10 +10,10 @@ shows that ICA fit on ASR-cleaned data has less extreme component activations.
 
 References
 ----------
-.. [1] Mullen, T. R., et al. (2013). Real-time modeling and 3D visualization of
-   source dynamics... EMBC 2013. doi:10.1109/EMBC.2013.6609968
-.. [2] Chang, C.-Y., et al. (2020). Evaluation of Artifact Subspace
-   Reconstruction... IEEE TBME, 67(4). doi:10.1109/TBME.2019.2930186
+* Mullen, T. R., et al. (2013). Real-time modeling and 3D visualization of
+  source dynamics... EMBC 2013. doi:10.1109/EMBC.2013.6609968
+* Chang, C.-Y., et al. (2020). Evaluation of Artifact Subspace
+  Reconstruction... IEEE TBME, 67(4). doi:10.1109/TBME.2019.2930186
 """
 
 # %%

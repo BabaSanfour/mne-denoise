@@ -11,13 +11,13 @@ trade-off of their Figs 2-3 and the commonly recommended 20-30 band.
 
 References
 ----------
-.. [1] Chang, C.-Y., Hsu, S.-H., Pion-Tonachini, L., & Jung, T.-P. (2020).
-   Evaluation of Artifact Subspace Reconstruction for Automatic Artifact
-   Components Removal in Multi-Channel EEG Recordings. IEEE Transactions on
-   Biomedical Engineering, 67(4), 1114-1121. doi:10.1109/TBME.2019.2930186
-.. [2] Mullen, T. R., et al. (2013). Real-time modeling and 3D visualization of
-   source dynamics and connectivity using wearable EEG. EMBC 2013.
-   doi:10.1109/EMBC.2013.6609968
+* Chang, C.-Y., Hsu, S.-H., Pion-Tonachini, L., & Jung, T.-P. (2020).
+  Evaluation of Artifact Subspace Reconstruction for Automatic Artifact
+  Components Removal in Multi-Channel EEG Recordings. IEEE Transactions on
+  Biomedical Engineering, 67(4), 1114-1121. doi:10.1109/TBME.2019.2930186
+* Mullen, T. R., et al. (2013). Real-time modeling and 3D visualization of
+  source dynamics and connectivity using wearable EEG. EMBC 2013.
+  doi:10.1109/EMBC.2013.6609968
 """
 
 # %%

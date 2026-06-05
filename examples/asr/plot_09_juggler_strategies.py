@@ -17,10 +17,10 @@ struggles.
 
 References
 ----------
-.. [1] Kim, S., et al. (2025). Juggler's ASR: unpacking the principles of
-   artifact subspace reconstruction for revision toward extreme MoBI.
-   Journal of Neuroscience Methods, 420, 110465.
-   doi:10.1016/j.jneumeth.2025.110465
+* Kim, S., et al. (2025). Juggler's ASR: unpacking the principles of
+  artifact subspace reconstruction for revision toward extreme MoBI.
+  Journal of Neuroscience Methods, 420, 110465.
+  doi:10.1016/j.jneumeth.2025.110465
 """
 
 # %%
@@ -87,7 +87,7 @@ plot_asr_calibration_fraction(
 
 # %%
 # Reference-sample selection timeline (DBSCAN vs GEV)
-# --------------------------------------------------
+# ---------------------------------------------------
 # Which individual samples each strategy trusts as clean reference, over time.
 mask_db = dbscan.get_calibration_mask()
 mask_gev = gev.get_calibration_mask()

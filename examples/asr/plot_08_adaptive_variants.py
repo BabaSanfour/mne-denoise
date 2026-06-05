@@ -17,11 +17,11 @@ streaming ``fit`` / ``partial_fit`` / ``transform`` mechanics, see
 
 References
 ----------
-.. [1] Tsai, B.-Y., et al. Adaptive Artifact Subspace Reconstruction based on
-   Hebbian/anti-Hebbian learning networks for enhancing BCI performance.
-   (AASR reference implementation.)
-.. [2] Pehlevan, C., & Chklovskii, D. B. (2019). Neuroscience-inspired online
-   unsupervised learning algorithms. IEEE Signal Processing Magazine, 36(6).
+* Tsai, B.-Y., et al. Adaptive Artifact Subspace Reconstruction based on
+  Hebbian/anti-Hebbian learning networks for enhancing BCI performance.
+  (AASR reference implementation.)
+* Pehlevan, C., & Chklovskii, D. B. (2019). Neuroscience-inspired online
+  unsupervised learning algorithms. IEEE Signal Processing Magazine, 36(6).
 """
 
 # %%
