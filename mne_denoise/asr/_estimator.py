@@ -803,7 +803,7 @@ class ASR(BaseEstimator, TransformerMixin):
                 rejection_keep_masks.append(diag["rejection_window_keep_mask"])
                 rejection_remove_masks.append(diag["rejection_window_remove_mask"])
             counts.append(diag["n_components_reconstructed"])
-        diagnostics = {
+        diagnostics: dict[str, Any] = {
             "epoch_diagnostics": epoch_diags,
             "window_starts": np.concatenate(starts_all)
             if starts_all
@@ -926,6 +926,7 @@ class ASR(BaseEstimator, TransformerMixin):
         X: np.ndarray,
         sfreq: float,
     ) -> tuple[np.ndarray, dict[str, Any]]:
+        assert isinstance(self.window_criterion, int | float)
         return compute_asr_rejection_mask(
             X,
             sfreq,

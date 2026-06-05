@@ -298,7 +298,7 @@ def _fit_adaptive_thresholds(
         fit_intervals[comp_idx] = info["fit_interval"]
         thresholds[comp_idx] = mu + cutoff * sigma
 
-    return thresholds, {
+    info_out: dict[str, Any] = {
         "mu": mu_values,
         "sigma": sigma_values,
         "beta": beta_values,
@@ -307,6 +307,7 @@ def _fit_adaptive_thresholds(
         "window_starts": starts,
         "window_length_samples": int(win_len),
     }
+    return thresholds, info_out
 
 
 def _build_adaptive_learner(
@@ -461,6 +462,7 @@ def _process_adaptive_chunk(
     last_n = 0
     for n in update_at:
         if covariance_iter is None:
+            assert Xcov_flat is not None
             Cw = Xcov_flat[:, n - 1].reshape(n_channels, n_channels, order="F")
         else:
             Cw = next(covariance_iter)
@@ -1444,7 +1446,7 @@ class AdaptiveASR(ASR):
                 rejection_remove_masks.append(diag["rejection_window_remove_mask"])
             counts.append(diag["n_components_reconstructed"])
 
-        diagnostics = {
+        diagnostics: dict[str, Any] = {
             "epoch_diagnostics": epoch_diags,
             "window_starts": np.concatenate(starts_all)
             if starts_all

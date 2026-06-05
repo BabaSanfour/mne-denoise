@@ -258,6 +258,7 @@ def process_asr(
     last_n = 0
     for n in update_at:
         if covariance_iter is None:
+            assert Xcov_flat is not None
             Cw = Xcov_flat[:, n - 1].reshape(n_channels, n_channels, order="F")
         else:
             Cw = next(covariance_iter)
@@ -544,6 +545,7 @@ def _process_asr_riemannian_windowed(
     last_n = 0
     for n in update_at:
         if covariance_iter is None:
+            assert Xcov_flat is not None
             Cw = Xcov_flat[:, n - 1].reshape(n_channels, n_channels, order="F")
         else:
             Cw = next(covariance_iter)

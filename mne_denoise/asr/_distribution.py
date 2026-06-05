@@ -8,12 +8,36 @@ part of ASR calibration, kept isolated so it can be unit-tested on its own.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, overload
 
 import numpy as np
 from scipy import special
 
 from ._validation import _round_half_up
+
+
+@overload
+def fit_eeg_distribution(
+    values: np.ndarray,
+    *,
+    min_clean_fraction: float = ...,
+    max_dropout_fraction: float = ...,
+    fit_quantiles: tuple[float, float] = ...,
+    beta_grid: np.ndarray | None = ...,
+    return_info: Literal[False] = ...,
+) -> tuple[float, float]: ...
+
+
+@overload
+def fit_eeg_distribution(
+    values: np.ndarray,
+    *,
+    min_clean_fraction: float = ...,
+    max_dropout_fraction: float = ...,
+    fit_quantiles: tuple[float, float] = ...,
+    beta_grid: np.ndarray | None = ...,
+    return_info: Literal[True],
+) -> tuple[float, float, dict[str, Any]]: ...
 
 
 def fit_eeg_distribution(
