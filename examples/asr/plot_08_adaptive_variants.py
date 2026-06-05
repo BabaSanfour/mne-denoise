@@ -10,10 +10,13 @@ exposes three calibration rules via :class:`~mne_denoise.asr.AdaptiveASR`:
 - ``variant="psw"`` -- plasticity-stabilized whitening (anti-Hebbian);
 - ``variant="mw"`` -- moving-window calibration (one calibration per window).
 
-This example compares all three on a recording whose artifact statistics change
-half-way through, and plots the moving-window adaptation trajectory. (For the
-streaming ``fit`` / ``partial_fit`` / ``transform`` mechanics, see
-``plot_03_adaptive_asr.py``.)
+This example compares all three on a recording whose artifact *subspace* rotates
+continuously over time. On this cleanly-separable synthetic data the variants
+clean comparably (mw, which recalibrates every window, is marginally best); their
+differences are most pronounced on real overlapping contamination (Tsai). The
+clearest variant-specific behaviour to watch is the moving-window adaptation
+trajectory. (For the streaming ``fit`` / ``partial_fit`` / ``transform``
+mechanics, see ``plot_03_adaptive_asr.py``.)
 
 References
 ----------
@@ -27,8 +30,8 @@ References
 # %%
 # Non-stationary synthetic data
 # -----------------------------
-# Oscillatory brain background + bursts whose amplitude doubles in the second
-# half, so a static calibration is sub-optimal and adaptation matters.
+# Oscillatory brain background + bursts whose spatial direction rotates across
+# the recording, so a fixed calibration goes stale and adaptation matters.
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -38,7 +41,6 @@ rng = np.random.default_rng(11)
 sfreq = 200.0
 n_channels, n_times = 8, 9000  # 45 s
 t = np.arange(n_times) / sfreq
-half = n_times // 2
 
 brain = np.zeros((n_channels, n_times))
 for ch in range(n_channels):
@@ -48,11 +50,16 @@ for ch in range(n_channels):
     )
 
 contaminated = brain.copy()
-for start in np.arange(400, n_times - 400, 600):
-    amp = 6.0 if start < half else 12.0  # statistics shift at the midpoint
-    spatial = rng.standard_normal(n_channels)
-    spatial /= np.linalg.norm(spatial)
-    contaminated[:, start : start + 200] += amp * np.outer(
+v0 = rng.standard_normal(n_channels)
+v0 /= np.linalg.norm(v0)
+v1 = rng.standard_normal(n_channels)
+v1 -= (v1 @ v0) * v0  # orthogonalize v1 against v0
+v1 /= np.linalg.norm(v1)
+burst_starts = np.arange(400, n_times - 400, 450)
+for k, start in enumerate(burst_starts):
+    angle = (k / (len(burst_starts) - 1)) * (np.pi / 2)  # rotate v0 -> v1
+    spatial = np.cos(angle) * v0 + np.sin(angle) * v1
+    contaminated[:, start : start + 200] += 8.0 * np.outer(
         spatial, rng.standard_normal(200)
     )
 
@@ -60,11 +67,11 @@ for start in np.arange(400, n_times - 400, 600):
 # %%
 # Clean with each variant
 # -----------------------
-# PSP/PSW are streamed (fit on the first third, partial_fit the rest) so their
-# adaptive update rule is exercised; MW calibrates per window inside fit.
+# PSP/PSW are streamed (fit on the first chunk, partial_fit the rest) so their
+# adaptive update rule tracks the drift; MW recalibrates per window inside fit.
 def stream_clean(variant):
     est = AdaptiveASR(sfreq=sfreq, cutoff=20.0, variant=variant, verbose=False)
-    chunks = np.array_split(contaminated, 3, axis=1)
+    chunks = np.array_split(contaminated, 6, axis=1)
     est.fit(chunks[0])
     for chunk in chunks[1:]:
         est.partial_fit(chunk)
@@ -97,21 +104,24 @@ corrs = [scores(cleaned[v])[0] for v in variants]
 dsnrs = [scores(cleaned[v])[1] for v in variants]
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 4))
-ax1.bar(variants, corrs, color="C0")
+bars1 = ax1.bar(variants, corrs, color="C0")
 ax1.set_ylim(0, 1)
+ax1.bar_label(bars1, fmt="%.3f", padding=2)
 ax1.set_ylabel("correlation to clean reference")
 ax1.set_title("Signal fidelity")
-ax2.bar(variants, dsnrs, color="C2")
+bars2 = ax2.bar(variants, dsnrs, color="C2")
+ax2.bar_label(bars2, fmt="%.1f", padding=2)
 ax2.set_ylabel("SNR gain (dB)")
 ax2.set_title("Artifact suppression")
-fig.suptitle("Adaptive ASR variants on non-stationary data")
-fig.tight_layout()
+fig.suptitle("Adaptive variants clean comparably here (mw marginally best)")
+fig.tight_layout(rect=(0, 0, 1, 0.94))
 
 # %%
 # Moving-window adaptation trajectory
 # -----------------------------------
-# How much the threshold matrix T changes from window to window: the spike near
-# the midpoint is the MW calibration tracking the artifact-statistics shift.
+# How much the threshold matrix T changes from window to window: nonzero
+# throughout, as the MW calibration keeps re-estimating while the subspace
+# rotates.
 passed = [d for d in mw.mw_diagnostics_ if d["status"] == "passed"]
 t_mats = [d["T"] for d in passed]
 deltas = [
@@ -124,11 +134,9 @@ centers = [
 
 fig2, ax = plt.subplots(figsize=(8, 4))
 ax.plot(centers, deltas, "o-", color="C3")
-ax.axvline(half / sfreq, color="0.5", ls="--", label="statistics shift")
 ax.set_xlabel("Time (s)")
 ax.set_ylabel(r"$\|T_t - T_{t-1}\|_F$")
-ax.set_title("MW-ASR adaptation trajectory")
-ax.legend()
+ax.set_title("MW-ASR adaptation trajectory (continuous re-estimation)")
 fig2.tight_layout()
 
 plt.show()
