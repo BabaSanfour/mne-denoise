@@ -61,6 +61,7 @@ sphinx_gallery_conf = {
             "../examples/dss",
             "../examples/zapline",
             "../examples/asr",
+            "../examples/spectrum_interpolation",
         ]
     ),
     "within_subsection_order": FileNameSortKey,

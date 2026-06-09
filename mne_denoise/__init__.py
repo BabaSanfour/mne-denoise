@@ -26,9 +26,13 @@ zapline : ZapLine Power Line Noise Removal
 icanclean : Reference-Based Artifact Removal
     Uses Canonical Correlation Analysis (CCA) to remove artifacts by projecting them
     out based on dedicated reference channels (e.g., EOG or EMG).
+
+spectrum_interpolation : Spectrum Interpolation
+    Removes power-line noise and its harmonics by interpolating spectral amplitudes
+    while preserving phase.
 """
 
-from . import asr, dss, icanclean, zapline
+from . import asr, dss, icanclean, spectrum_interpolation, zapline
 
 __version__ = "0.0.1"
 
@@ -36,5 +40,6 @@ __all__ = [
     "asr",
     "dss",
     "icanclean",
+    "spectrum_interpolation",
     "zapline",
 ]
