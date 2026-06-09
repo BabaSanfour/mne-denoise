@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import mne
 import numpy as np
 import pytest
@@ -1099,3 +1101,195 @@ def test_compute_dss_warns_on_heavy_rank_reduction(caplog):
     )
     assert any("lowering reg" in rec.getMessage() for rec in caplog.records)
     assert not any("raising reg" in rec.getMessage() for rec in caplog.records)
+
+
+# =============================================================================
+# DSS - Multi-modal joint decomposition via whitening (Issue #37)
+# =============================================================================
+
+
+def _mixed_sensor_raw(seed=0, n_t=2000, sfreq=200.0):
+    """Raw with mag + grad + eeg channels at very different physical scales."""
+    rng = np.random.default_rng(seed)
+    t = np.arange(n_t) / sfreq
+    signal = np.sin(2 * np.pi * 10 * t)
+    ch_types = ["mag"] * 6 + ["grad"] * 6 + ["eeg"] * 6
+    scales = np.array([1e-12] * 6 + [1e-11] * 6 + [1e-5] * 6)
+    n_ch = len(ch_types)
+    mixing = rng.standard_normal(n_ch)
+    data = (np.outer(mixing, signal) + 0.3 * rng.standard_normal((n_ch, n_t))) * scales[
+        :, None
+    ]
+    info = mne.create_info([f"C{i}" for i in range(n_ch)], sfreq, ch_types)
+    return mne.io.RawArray(data, info, verbose=False), signal, data
+
+
+def test_dss_whiten_decomposes_mixed_types_without_warning():
+    """whiten=True fits all data channel types jointly and stays quiet."""
+    from mne_denoise.dss.denoisers import BandpassBias
+
+    raw, signal, _ = _mixed_sensor_raw()
+    bias = BandpassBias(freq_band=(8, 12), sfreq=raw.info["sfreq"])
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        dss = DSS(bias=bias, whiten=True)
+        sources = dss.fit_transform(raw)
+
+    assert dss.filters_.shape == (18, 18)  # all data channels, jointly
+    assert sources.shape == (18, raw.n_times)
+    top_corr = np.abs(np.corrcoef(sources[0], signal)[0, 1])
+    assert top_corr > 0.9
+
+
+def test_dss_whiten_reconstruction_is_faithful_across_units():
+    """Whitening is undone on reconstruction even for very different units."""
+    from mne_denoise.dss.denoisers import BandpassBias
+
+    raw, _, data = _mixed_sensor_raw()
+    bias = BandpassBias(freq_band=(8, 12), sfreq=raw.info["sfreq"])
+
+    dss = DSS(bias=bias, whiten=True, return_type="raw").fit(raw)
+    rec = dss.transform(raw).get_data()
+
+    rel_error = np.linalg.norm(rec - data) / np.linalg.norm(data)
+    assert rel_error < 1e-6
+
+
+def test_dss_whiten_with_noise_cov():
+    """A provided noise covariance is used to build the whitener."""
+    from mne_denoise.dss.denoisers import BandpassBias
+
+    raw, signal, data = _mixed_sensor_raw()
+    picks = mne.pick_types(raw.info, meg=True, eeg=True)
+    cov_data = np.cov(data[picks]) + np.eye(len(picks)) * 1e-30
+    noise_cov = mne.Covariance(
+        cov_data,
+        [raw.ch_names[p] for p in picks],
+        raw.info["bads"],
+        raw.info["projs"],
+        nfree=raw.n_times,
+    )
+
+    bias = BandpassBias(freq_band=(8, 12), sfreq=raw.info["sfreq"])
+    dss = DSS(bias=bias, whiten=True, noise_cov=noise_cov)
+    sources = dss.fit_transform(raw)
+
+    assert sources.shape == (18, raw.n_times)
+    assert np.abs(np.corrcoef(sources[0], signal)[0, 1]) > 0.9
+
+
+def test_dss_whiten_epochs():
+    """whiten=True works on epoched (3D) data."""
+    from mne_denoise.dss.denoisers import BandpassBias
+
+    raw, _, data = _mixed_sensor_raw(n_t=1000)
+    epoch_data = np.stack([data, data * 1.1], axis=0)
+    epochs = mne.EpochsArray(epoch_data, raw.info, verbose=False)
+
+    bias = BandpassBias(freq_band=(8, 12), sfreq=raw.info["sfreq"])
+    dss = DSS(bias=bias, whiten=True, return_type="epochs").fit(epochs)
+    rec = dss.transform(epochs).get_data()
+
+    assert rec.shape == epoch_data.shape
+    assert np.linalg.norm(rec - epoch_data) / np.linalg.norm(epoch_data) < 1e-6
+
+
+def test_dss_whiten_numpy_array():
+    """whiten=True works on a plain NumPy array (diagonal whitener)."""
+    from mne_denoise.dss.denoisers import BandpassBias
+
+    _, signal, data = _mixed_sensor_raw()
+    # Rescale to comparable magnitudes for the array path.
+    arr = data / data.std(axis=1, keepdims=True)
+    bias = BandpassBias(freq_band=(8, 12), sfreq=200.0)
+
+    dss = DSS(bias=bias, whiten=True)
+    sources = dss.fit_transform(arr)
+
+    assert sources.shape == (18, arr.shape[1])
+    assert np.abs(np.corrcoef(sources[0], signal)[0, 1]) > 0.9
+
+
+def test_dss_whiten_false_still_isolates_single_type():
+    """whiten=False keeps the homogeneous-type behaviour and warning."""
+    from mne_denoise.dss.denoisers import BandpassBias
+
+    raw, _, _ = _mixed_sensor_raw()
+    bias = BandpassBias(freq_band=(8, 12), sfreq=raw.info["sfreq"])
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        DSS(bias=bias).fit(raw)
+    assert any("whiten=True" in str(w.message) for w in caught)
+
+
+def test_dss_whiten_noise_cov_missing_channels_raises():
+    """A noise_cov missing data channels is rejected."""
+    from mne_denoise.dss.denoisers import BandpassBias
+
+    raw, _, _ = _mixed_sensor_raw()
+    small = mne.Covariance(
+        np.eye(2),
+        raw.ch_names[:2],
+        raw.info["bads"],
+        raw.info["projs"],
+        nfree=raw.n_times,
+    )
+    bias = BandpassBias(freq_band=(8, 12), sfreq=raw.info["sfreq"])
+    with pytest.raises(ValueError, match="missing required channels"):
+        DSS(bias=bias, whiten=True, noise_cov=small).fit(raw)
+
+
+def test_dss_whiten_noise_cov_requires_mne_input():
+    """noise_cov cannot be aligned to a bare NumPy array."""
+    from mne_denoise.dss.denoisers import BandpassBias
+
+    _, _, data = _mixed_sensor_raw()
+    noise_cov = mne.Covariance(
+        np.eye(18),
+        [f"C{i}" for i in range(18)],
+        [],
+        [],
+        nfree=data.shape[1],
+    )
+    bias = BandpassBias(freq_band=(8, 12), sfreq=200.0)
+    with pytest.raises(ValueError, match="named channels"):
+        DSS(bias=bias, whiten=True, noise_cov=noise_cov).fit(data)
+
+
+def test_dss_whiten_no_data_channels_raises():
+    """whiten=True needs at least one data channel."""
+    from mne_denoise.dss.denoisers import BandpassBias
+
+    rng = np.random.default_rng(0)
+    info = mne.create_info(["S0", "S1"], 200.0, ["stim", "stim"])
+    raw = mne.io.RawArray(rng.standard_normal((2, 500)), info, verbose=False)
+    bias = BandpassBias(freq_band=(8, 12), sfreq=200.0)
+    with pytest.raises(ValueError, match="No data channels"):
+        DSS(bias=bias, whiten=True).fit(raw)
+
+
+def test_dss_whiten_rejects_unsupported_input():
+    """A non-array, non-MNE input is rejected in the whitening path."""
+    from mne_denoise.dss.denoisers import BandpassBias
+
+    bias = BandpassBias(freq_band=(8, 12), sfreq=200.0)
+    with pytest.raises(TypeError, match="Unsupported input type"):
+        DSS(bias=bias, whiten=True).fit("not data")
+
+
+def test_dss_whiten_inverse_transform_recovers_sensor_data():
+    """inverse_transform un-whitens sources back to sensor space."""
+    from mne_denoise.dss.denoisers import BandpassBias
+
+    raw, _, data = _mixed_sensor_raw()
+    bias = BandpassBias(freq_band=(8, 12), sfreq=raw.info["sfreq"])
+    dss = DSS(bias=bias, whiten=True, return_type="sources").fit(raw)
+
+    sources = dss.transform(raw)
+    rec = dss.inverse_transform(sources)
+
+    data_centered = data - data.mean(axis=1, keepdims=True)
+    assert rec.shape == data.shape
+    assert np.linalg.norm(rec - data_centered) / np.linalg.norm(data_centered) < 1e-6

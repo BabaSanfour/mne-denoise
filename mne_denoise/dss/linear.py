@@ -267,6 +267,18 @@ class DSS(BaseEstimator, TransformerMixin):
     normalize_input : bool
         If True, normalize input data channel-wise (L2 norm) before fitting/transforming.
         Useful when mixing sensors with different scales (e.g. MAG and GRAD). Default True.
+        Ignored when ``whiten=True`` (the whitener handles the scaling).
+    whiten : bool
+        If True, decompose all data channel types jointly (e.g. mag + grad + eeg)
+        instead of isolating a single homogeneous type. The data is whitened
+        before the DSS bias/covariance step and un-whitened on reconstruction, so
+        channels with different physical units no longer contaminate one another.
+        Default False.
+    noise_cov : mne.Covariance, optional
+        Noise covariance used to build the whitener when ``whiten=True`` (MNE
+        inputs only). If None, a diagonal whitener (per-channel standard
+        deviation) is estimated from the data, scaling every channel to unit
+        variance. Ignored when ``whiten=False``.
     cov_method : str
         Method for covariance estimation.
         For MNE objects, passed as `method` to `mne.compute_covariance`.
@@ -320,6 +332,8 @@ class DSS(BaseEstimator, TransformerMixin):
         cov_method: str = "empirical",
         cov_kws: dict | None = None,
         return_type: str = "sources",
+        whiten: bool = False,
+        noise_cov=None,
         verbose: bool | str | int | None = None,
     ) -> None:
         self.n_components = n_components
@@ -330,6 +344,8 @@ class DSS(BaseEstimator, TransformerMixin):
         self.cov_method = cov_method
         self.cov_kws = cov_kws
         self.return_type = return_type
+        self.whiten = whiten
+        self.noise_cov = noise_cov
         self.verbose = verbose
         set_log_level_from_verbose(self.verbose)
 
@@ -340,6 +356,8 @@ class DSS(BaseEstimator, TransformerMixin):
         self.eigenvalues_: np.ndarray | None = None
         self.explained_variance_: np.ndarray | None = None
         self.channel_norms_: np.ndarray | None = None
+        self._whitener_: np.ndarray | None = None
+        self._unwhitener_: np.ndarray | None = None
         self._mne_info = None
 
     def fit(
@@ -371,6 +389,13 @@ class DSS(BaseEstimator, TransformerMixin):
             The fitted transformer.
         """
         set_log_level_from_verbose(self.verbose)
+        if self.whiten:
+            # Joint multi-sensor decomposition: the whitener replaces the
+            # channel-wise normalization and the homogeneous-type isolation.
+            self._fit_whitened(X, weights=weights)
+            self.mixing_ = self.patterns_
+            return self
+
         if self.normalize_input:
             X_norm = self._normalize(X, fit=True)
         else:
@@ -572,6 +597,117 @@ class DSS(BaseEstimator, TransformerMixin):
         sources_cov = self.filters_ @ baseline_cov @ self.filters_.T
         self.explained_variance_ = np.diag(sources_cov)
 
+    @staticmethod
+    def _whiten_apply(whitener: np.ndarray, data: np.ndarray) -> np.ndarray:
+        """Apply a spatial whitener along the channel axis (2D or 3D data)."""
+        if data.ndim == 2:
+            return whitener @ data
+        n_ch = data.shape[0]
+        flat = data.reshape(n_ch, -1)
+        return (whitener @ flat).reshape(data.shape)
+
+    def _noise_cov_matrix(self, ch_names: list[str]) -> np.ndarray:
+        """Extract the ``noise_cov`` submatrix for ``ch_names`` in order."""
+        names = list(self.noise_cov.ch_names)
+        missing = [c for c in ch_names if c not in names]
+        if missing:
+            raise ValueError(f"noise_cov is missing required channels: {missing[:5]}")
+        idx = [names.index(c) for c in ch_names]
+        return np.asarray(self.noise_cov.data)[np.ix_(idx, idx)]
+
+    def _compute_whitener(
+        self, data: np.ndarray, ch_names: list[str] | None
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Build the whitener and its inverse for the joint-decomposition path."""
+        n_ch = data.shape[0]
+        if self.noise_cov is not None:
+            if ch_names is None:
+                raise ValueError("noise_cov requires an MNE input with named channels.")
+            cov = self._noise_cov_matrix(ch_names)
+            cov = (cov + cov.T) / 2
+            eigval, eigvec = np.linalg.eigh(cov)
+            eigval = np.abs(eigval)
+            max_ev = eigval.max()
+            floor = self.reg * max_ev if max_ev > 0 else self.reg
+            eigval = np.maximum(eigval, floor)
+            whitener = (eigvec * (1.0 / np.sqrt(eigval))) @ eigvec.T
+            unwhitener = (eigvec * np.sqrt(eigval)) @ eigvec.T
+        else:
+            flat = data.reshape(n_ch, -1)
+            std = flat.std(axis=1)
+            std = np.where(std > 0, std, 1.0)
+            whitener = np.diag(1.0 / std)
+            unwhitener = np.diag(std)
+        return whitener, unwhitener
+
+    def _fit_whitened(
+        self,
+        X: BaseRaw | BaseEpochs | Evoked | np.ndarray,
+        weights: np.ndarray | None = None,
+    ) -> None:
+        """Fit DSS on all data channels jointly after whitening.
+
+        The whitener ``W`` is baked into ``filters_`` and its inverse into
+        ``patterns_``/``mixing_`` so that ``transform`` and ``inverse_transform``
+        operate in sensor units without any further change.
+        """
+        method = self.cov_method
+        kws = self.cov_kws.copy() if self.cov_kws else {}
+        # The NumPy covariance helper does not accept MNE-only options.
+        for key in ("rank", "verbose", "tstep"):
+            kws.pop(key, None)
+
+        if mne is not None and isinstance(X, BaseRaw | BaseEpochs | Evoked):
+            self.info_ = X.info
+            self._mne_info = X.info
+            data_picks = mne.pick_types(
+                X.info,
+                meg=True,
+                eeg=True,
+                seeg=True,
+                ecog=True,
+                dbs=True,
+                fnirs=True,
+                exclude=[],
+            )
+            if len(data_picks) == 0:
+                raise ValueError("No data channels found to fit DSS with whiten=True.")
+            ch_names = [X.ch_names[p] for p in data_picks]
+            self._mne_ch_names_ = ch_names
+            data, _, mne_type, _, _, _ = extract_data_from_mne(X, ch_names=ch_names)
+            if mne_type == "epochs":
+                data = np.transpose(data, (1, 2, 0))
+        elif isinstance(X, np.ndarray):
+            data = np.asarray(X)
+            ch_names = None
+            self._mne_ch_names_ = None
+        else:
+            raise TypeError(f"Unsupported input type: {type(X)}")
+
+        whitener, unwhitener = self._compute_whitener(data, ch_names)
+        self._whitener_ = whitener
+        self._unwhitener_ = unwhitener
+
+        data_w = self._whiten_apply(whitener, data)
+        biased_w = self._apply_bias(data_w)
+
+        baseline_cov = compute_covariance(data_w, method=method, weights=weights, **kws)
+        biased_cov = compute_covariance(biased_w, method=method, weights=weights, **kws)
+
+        rank = self.rank if isinstance(self.rank, int) else None
+        filters_w, patterns_w, self.eigenvalues_ = compute_dss(
+            baseline_cov,
+            biased_cov,
+            n_components=self.n_components,
+            rank=rank,
+            reg=self.reg,
+        )
+
+        # Compose the whitener back so the stored matrices are in sensor units.
+        self.filters_ = filters_w @ whitener
+        self.patterns_ = unwhitener @ patterns_w
+        self.explained_variance_ = np.diag(filters_w @ baseline_cov @ filters_w.T)
+
     def transform(
         self, X: BaseRaw | BaseEpochs | Evoked | np.ndarray
     ) -> np.ndarray | BaseRaw | BaseEpochs | Evoked:
@@ -594,7 +730,7 @@ class DSS(BaseEstimator, TransformerMixin):
         if self.filters_ is None:
             raise RuntimeError("DSS not fitted. Call fit() first.")
 
-        if self.normalize_input:
+        if self.normalize_input and not self.whiten:
             # Apply normalization using fitted norms
             X_in = self._normalize(X, fit=False)
         else:
@@ -645,7 +781,7 @@ class DSS(BaseEstimator, TransformerMixin):
             rec = rec.reshape(orig_shape)  # (n_ch, n_times, n_epochs)
 
         # De-normalization
-        if self.normalize_input:
+        if self.normalize_input and not self.whiten:
             if len(orig_shape) == 3:  # (n_ch, n_times, n_epochs)
                 rec = rec * self.channel_norms_[:, np.newaxis, np.newaxis]
             else:  # (n_ch, n_times)
@@ -726,7 +862,7 @@ class DSS(BaseEstimator, TransformerMixin):
         else:
             rec = rec_internal
 
-        if self.normalize_input:
+        if self.normalize_input and not self.whiten:
             # rec is (n_epochs, n_ch, n_times) OR (n_ch, n_times, n_epochs) OR (n_ch, n_times)
             if is_epochs_mne:
                 rec = rec * self.channel_norms_[np.newaxis, :, np.newaxis]
