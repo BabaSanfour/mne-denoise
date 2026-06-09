@@ -39,6 +39,40 @@ For NumPy arrays, pass the sampling frequency explicitly. Arrays use shape
    asr = ASR(sfreq=250.0, cutoff=20.0)
    clean = asr.fit_transform(data)
 
+Typical preprocessing pipeline
+------------------------------
+
+ASR sits between high-pass filtering and ICA in a standard EEG pipeline. It is
+applied to continuous data *after* filtering and *before* epoching/ICA, so that
+high-amplitude bursts do not bias the ICA decomposition:
+
+.. code-block:: python
+
+   import mne
+   from mne_denoise.asr import ASR
+
+   raw = mne.io.read_raw_fif("sub-01_raw.fif", preload=True)
+   raw.set_eeg_reference("average")
+
+   # 1. High-pass filter (ASR assumes high-pass-filtered data; see below).
+   raw.filter(l_freq=1.0, h_freq=None)
+
+   # 2. ASR: calibrate on the clean parts of the recording, then repair bursts.
+   asr = ASR(cutoff=20.0, picks="eeg")
+   raw_clean = asr.fit_transform(raw)
+
+   # 3. ICA on the ASR-cleaned data (now free of high-variance bursts).
+   ica = mne.preprocessing.ICA(
+       n_components=0.99, method="infomax",
+       fit_params=dict(extended=True), random_state=97,
+   )
+   ica.fit(raw_clean)
+
+The repaired and rejected spans are also available as annotations via
+``asr.to_annotations(...)`` so you can review what ASR changed without deleting
+samples. The ``examples/asr`` gallery has runnable, synthetic versions of these
+workflows.
+
 Riemannian ASR
 --------------
 
@@ -167,8 +201,7 @@ data, not as a universal replacement for standard ASR.
 Choosing a variant
 ------------------
 
-A quick decision guide (see
-``reports/paper_validation/robustness/decision_guide.md`` for the full version):
+A quick decision guide:
 
 - **Most EEG** — ``ASR(method="standard")`` at ``cutoff=20`` (Chang 2020
   recommends 20-30 for adult EEG). The default, and the right default.

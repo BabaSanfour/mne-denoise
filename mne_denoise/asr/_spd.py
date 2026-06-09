@@ -30,7 +30,9 @@ def _geometric_median(
         distances = np.maximum(distances, np.finfo(float).eps)
         weights = 1.0 / distances
         update = np.tensordot(weights, covariances, axes=(0, 0)) / np.sum(weights)
-        if np.linalg.norm(update - current) <= tol * max(np.linalg.norm(current), 1.0):
+        if np.linalg.norm(update - current) <= tol * max(
+            float(np.linalg.norm(current)), 1.0
+        ):
             current = update
             break
         current = update
@@ -66,7 +68,9 @@ def _geometric_median_chunked(
             numerator += np.tensordot(weights, chunk, axes=(0, 0))
             denominator += float(np.sum(weights))
         update = numerator / max(denominator, np.finfo(float).eps)
-        if np.linalg.norm(update - current) <= tol * max(np.linalg.norm(current), 1.0):
+        if np.linalg.norm(update - current) <= tol * max(
+            float(np.linalg.norm(current)), 1.0
+        ):
             current = update
             break
         current = update

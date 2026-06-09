@@ -26,26 +26,31 @@ from scipy import signal
 
 from ..utils import extract_data_from_mne, reconstruct_mne_object
 from ._aasr_filter import design_aasr_filter as _design_aasr_filter
-from ._spd import _regularize_spd, _sqrtm_spd
-from .core import (
-    ASR,
-    ASRState,
+from ._covariance import (
     _aggregate_block_covariances,
-    _append_clean_rawdata_tail,
-    _clean_rawdata_window_starts,
-    _clean_windows_grid_diagnostics,
     _covariance_chunk_blocks,
     _covariance_stack_bytes,
-    _empty_process_diagnostics,
-    _good_raw_sample_mask,
     _max_mem_bytes,
     _moving_average_clean_rawdata,
     _process_memory_info,
+)
+from ._distribution import fit_eeg_distribution
+from ._estimator import ASR
+from ._filters import _append_clean_rawdata_tail
+from ._logging import set_log_level_from_verbose
+from ._reconstruction import _empty_process_diagnostics
+from ._spd import _regularize_spd, _sqrtm_spd
+from ._types import ASRState
+from ._validation import (
     _resolve_max_dims_clean_rawdata,
     _round_half_up,
-    _sample_mask_from_removed_windows,
     _validate_array_2d,
-    fit_eeg_distribution,
+)
+from ._windows import (
+    _clean_rawdata_window_starts,
+    _clean_windows_grid_diagnostics,
+    _good_raw_sample_mask,
+    _sample_mask_from_removed_windows,
 )
 
 try:
@@ -293,7 +298,7 @@ def _fit_adaptive_thresholds(
         fit_intervals[comp_idx] = info["fit_interval"]
         thresholds[comp_idx] = mu + cutoff * sigma
 
-    return thresholds, {
+    info_out: dict[str, Any] = {
         "mu": mu_values,
         "sigma": sigma_values,
         "beta": beta_values,
@@ -302,6 +307,7 @@ def _fit_adaptive_thresholds(
         "window_starts": starts,
         "window_length_samples": int(win_len),
     }
+    return thresholds, info_out
 
 
 def _build_adaptive_learner(
@@ -456,6 +462,7 @@ def _process_adaptive_chunk(
     last_n = 0
     for n in update_at:
         if covariance_iter is None:
+            assert Xcov_flat is not None
             Cw = Xcov_flat[:, n - 1].reshape(n_channels, n_channels, order="F")
         else:
             Cw = next(covariance_iter)
@@ -653,6 +660,7 @@ class AdaptiveASR(ASR):
     ) -> AdaptiveASR:
         """Fit the initial adaptive ASR state from calibration data."""
         del y
+        set_log_level_from_verbose(self.verbose)
         self._validate_adaptive_params()
         fit_input = X if calibration is None else calibration
         data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
@@ -738,6 +746,7 @@ class AdaptiveASR(ASR):
     ) -> AdaptiveASR:
         """Update the adaptive calibration state on a new clean chunk."""
         del y
+        set_log_level_from_verbose(self.verbose)
         if self.variant == "mw":
             raise NotImplementedError(
                 "AdaptiveASR(variant='mw') does not support partial_fit. "
@@ -801,6 +810,7 @@ class AdaptiveASR(ASR):
     ) -> Any:
         """Clean data using the current adaptive ASR state."""
         del y, copy
+        set_log_level_from_verbose(self.verbose)
         self._check_is_fitted()
         data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
             X, auto_pick=False
@@ -1436,7 +1446,7 @@ class AdaptiveASR(ASR):
                 rejection_remove_masks.append(diag["rejection_window_remove_mask"])
             counts.append(diag["n_components_reconstructed"])
 
-        diagnostics = {
+        diagnostics: dict[str, Any] = {
             "epoch_diagnostics": epoch_diags,
             "window_starts": np.concatenate(starts_all)
             if starts_all
