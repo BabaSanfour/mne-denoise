@@ -12,6 +12,10 @@ References
        Journal of Neuroscience Methods, 189(1), 113-120.
 .. [2] de Cheveigné, A. & Simon, J.Z. (2008). Denoising based on spatial filtering.
        Journal of Neuroscience Methods, 171(2), 331-339.
+.. [3] de Cheveigné, A. (2020). ZapLine: A simple and effective method to remove
+       power line artifacts. NeuroImage, 207, 116356. (Period-matched
+       smooth/residual decomposition: spatially clean only the residual branch
+       and add the smooth branch back.)
 """
 
 from __future__ import annotations
@@ -151,7 +155,12 @@ class TimeShiftBias(LinearDenoiser):
 class SmoothingBias(LinearDenoiser):
     """Unified temporal smoothing bias (Moving Average).
 
-    Uses a boxcar moving average filter to smooth the data."
+    Uses a boxcar moving average filter to smooth the data. When used to split
+    the signal into a smooth branch and a residual (``data - smooth``), fitting
+    DSS on the residual and adding the smooth branch back follows ZapLine's
+    period-matched decomposition (de Cheveigné, 2020 [3]_): with
+    ``window = round(sfreq / f_line)`` the smoother has zeros at ``f_line`` and
+    its harmonics, so the residual concentrates the narrowband artifact.
 
     Parameters
     ----------

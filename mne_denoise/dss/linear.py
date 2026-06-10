@@ -307,16 +307,22 @@ class DSS(BaseEstimator, TransformerMixin):
         this amount on each side, cleaned independently, then blended
         using a raised-cosine (Hann) overlap-add window.  This
         eliminates discontinuities at segment boundaries.
-        If ``0.0`` (default), segments are hard-concatenated (original
-        behaviour).  Typical values: ``0.5`` – ``2.0`` seconds.
+        If ``0.0`` (default), segments are hard-concatenated, matching
+        ZapLine-plus, which concatenates cleaned chunks directly
+        (Klug & Kloosterman, 2022); the cross-fade is an ``mne-denoise``
+        addition for smoother boundaries.  Typical values: ``0.5`` – ``2.0`` s.
     max_prop_remove : float | None, default=None
         Maximum proportion of channels that can be removed per segment.
         E.g. ``0.2`` caps ``n_selected`` at ``int(n_channels × 0.2)``.
-        Safety valve to prevent over-cleaning.
+        Safety valve to prevent over-cleaning; mirrors ZapLine-plus, which
+        caps the automatic component count at one-fifth of the channels
+        (Klug & Kloosterman, 2022, §2.4).
     min_select : int, default=0
         Minimum components to select when ``n_select='auto'`` and
         the artifact is present.  Guarantees a floor on cleaning
-        strength.  Only effective when ``segmented=True``.
+        strength.  Only effective when ``segmented=True``.  Mirrors
+        ZapLine-plus's fixed-removal floor (``fixedNremove``; Klug &
+        Kloosterman, 2022).
     return_type : {'sources', 'epochs', 'raw'}
         Type of object to return from `transform`. 'sources' returns a numpy array
         of DSS components. 'epochs'/'raw' returns the denoised input object.

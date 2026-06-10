@@ -17,7 +17,18 @@ def iterative_outlier_removal(scores: np.ndarray, sigma: float = 3.0) -> int:
 
     This algorithm iteratively identifies values that exceed `mean + sigma * std`,
     removes them from consideration, and repeats until no more outliers are found.
-    This is equivalent to MATLAB's `iterative_outlier_removal` from NoiseTools.
+    It follows NoiseTools' ``nt_dss``-style outlier rule, which ZapLine-plus
+    (Klug & Kloosterman, 2022, §2.4 "Detection of noise components") adopts to
+    automatically choose how many spatial components to remove: outliers in the
+    component scores are flagged with a ``mean + sigma * SD`` threshold and
+    removed, the mean/SD are recomputed across the remaining components, and the
+    loop repeats until none are left; the count of removed outliers is taken as
+    the number of components to reject. ZapLine-plus uses a default of
+    ``sigma=3`` and reports this iterative mean/SD rule to be more robust than a
+    median-absolute-deviation rule in this setting. Callers cap the resulting
+    count via ``max_prop_remove`` (ZapLine-plus caps at one-fifth of the
+    channels) and floor it via ``min_select``; see
+    :class:`~mne_denoise.dss.linear.DSS`.
 
     Useful for automatic component selection in DSS applications, such as:
     - ZapLine: Selecting how many line-noise components to remove
@@ -47,7 +58,11 @@ def iterative_outlier_removal(scores: np.ndarray, sigma: float = 3.0) -> int:
 
     References
     ----------
-    NoiseTools: http://audition.ens.fr/adc/NoiseTools/
+    .. [1] Klug, M., & Kloosterman, N. A. (2022). Zapline-plus: A Zapline
+           extension for automatic and adaptive removal of frequency-specific
+           noise artifacts in M/EEG. Human Brain Mapping, 43(9), 2743-2758.
+           (§2.4, "Detection of noise components".)
+    .. [2] NoiseTools: http://audition.ens.fr/adc/NoiseTools/
     """
     scores = np.asarray(scores)
     n_outliers = 0
@@ -251,6 +266,13 @@ def eigenvalue_ratio_selection(
     DSS without smoothing), where the iterative outlier removal may fail to
     detect any significant components.
 
+    .. note::
+       Unlike :func:`iterative_outlier_removal` (the ZapLine-plus component
+       detector), this scree-style ratio rule is a convenience heuristic
+       specific to ``mne-denoise``: it is not part of ZapLine-plus or the DSS
+       literature, and ``ratio_threshold=2.0`` is an empirical default, not a
+       theory-derived constant.
+
     Parameters
     ----------
     eigenvalues : ndarray
@@ -302,6 +324,13 @@ def max_gap_selection(
 
     This is the most lenient automatic method and works even when eigenvalue
     contrast is weak (e.g., direct DSS without smoothing on weak artifacts).
+
+    .. note::
+       Like :func:`eigenvalue_ratio_selection`, this largest-gap rule is a
+       convenience heuristic specific to ``mne-denoise`` (not part of
+       ZapLine-plus or the DSS literature); ``min_ratio=1.2`` is empirical.
+       Prefer :func:`iterative_outlier_removal` for line-noise / ZapLine-style
+       selection.
 
     Parameters
     ----------
