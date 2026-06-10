@@ -68,9 +68,10 @@ print(f"Variance removed: {metrics['variance_removed_pct']:.2f}%")
 # %%
 # Plot One Channel
 # ----------------
-# ``plot_signal_overlay`` draws the before/after pair; we then overlay the
-# ground-truth reference and shade the burst windows on the returned axis.
-fig = plot_signal_overlay(
+# ``plot_signal_overlay`` draws the before/after pair and, via its optional
+# ``reference`` and ``highlight_mask`` arguments, overlays the ground-truth
+# signal and shades the burst windows directly.
+plot_signal_overlay(
     data,
     clean,
     times,
@@ -81,19 +82,11 @@ fig = plot_signal_overlay(
     x_label="Time (s)",
     y_label="Amplitude (a.u.)",
     title="ASR burst repair",
+    reference=brain[0],
+    reference_label="Reference signal",
+    highlight_mask=burst_mask,
+    highlight_label="Burst artifact",
     show=False,
 )
-ax = fig.axes[0]
-ax.plot(times, brain[0], color="C2", lw=1.0, alpha=0.8, label="Reference signal")
-ax.fill_between(
-    times,
-    *ax.get_ylim(),
-    where=burst_mask,
-    color="C3",
-    alpha=0.12,
-    label="Burst artifact",
-)
-ax.legend(loc="upper right")
-fig.tight_layout()
 
 plt.show()

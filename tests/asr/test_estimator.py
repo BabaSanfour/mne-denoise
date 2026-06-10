@@ -19,6 +19,16 @@ from mne_denoise.asr import (
 )
 from mne_denoise.asr._spd import _expm_sym, _karcher_mean_spd, _logm_spd
 
+SFREQ = 250.0
+
+
+def _epochs(n_epochs=3, n_per=2000):
+    mne = pytest.importorskip("mne")
+    X = _eeg(n_times=n_epochs * n_per, bursts=6)
+    info = mne.create_info([f"EEG{i:02d}" for i in range(8)], SFREQ, "eeg")
+    data = X.reshape(8, n_epochs, n_per).transpose(1, 0, 2) * 1e-6
+    return mne.EpochsArray(data, info, verbose=False)
+
 
 @pytest.fixture()
 def rng():
@@ -672,3 +682,666 @@ def test_asr_validation_errors(synthetic_burst_data):
         ASR(sfreq=sfreq).fit(data[:1])
     with pytest.raises(RuntimeError, match="not fitted"):
         ASR(sfreq=sfreq).transform(data)
+
+
+# ===========================================================================
+# Tests relocated from former test_coverage.py / test_robustness.py (PR #36).
+# Grouped here by the module they exercise.
+# ===========================================================================
+
+
+def _eeg(n_channels=8, n_times=8000, seed=0, bursts=5):
+    rng = np.random.default_rng(seed)
+    t = np.arange(n_times) / SFREQ
+    X = np.zeros((n_channels, n_times))
+    for c in range(n_channels):
+        X[c] = 0.6 * np.sin(2 * np.pi * 10 * t + rng.uniform(0, 6.28)) + (
+            0.05 * rng.standard_normal(n_times)
+        )
+    for s in np.linspace(800, n_times - 500, bursts).astype(int):
+        spatial = rng.standard_normal(n_channels)
+        spatial /= np.linalg.norm(spatial)
+        X[:, s : s + 150] += 10.0 * np.outer(spatial, rng.standard_normal(150))
+    return X
+
+
+def _inject_bursts(
+    data: np.ndarray,
+    n_bursts: int = 8,
+    burst_duration_s: float = 0.5,
+    amplitude: float = 12.0,
+    sfreq: float = 250.0,
+    seed: int = 97,
+) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    burst_len = int(round(burst_duration_s * sfreq))
+    n_times = data.shape[1]
+    starts = np.linspace(burst_len, n_times - burst_len, n_bursts).astype(int)
+    contaminated = data.copy()
+    scale = float(np.median(np.std(data, axis=1)))
+    for start in starts:
+        stop = min(start + burst_len, n_times)
+        spatial = rng.standard_normal(data.shape[0])
+        spatial /= max(np.linalg.norm(spatial), 1e-12)
+        temporal = rng.standard_normal(stop - start)
+        contaminated[:, start:stop] += amplitude * scale * np.outer(spatial, temporal)
+    return contaminated
+
+
+def _make_clean_eeg(
+    n_channels: int = 16,
+    duration_s: float = 40.0,
+    sfreq: float = 250.0,
+    seed: int = 11,
+) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    n = int(sfreq * duration_s)
+    t = np.arange(n) / sfreq
+    data = np.zeros((n_channels, n), dtype=np.float64)
+    for ch in range(n_channels):
+        phase = rng.uniform(0, 2 * np.pi)
+        data[ch] = 0.6 * np.sin(2 * np.pi * 10.0 * t + phase) + 0.15 * np.sin(
+            2 * np.pi * 6.5 * t + phase * 0.8
+        )
+    data += 0.05 * rng.standard_normal(data.shape)
+    return data
+
+
+def test_calibrate_asr_bad_calibration_raises():
+    with pytest.raises(ValueError, match="calibration must be"):
+        calibrate_asr(_eeg(), SFREQ, calibration="bogus", filter_kind="none")
+
+
+def test_calibrate_asr_bad_cov_estimator_raises():
+    with pytest.raises(ValueError, match="cov_estimator"):
+        calibrate_asr(_eeg(), SFREQ, cov_estimator="bogus", filter_kind="none")
+
+
+def test_calibrate_asr_bad_method_raises():
+    with pytest.raises(ValueError, match="method must be"):
+        calibrate_asr(_eeg(), SFREQ, method="bogus", filter_kind="none")
+
+
+def test_calibrate_asr_bad_blocksize_raises():
+    with pytest.raises(ValueError, match="blocksize"):
+        calibrate_asr(_eeg(), SFREQ, blocksize=0, filter_kind="none")
+
+
+def test_asr_unknown_method_raises():
+    with pytest.raises(NotImplementedError, match="Supported methods"):
+        ASR(sfreq=SFREQ, method="bogus", picks=None, verbose=False).fit(_eeg())
+
+
+def test_asr_riemannian_requires_experimental():
+    with pytest.raises(ValueError, match="experimental"):
+        ASR(sfreq=SFREQ, method="riemannian", picks=None, verbose=False).fit(_eeg())
+
+
+def test_asr_riemannian_windowed_no_experimental_needed():
+    cleaned = ASR(
+        sfreq=SFREQ, method="riemannian_windowed", picks=None, verbose=False
+    ).fit_transform(_eeg())
+    assert cleaned.shape == (8, 8000)
+
+
+def test_get_rejection_mask_without_window_criterion_raises():
+    asr = ASR(sfreq=SFREQ, cutoff=20.0, picks=None, verbose=False)
+    asr.fit_transform(_eeg())
+    with pytest.raises(RuntimeError, match="rejection mask"):
+        asr.get_rejection_mask()
+
+
+def test_to_annotations_bad_kind_raises():
+    asr = ASR(sfreq=SFREQ, cutoff=20.0, picks=None, verbose=False)
+    asr.fit_transform(_eeg())
+    with pytest.raises(ValueError, match="kind must be"):
+        asr.to_annotations("bogus")
+
+
+def test_to_annotations_calibration_on_window_backend_raises():
+    asr = ASR(sfreq=SFREQ, cutoff=20.0, picks=None, verbose=False)
+    asr.fit_transform(_eeg())
+    with pytest.raises(RuntimeError, match="sample-based"):
+        asr.to_annotations("calibration")
+
+
+def test_get_diagnostics_present_on_all_variants():
+    for est in (
+        ASR(sfreq=SFREQ, picks=None, verbose=False),
+        AdaptiveASR(sfreq=SFREQ, variant="psp", picks=None, verbose=False),
+        JugglerASR(sfreq=SFREQ, strategy="gev", picks=None, verbose=False),
+    ):
+        est.fit_transform(_eeg())
+        assert isinstance(est.get_diagnostics(), dict)
+
+
+def test_asr_window_criterion_rejection_and_annotations():
+    mne = pytest.importorskip("mne")
+    asr = ASR(
+        sfreq=SFREQ,
+        cutoff=10.0,
+        calibration="auto",
+        picks=None,
+        window_criterion=0.3,
+        window_criterion_tolerances=(-np.inf, 5.0),
+        verbose=False,
+    )
+    asr.fit_transform(_eeg(bursts=8))
+    mask = asr.get_rejection_mask()
+    assert mask.dtype == bool
+    ann = asr.to_annotations("rejection")
+    assert isinstance(ann, mne.Annotations)
+
+
+def test_standard_low_memory_matches_full():
+    X = _eeg()
+    full = ASR(sfreq=SFREQ, cutoff=20.0, picks=None, max_mem_mb=512, verbose=False)
+    low = ASR(sfreq=SFREQ, cutoff=20.0, picks=None, max_mem_mb=1, verbose=False)
+    c_full = full.fit_transform(X)
+    c_low = low.fit_transform(X)
+    np.testing.assert_allclose(c_full, c_low, atol=1e-9)
+
+
+def test_riemannian_windowed_low_memory_runs():
+    X = _eeg()
+    asr = ASR(
+        sfreq=SFREQ,
+        cutoff=20.0,
+        method="riemannian_windowed",
+        picks=None,
+        max_mem_mb=1,
+        verbose=False,
+    )
+    cleaned = asr.fit_transform(X)
+    assert np.all(np.isfinite(cleaned))
+
+
+def test_fit_eeg_distribution_returns_params():
+    rng = np.random.default_rng(1)
+    rms = np.abs(rng.standard_normal(2000)) + 0.5
+    mu, sigma, *_ = fit_eeg_distribution(rms)
+    assert np.isfinite(mu) and sigma > 0
+
+
+def test_compute_asr_rejection_mask_standalone():
+    X = _eeg(bursts=8)
+    mask, info = compute_asr_rejection_mask(X, SFREQ)
+    assert mask.dtype == bool
+    assert mask.shape == (X.shape[1],)
+    assert isinstance(info, dict)
+
+
+def test_compute_asr_qa_metrics_with_and_without_estimator():
+    X = _eeg()
+    asr = ASR(sfreq=SFREQ, cutoff=20.0, picks=None, verbose=False)
+    cleaned = np.asarray(asr.fit_transform(X))
+    m1 = compute_asr_qa_metrics(X, cleaned, asr)
+    m2 = compute_asr_qa_metrics(X, cleaned, None)
+    assert "variance_removed_pct" in m1
+    assert "variance_removed_pct" in m2
+
+
+def test_process_asr_method_validation():
+    state, _ = calibrate_asr(
+        _eeg(), SFREQ, method="standard", calibration="manual", filter_kind="none"
+    )
+    with pytest.raises(ValueError, match="method must be"):
+        process_asr(_eeg(), SFREQ, state, method="bogus")
+
+
+def test_adaptive_and_juggler_accept_epochs():
+    mne = pytest.importorskip("mne")
+    X = _eeg(n_times=6000)
+    info = mne.create_info([f"EEG{i:02d}" for i in range(8)], SFREQ, "eeg")
+    # 3 epochs of 2000 samples
+    epo = mne.EpochsArray(
+        X.reshape(8, 3, 2000).transpose(1, 0, 2) * 1e-6, info, verbose=False
+    )
+    for est in (
+        AdaptiveASR(sfreq=SFREQ, variant="psw", verbose=False),
+        JugglerASR(sfreq=SFREQ, strategy="dbscan", verbose=False),
+    ):
+        out = est.fit_transform(epo)
+        assert out.get_data().shape == epo.get_data().shape
+
+
+def test_asr_window_criterion_on_epochs_populates_rejection():
+    epo = _epochs()
+    asr = ASR(
+        sfreq=SFREQ,
+        cutoff=10.0,
+        window_criterion=0.3,
+        window_criterion_tolerances=(-np.inf, 5.0),
+        verbose=False,
+    )
+    out = asr.fit_transform(epo)
+    assert out.get_data().shape == epo.get_data().shape
+    diag = asr.get_diagnostics()
+    assert "rejection_sample_mask" in diag
+    assert "fraction_retained_after_window_rejection" in diag
+
+
+def test_riemannian_low_memory_runs():
+    asr = ASR(
+        sfreq=SFREQ,
+        cutoff=20.0,
+        method="riemannian",
+        experimental=True,
+        picks=None,
+        max_mem_mb=1,
+        verbose=False,
+    )
+    cleaned = asr.fit_transform(_eeg())
+    assert np.all(np.isfinite(cleaned))
+
+
+def test_karcher_mean_spd_validation_guards():
+    from mne_denoise.asr._spd import _karcher_mean_spd
+
+    spd = np.stack([np.eye(3), 2.0 * np.eye(3)])
+    with pytest.raises(ValueError, match="shape"):
+        _karcher_mean_spd(np.eye(3), regularization=1e-8)
+    with pytest.raises(ValueError, match="At least one"):
+        _karcher_mean_spd(np.empty((0, 3, 3)), regularization=1e-8)
+    with pytest.raises(ValueError, match="sample_weight must have shape"):
+        _karcher_mean_spd(spd, sample_weight=np.ones(5), regularization=1e-8)
+    with pytest.raises(ValueError, match="non-negative"):
+        _karcher_mean_spd(spd, sample_weight=np.array([-1.0, 1.0]), regularization=1e-8)
+    with pytest.raises(ValueError, match="positive value"):
+        _karcher_mean_spd(spd, sample_weight=np.array([0.0, 0.0]), regularization=1e-8)
+
+
+def test_validate_array_2d_guards():
+    from mne_denoise.asr.core import _validate_array_2d
+
+    with pytest.raises(ValueError, match="2D array"):
+        _validate_array_2d(np.zeros((2, 2, 2)))
+    with pytest.raises(ValueError, match="at least two channels"):
+        _validate_array_2d(np.ones((1, 100)))
+    bad = np.ones((3, 100))
+    bad[1, :] = np.nan
+    with pytest.raises(ValueError, match="non-finite"):
+        _validate_array_2d(bad)
+    with pytest.raises(ValueError, match="variance"):
+        _validate_array_2d(np.ones((3, 100)))  # zero variance
+
+
+def test_window_starts_guards():
+    from mne_denoise.asr.core import _window_starts
+
+    with pytest.raises(ValueError, match="at least 2 samples"):
+        _window_starts(100, 1, 0.5)
+    with pytest.raises(ValueError, match="exceeds data length"):
+        _window_starts(50, 100, 0.5)
+
+
+def test_calibrate_asr_common_param_guards():
+    X = _eeg()
+    with pytest.raises(ValueError, match="cutoff must be positive"):
+        calibrate_asr(X, SFREQ, cutoff=-1.0, filter_kind="none")
+    with pytest.raises(ValueError, match="window_length must be positive"):
+        calibrate_asr(X, SFREQ, window_length=-1.0, filter_kind="none")
+    with pytest.raises(ValueError, match="window_overlap"):
+        calibrate_asr(X, SFREQ, window_overlap=1.5, filter_kind="none")
+    with pytest.raises(ValueError, match="max_dropout_fraction"):
+        calibrate_asr(X, SFREQ, max_dropout_fraction=1.5, filter_kind="none")
+    with pytest.raises(ValueError, match="min_clean_fraction"):
+        calibrate_asr(X, SFREQ, min_clean_fraction=0.0, filter_kind="none")
+    with pytest.raises(ValueError, match="regularization must be positive"):
+        calibrate_asr(X, SFREQ, regularization=0.0, filter_kind="none")
+
+
+def test_riemannian_chunked_covariance_paths():
+    X = _eeg()  # 8000 samples -> rASR cov stack exceeds a 0.05 MB budget
+    c1 = ASR(
+        sfreq=SFREQ,
+        cutoff=20.0,
+        method="riemannian",
+        experimental=True,
+        cov_estimator="geometric_median",
+        picks=None,
+        max_mem_mb=0.05,
+        verbose=False,
+    ).fit_transform(X)
+    assert np.all(np.isfinite(c1))
+    c2 = ASR(
+        sfreq=SFREQ,
+        cutoff=20.0,
+        method="riemannian",
+        experimental=True,
+        cov_estimator="mean",
+        picks=None,
+        max_mem_mb=0.05,
+        verbose=False,
+    ).fit_transform(X)
+    assert np.all(np.isfinite(c2))
+    with pytest.raises(ValueError, match="median"):
+        ASR(
+            sfreq=SFREQ,
+            cutoff=20.0,
+            method="riemannian",
+            experimental=True,
+            cov_estimator="median",
+            picks=None,
+            max_mem_mb=0.05,
+            verbose=False,
+        ).fit_transform(X)
+
+
+def test_asr_picks_by_channel_names():
+    mne = pytest.importorskip("mne")
+    ch = [f"EEG{i:02d}" for i in range(8)]
+    info = mne.create_info(ch, SFREQ, "eeg")
+    raw = mne.io.RawArray(_eeg() * 1e-6, info, verbose=False)
+    asr = ASR(
+        sfreq=SFREQ,
+        cutoff=20.0,
+        picks=["EEG00", "EEG01", "EEG02", "EEG03"],
+        verbose=False,
+    )
+    out = asr.fit_transform(raw)
+    assert out.get_data().shape == raw.get_data().shape
+
+
+def test_asr_transform_channel_count_mismatch_raises():
+    mne = pytest.importorskip("mne")
+    info8 = mne.create_info([f"EEG{i:02d}" for i in range(8)], SFREQ, "eeg")
+    raw8 = mne.io.RawArray(_eeg() * 1e-6, info8, verbose=False)
+    asr = ASR(sfreq=SFREQ, cutoff=20.0, verbose=False)
+    asr.fit(raw8)
+    info6 = mne.create_info([f"EEG{i:02d}" for i in range(6)], SFREQ, "eeg")
+    raw6 = mne.io.RawArray(_eeg(n_channels=6) * 1e-6, info6, verbose=False)
+    with pytest.raises(ValueError, match="channel count does not match"):
+        asr.transform(raw6)
+
+
+@pytest.mark.parametrize("method", ["standard", "riemannian_windowed"])
+def test_store_reconstruction_matrices(method):
+    asr = ASR(
+        sfreq=SFREQ,
+        cutoff=5.0,
+        method=method,
+        picks=None,
+        store_reconstruction_matrices=True,
+        verbose=False,
+    )
+    asr.fit_transform(_eeg(bursts=8))
+    assert "reconstruction_matrices" in asr.get_diagnostics()
+
+
+def test_resolve_max_dims_and_robust_scale_and_mem_bytes():
+    from mne_denoise.asr.core import (
+        _max_mem_bytes,
+        _resolve_max_dims,
+        _robust_location_scale,
+    )
+
+    assert _resolve_max_dims(0.5, 10) == 5
+    assert _resolve_max_dims(3, 10) == 3
+    with pytest.raises(ValueError, match="float max_dims"):
+        _resolve_max_dims(1.5, 10)
+    with pytest.raises(ValueError, match="integer max_dims"):
+        _resolve_max_dims(20, 10)
+
+    mu, sigma = _robust_location_scale(np.ones(50))  # mad=0 -> tiny positive fallback
+    assert sigma > 0 and np.isfinite(mu)
+
+    with pytest.raises(ValueError, match="max_mem_mb must be"):
+        _max_mem_bytes(-1.0)
+    assert _max_mem_bytes(None) is None
+
+
+def test_core_window_and_resolve_helpers():
+    from mne_denoise.asr.core import (
+        _append_clean_rawdata_tail,
+        _clean_rawdata_window_starts,
+        _prepend_clean_rawdata_carry,
+        _resolve_max_bad_channels_count,
+        _resolve_max_dims_clean_rawdata,
+        _window_weights,
+    )
+
+    assert _window_weights(2).shape == (2,)  # small-window flat weights
+    assert _window_weights(16).shape == (16,)  # hanning taper
+    assert _clean_rawdata_window_starts(1000, 100, 0.5).size > 0
+
+    assert _resolve_max_bad_channels_count(0.1, 20) >= 0  # float fraction
+    assert _resolve_max_bad_channels_count(3, 20) == 3  # int branch
+    with pytest.raises(ValueError, match="non-negative"):
+        _resolve_max_bad_channels_count(-1, 20)
+
+    assert _resolve_max_dims_clean_rawdata(0.5, 20) == 10  # float fraction
+    with pytest.raises(ValueError, match="non-negative"):
+        _resolve_max_dims_clean_rawdata(-0.5, 20)
+    with pytest.raises(ValueError, match="non-negative"):
+        _resolve_max_dims_clean_rawdata(-3, 20)
+
+    X = np.ones((4, 5))
+    with pytest.raises(ValueError, match="lookahead tail"):
+        _append_clean_rawdata_tail(X, 10)
+    with pytest.raises(ValueError, match="lookahead carry"):
+        _prepend_clean_rawdata_carry(X, 10)
+    assert _append_clean_rawdata_tail(X, 0).shape == X.shape  # zero -> copy
+    assert _prepend_clean_rawdata_carry(X, 0).shape == X.shape
+
+
+def test_asr_supports_meg_picks():
+    mne = pytest.importorskip("mne")
+    rng = np.random.default_rng(0)
+    n = 6000
+    t = np.arange(n) / SFREQ
+    X = np.zeros((12, n))
+    for c in range(12):
+        X[c] = (
+            0.6 * np.sin(2 * np.pi * 10 * t + rng.uniform(0, 6.28))
+            + 0.05 * rng.standard_normal(n)
+        ) * 1e-13  # magnetometer (Tesla) scale
+    for s in (1200, 3000, 4500):
+        sp = rng.standard_normal(12)
+        sp /= np.linalg.norm(sp)
+        X[:, s : s + 150] += 10e-13 * np.outer(sp, rng.standard_normal(150))
+    info = mne.create_info([f"MEG{i:02d}" for i in range(12)], SFREQ, "mag")
+    raw = mne.io.RawArray(X, info, verbose=False)
+    out = ASR(sfreq=SFREQ, cutoff=20.0, picks="mag", verbose=False).fit_transform(raw)
+    assert out.get_data().shape == raw.get_data().shape
+    assert np.all(np.isfinite(out.get_data()))
+
+
+def test_asr_unknown_picks_string_raises():
+    mne = pytest.importorskip("mne")
+    info = mne.create_info([f"EEG{i:02d}" for i in range(8)], SFREQ, "eeg")
+    raw = mne.io.RawArray(_eeg() * 1e-6, info, verbose=False)
+    with pytest.raises(ValueError, match="Unsupported picks"):
+        ASR(sfreq=SFREQ, picks="bogus", verbose=False).fit(raw)
+
+
+@pytest.mark.parametrize("cutoff", [5.0, 20.0, 50.0])
+def test_standard_cutoff_parametric(cutoff):
+    clean = _make_clean_eeg()
+    dirty = _inject_bursts(clean)
+    asr = ASR(sfreq=250.0, cutoff=cutoff, picks=None, verbose=False)
+    cleaned = asr.fit_transform(dirty)
+    assert cleaned.shape == dirty.shape
+    assert np.all(np.isfinite(cleaned))
+
+
+@pytest.mark.parametrize("cutoff", [5.0, 20.0, 50.0])
+def test_rasr_windowed_cutoff_parametric(cutoff):
+    clean = _make_clean_eeg()
+    dirty = _inject_bursts(clean)
+    asr = ASR(
+        sfreq=250.0,
+        cutoff=cutoff,
+        method="riemannian_windowed",
+        experimental=True,
+        picks=None,
+        verbose=False,
+    )
+    cleaned = asr.fit_transform(dirty)
+    assert cleaned.shape == dirty.shape
+
+
+def test_rasr_windowed_cutoff_monotonicity():
+    """riemannian_windowed % windows reconstructed must decrease as k rises."""
+    clean = _make_clean_eeg()
+    dirty = _inject_bursts(clean)
+    fractions = {}
+    for k in (5.0, 20.0, 50.0):
+        asr = ASR(
+            sfreq=250.0,
+            cutoff=k,
+            method="riemannian_windowed",
+            experimental=True,
+            picks=None,
+            verbose=False,
+        )
+        asr.fit_transform(dirty)
+        fractions[k] = float(asr.diagnostics_["fraction_reconstructed_windows"])
+    # Monotone non-increasing (allow ties)
+    keys = sorted(fractions)
+    for a, b in zip(keys[:-1], keys[1:]):
+        assert fractions[a] >= fractions[b] - 1e-6, (
+            f"non-monotone: k={a}->{fractions[a]}, k={b}->{fractions[b]}"
+        )
+
+
+def test_standard_4_channel_substrate():
+    """Standard ASR should at minimum NOT crash on 4-channel data."""
+    clean = _make_clean_eeg(n_channels=4, duration_s=60.0)
+    dirty = _inject_bursts(clean)
+    asr = ASR(sfreq=250.0, cutoff=20.0, picks=None, verbose=False)
+    cleaned = asr.fit_transform(dirty)
+    assert cleaned.shape == dirty.shape
+
+
+def test_standard_64_channel_substrate():
+    """Standard ASR should not crash on 64-channel data."""
+    clean = _make_clean_eeg(n_channels=64, duration_s=30.0)
+    dirty = _inject_bursts(clean, n_bursts=6)
+    asr = ASR(sfreq=250.0, cutoff=20.0, picks=None, verbose=False)
+    cleaned = asr.fit_transform(dirty)
+    assert cleaned.shape == dirty.shape
+
+
+def test_rasr_windowed_64_channel_substrate():
+    """rASR-windowed should handle 64 channels."""
+    clean = _make_clean_eeg(n_channels=64, duration_s=30.0)
+    dirty = _inject_bursts(clean, n_bursts=6)
+    asr = ASR(
+        sfreq=250.0,
+        cutoff=20.0,
+        method="riemannian_windowed",
+        experimental=True,
+        picks=None,
+        verbose=False,
+    )
+    cleaned = asr.fit_transform(dirty)
+    assert cleaned.shape == dirty.shape
+
+
+@pytest.mark.parametrize("sfreq", [250.0, 1000.0])
+def test_standard_sfreq_parametric(sfreq):
+    """Standard ASR should not crash at typical to high sample rates.
+
+    Uses a long-enough substrate (60 s) so the clean-windows selection still
+    leaves enough samples for the threshold-fit step even after aggressive
+    burst contamination.
+    """
+    clean = _make_clean_eeg(duration_s=60.0, sfreq=sfreq)
+    dirty = _inject_bursts(clean, sfreq=sfreq, n_bursts=4)
+    asr = ASR(sfreq=sfreq, cutoff=20.0, picks=None, verbose=False)
+    cleaned = asr.fit_transform(dirty)
+    assert cleaned.shape == dirty.shape
+
+
+def test_short_recording_too_short_raises_clearly():
+    """A sub-window recording should raise a clear error, not silently misbehave.
+
+    Use 0.3 s at 250 Hz = 75 samples — below the default 0.5 s = 125 sample
+    window length. ASR's calibration cannot run with fewer samples than one
+    window.
+    """
+    clean = _make_clean_eeg(duration_s=0.3, n_channels=8)
+    asr = ASR(sfreq=250.0, cutoff=20.0, picks=None, verbose=False)
+    with pytest.raises((ValueError, RuntimeError)):
+        asr.fit(clean)
+
+
+def test_minimal_30s_recording_succeeds():
+    """30 s is the documented minimum that should generally succeed."""
+    clean = _make_clean_eeg(duration_s=30.0, n_channels=8)
+    dirty = _inject_bursts(clean, n_bursts=4)
+    asr = ASR(sfreq=250.0, cutoff=20.0, picks=None, verbose=False)
+    cleaned = asr.fit_transform(dirty)
+    assert cleaned.shape == dirty.shape
+
+
+def test_all_variants_preserve_clean_substrate():
+    """On a fully clean substrate, every variant should produce output that
+    is essentially the input (correlation > 0.95, no over-cleaning).
+    """
+    clean = _make_clean_eeg(n_channels=16, duration_s=60.0)
+    variants = []
+    # Standard
+    asr1 = ASR(sfreq=250.0, cutoff=20.0, picks=None, verbose=False)
+    variants.append(("standard", asr1.fit_transform(clean)))
+    # riemannian
+    asr2 = ASR(
+        sfreq=250.0,
+        cutoff=20.0,
+        method="riemannian",
+        experimental=True,
+        picks=None,
+        verbose=False,
+    )
+    variants.append(("riemannian", asr2.fit_transform(clean)))
+    # riemannian_windowed
+    asr3 = ASR(
+        sfreq=250.0,
+        cutoff=20.0,
+        method="riemannian_windowed",
+        experimental=True,
+        picks=None,
+        verbose=False,
+    )
+    variants.append(("riemannian_windowed", asr3.fit_transform(clean)))
+    # PSP
+    asr4 = AdaptiveASR(
+        sfreq=250.0,
+        cutoff=20.0,
+        variant="psp",
+        picks=None,
+        verbose=False,
+    )
+    variants.append(("psp", asr4.fit_transform(clean)))
+    # Juggler DBSCAN
+    asr5 = JugglerASR(
+        sfreq=250.0,
+        cutoff=20.0,
+        strategy="dbscan",
+        picks=None,
+        verbose=False,
+    )
+    variants.append(("juggler_dbscan", asr5.fit_transform(clean)))
+
+    for name, cleaned in variants:
+        corr = float(np.corrcoef(cleaned.ravel(), clean.ravel())[0, 1])
+        assert corr > 0.95, f"{name} over-cleaned a clean substrate; corr={corr:.4f}"
+
+
+def test_evoked_fit_raises():
+    """ASR.fit() should refuse Evoked input across variants."""
+    import mne
+
+    clean = _make_clean_eeg(n_channels=8, duration_s=30.0)
+    info = mne.create_info(
+        ["E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8"],
+        sfreq=250.0,
+        ch_types="eeg",
+    )
+    # Build a fake Evoked
+    data = clean[:, :3000].copy() * 1e-6
+    evoked = mne.EvokedArray(data, info, tmin=0.0, verbose=False)
+    asr = ASR(sfreq=250.0, cutoff=20.0, picks=None, verbose=False)
+    with pytest.raises(ValueError, match="Evoked"):
+        asr.fit(evoked)

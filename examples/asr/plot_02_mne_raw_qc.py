@@ -79,11 +79,34 @@ print(f"Variance removed: {metrics['variance_removed_pct']:.2f}%")
 # %%
 # Plot One EEG Channel
 # --------------------
+# The repair and rejection annotations are passed straight to
+# ``plot_signal_overlay`` as ``highlight_spans`` instead of shading the axis by
+# hand; the reference trace uses the ``reference`` argument.
 channel = "EEG 00"
 noisy = raw.get_data(picks=[channel])[0]
 clean = raw_clean.get_data(picks=[channel])[0]
 
-fig = plot_signal_overlay(
+spans = [
+    {
+        "onset": onset,
+        "duration": dur,
+        "color": "C3",
+        "alpha": 0.12,
+        "label": "ASR repair",
+    }
+    for onset, dur in zip(repair_annotations.onset, repair_annotations.duration)
+] + [
+    {
+        "onset": onset,
+        "duration": dur,
+        "color": "0.2",
+        "alpha": 0.08,
+        "label": "Window reject mask",
+    }
+    for onset, dur in zip(reject_annotations.onset, reject_annotations.duration)
+]
+
+plot_signal_overlay(
     noisy,
     clean,
     times,
@@ -92,38 +115,11 @@ fig = plot_signal_overlay(
     after_label="ASR cleaned EEG",
     x_label="Time (s)",
     y_label="Amplitude (a.u.)",
+    title="ASR repairs plus optional final window rejection mask",
+    reference=brain[0],
+    reference_label="Reference EEG",
+    highlight_spans=spans,
     show=False,
 )
-ax = fig.axes[0]
-ax.plot(times, brain[0], color="C2", lw=1.0, alpha=0.8, label="Reference EEG")
-
-for idx, (onset, duration) in enumerate(
-    zip(repair_annotations.onset, repair_annotations.duration)
-):
-    ax.axvspan(
-        onset,
-        onset + duration,
-        color="C3",
-        alpha=0.12,
-        label="ASR repair" if idx == 0 else None,
-    )
-for idx, (onset, duration) in enumerate(
-    zip(reject_annotations.onset, reject_annotations.duration)
-):
-    ax.axvspan(
-        onset,
-        onset + duration,
-        color="0.2",
-        alpha=0.08,
-        label="Window reject mask" if idx == 0 else None,
-    )
-
-ax.set(
-    xlabel="Time (s)",
-    ylabel="Amplitude (a.u.)",
-    title="ASR repairs plus optional final window rejection mask",
-)
-ax.legend(loc="upper right")
-fig.tight_layout()
 
 plt.show()

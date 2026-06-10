@@ -24,6 +24,17 @@ from numpy.testing import assert_allclose
 
 from mne_denoise.asr import AdaptiveASR
 
+SFREQ = 250.0
+
+
+def _epochs(n_epochs=3, n_per=2000):
+    mne = pytest.importorskip("mne")
+    X = _eeg(n_times=n_epochs * n_per, bursts=6)
+    info = mne.create_info([f"EEG{i:02d}" for i in range(8)], SFREQ, "eeg")
+    data = X.reshape(8, n_epochs, n_per).transpose(1, 0, 2) * 1e-6
+    return mne.EpochsArray(data, info, verbose=False)
+
+
 # =============================================================================
 # Synthetic data
 # =============================================================================
@@ -273,3 +284,186 @@ def test_mw_sliding_default_final_state_unchanged():
 
     assert asr.calibration_info_.get("mw_mode", "final_state") != "sliding"
     assert "mw_n_windows" in asr.calibration_info_
+
+
+# ===========================================================================
+# Tests relocated from former test_coverage.py / test_robustness.py (PR #36).
+# Grouped here by the module they exercise.
+# ===========================================================================
+
+
+def _eeg(n_channels=8, n_times=8000, seed=0, bursts=5):
+    rng = np.random.default_rng(seed)
+    t = np.arange(n_times) / SFREQ
+    X = np.zeros((n_channels, n_times))
+    for c in range(n_channels):
+        X[c] = 0.6 * np.sin(2 * np.pi * 10 * t + rng.uniform(0, 6.28)) + (
+            0.05 * rng.standard_normal(n_times)
+        )
+    for s in np.linspace(800, n_times - 500, bursts).astype(int):
+        spatial = rng.standard_normal(n_channels)
+        spatial /= np.linalg.norm(spatial)
+        X[:, s : s + 150] += 10.0 * np.outer(spatial, rng.standard_normal(150))
+    return X
+
+
+def _inject_bursts(
+    data: np.ndarray,
+    n_bursts: int = 8,
+    burst_duration_s: float = 0.5,
+    amplitude: float = 12.0,
+    sfreq: float = 250.0,
+    seed: int = 97,
+) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    burst_len = int(round(burst_duration_s * sfreq))
+    n_times = data.shape[1]
+    starts = np.linspace(burst_len, n_times - burst_len, n_bursts).astype(int)
+    contaminated = data.copy()
+    scale = float(np.median(np.std(data, axis=1)))
+    for start in starts:
+        stop = min(start + burst_len, n_times)
+        spatial = rng.standard_normal(data.shape[0])
+        spatial /= max(np.linalg.norm(spatial), 1e-12)
+        temporal = rng.standard_normal(stop - start)
+        contaminated[:, start:stop] += amplitude * scale * np.outer(spatial, temporal)
+    return contaminated
+
+
+def _make_clean_eeg(
+    n_channels: int = 16,
+    duration_s: float = 40.0,
+    sfreq: float = 250.0,
+    seed: int = 11,
+) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    n = int(sfreq * duration_s)
+    t = np.arange(n) / sfreq
+    data = np.zeros((n_channels, n), dtype=np.float64)
+    for ch in range(n_channels):
+        phase = rng.uniform(0, 2 * np.pi)
+        data[ch] = 0.6 * np.sin(2 * np.pi * 10.0 * t + phase) + 0.15 * np.sin(
+            2 * np.pi * 6.5 * t + phase * 0.8
+        )
+    data += 0.05 * rng.standard_normal(data.shape)
+    return data
+
+
+def test_adaptive_window_criterion_on_epochs_populates_rejection():
+    epo = _epochs()
+    aasr = AdaptiveASR(
+        sfreq=SFREQ,
+        cutoff=10.0,
+        variant="psp",
+        window_criterion=0.3,
+        window_criterion_tolerances=(-np.inf, 5.0),
+        verbose=False,
+    )
+    out = aasr.fit_transform(epo)
+    assert out.get_data().shape == epo.get_data().shape
+    diag = aasr.get_diagnostics()
+    assert "rejection_sample_mask" in diag
+
+
+def test_adaptive_mw_bad_window_length_raises():
+    with pytest.raises(ValueError, match="mw_window_length"):
+        AdaptiveASR(
+            sfreq=SFREQ,
+            variant="mw",
+            mw_window_length=-1.0,
+            picks=None,
+            verbose=False,
+        ).fit(_eeg())
+
+
+def test_adaptive_mw_bad_mode_raises():
+    with pytest.raises(ValueError, match="mw_mode"):
+        AdaptiveASR(
+            sfreq=SFREQ,
+            variant="mw",
+            mw_mode="bogus",
+            picks=None,
+            verbose=False,
+        ).fit(_eeg())
+
+
+def test_adaptive_max_dims_zero_is_identity():
+    X = _eeg()
+    aasr = AdaptiveASR(
+        sfreq=SFREQ, variant="psp", max_dims=0.0, picks=None, verbose=False
+    )
+    cleaned = np.asarray(aasr.fit_transform(X))
+    np.testing.assert_allclose(cleaned, X, atol=1e-9)
+
+
+def test_adaptive_partial_fit_calibration_mask():
+    X = _eeg(n_times=8000)
+    aasr = AdaptiveASR(sfreq=SFREQ, variant="psp", picks=None, verbose=False)
+    aasr.fit(X[:, :4000])
+    with pytest.raises(ValueError, match="calibration_mask must have shape"):
+        aasr.partial_fit(X[:, 4000:], calibration_mask=np.ones(10, dtype=bool))
+    mask = np.ones(4000, dtype=bool)
+    mask[:200] = False
+    aasr.partial_fit(X[:, 4000:], calibration_mask=mask)
+    assert aasr.calibration_mask_kind_ == "window"
+
+
+def test_adaptive_transform_raw_with_window_criterion():
+    mne = pytest.importorskip("mne")
+    X = _eeg(n_times=8000, bursts=8)
+    info = mne.create_info([f"EEG{i:02d}" for i in range(8)], SFREQ, "eeg")
+    raw = mne.io.RawArray(X * 1e-6, info, verbose=False)
+    aasr = AdaptiveASR(
+        sfreq=SFREQ,
+        cutoff=10.0,
+        variant="psp",
+        window_criterion=0.3,
+        window_criterion_tolerances=(-np.inf, 5.0),
+        verbose=False,
+    )
+    aasr.fit_transform(raw)
+    diag = aasr.get_diagnostics()
+    assert "rejection_sample_mask" in diag
+
+
+@pytest.mark.parametrize(
+    "kwargs,msg",
+    [
+        ({"update_window_length": -1.0}, "update_window_length"),
+        ({"calibration_window_length": -1.0}, "clean_window_length"),
+        ({"calibration_window_overlap": 1.5}, "clean_window_overlap"),
+        ({"ref_max_bad_channels": -0.1}, "clean_max_bad_channels"),
+        ({"learning_rate": -1.0}, "learning_rate"),
+        ({"tau": -1.0}, "tau must be positive"),
+    ],
+)
+def test_adaptive_validate_param_guards(kwargs, msg):
+    with pytest.raises(ValueError, match=msg):
+        AdaptiveASR(
+            sfreq=SFREQ, variant="psp", picks=None, verbose=False, **kwargs
+        ).fit(_eeg())
+
+
+@pytest.mark.parametrize("length_s", [5.0, 20.0, 40.0])
+@pytest.mark.parametrize("mode", ["final_state", "sliding"])
+def test_mw_window_length_parametric(length_s, mode):
+    clean = _make_clean_eeg(duration_s=120.0)
+    dirty = _inject_bursts(clean, n_bursts=20, sfreq=250.0)
+    asr = AdaptiveASR(
+        sfreq=250.0,
+        cutoff=20.0,
+        variant="mw",
+        mw_window_length=length_s,
+        mw_mode=mode,
+        picks=None,
+        verbose=False,
+    )
+    if mode == "sliding":
+        cleaned = asr.fit_transform(dirty)
+    else:
+        asr.fit(dirty)
+        cleaned = asr.transform(dirty)
+    assert cleaned.shape == dirty.shape
+    assert np.all(np.isfinite(cleaned))
+    # Number of windows should be > 0
+    assert len(asr.mw_diagnostics_) > 0
