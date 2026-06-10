@@ -828,3 +828,69 @@ class DSS(BaseEstimator, TransformerMixin):
         threshold = 1e-15 * max_norm if max_norm > 0 else 1e-30
         norms = np.where(norms > threshold, norms, 1.0)
         return self.patterns_ / norms
+
+    def plot_components(
+        self,
+        data=None,
+        *,
+        interactive: bool = False,
+        preview: bool = False,
+        info=None,
+        picks=None,
+        **kwargs,
+    ):
+        """Plot per-component summaries, optionally interactively.
+
+        Mirrors MNE-Python's ICA API. With ``interactive=False`` this returns the
+        static :func:`mne_denoise.viz.plot_component_summary` dashboard. With
+        ``interactive=True`` it returns a
+        :class:`mne_denoise.viz.ComponentSelector` that lets you click components
+        to toggle whether they are excluded from the clean output, previewing the
+        reconstruction live.
+
+        Parameters
+        ----------
+        data : Raw | Epochs | Evoked | ndarray | None
+            Data used to compute component sources (and the live preview when
+            ``interactive=True``).
+        interactive : bool, default=False
+            If True, build and return the interactive selector; otherwise return
+            a static summary figure.
+        preview : bool, default=False
+            For ``interactive=True`` only: add a live before/after preview panel.
+        info : mne.Info | None
+            Sensor metadata for topomaps.
+        picks : array-like of int | None
+            Channel indices for topomaps. Requires ``info``.
+        **kwargs
+            Forwarded to the underlying visualization function.
+
+        Returns
+        -------
+        out : matplotlib.figure.Figure | ComponentSelector
+            A figure when ``interactive=False``; a ``ComponentSelector`` when
+            ``interactive=True``.
+        """
+        if interactive:
+            from ..viz import plot_component_selector
+
+            return plot_component_selector(
+                self, data, info=info, picks=picks, preview=preview, **kwargs
+            )
+        from ..viz import plot_component_summary
+
+        return plot_component_summary(self, data=data, info=info, picks=picks, **kwargs)
+
+    def plot_sources(self, inst=None, **kwargs):
+        """Scrollable component-activation browser (not yet implemented).
+
+        Reserved for a future release: a scrollable viewer of component time
+        courses over the full recording, like
+        :func:`mne.viz.plot_ica_sources`. For now, use
+        :meth:`plot_components` with ``interactive=True`` for the click-to-toggle
+        selector.
+        """
+        raise NotImplementedError(
+            "plot_sources (scrollable component browser) is not yet implemented; "
+            "use plot_components(..., interactive=True) for interactive selection."
+        )

@@ -15,6 +15,7 @@ from .components import (
     plot_component_time_series,
     plot_window_score_traces,
 )
+from .interactive import ComponentSelector, plot_component_selector
 from .signals import (
     plot_channel_time_course_comparison,
     plot_evoked_gfp_comparison,
@@ -96,6 +97,8 @@ __all__ = [
     "themed_legend",
     # Component plots
     "plot_component_summary",
+    "plot_component_selector",
+    "ComponentSelector",
     "plot_component_patterns",
     "plot_component_score_curve",
     "plot_component_epochs_image",

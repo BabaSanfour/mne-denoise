@@ -134,6 +134,8 @@ Visualization
    mne_denoise.viz.plot_asr_component_reconstruction
    mne_denoise.viz.plot_guided_asr_weights
    mne_denoise.viz.plot_component_summary
+   mne_denoise.viz.plot_component_selector
+   mne_denoise.viz.ComponentSelector
    mne_denoise.viz.plot_component_time_series
    mne_denoise.viz.plot_component_spectrogram
    mne_denoise.viz.plot_component_score_curve
