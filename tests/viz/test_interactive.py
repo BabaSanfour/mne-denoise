@@ -234,3 +234,78 @@ def test_as_2d_rejects_bad_shape():
     """_as_2d rejects arrays it cannot interpret as channel data."""
     with pytest.raises(ValueError, match="Cannot interpret"):
         _as_2d(np.zeros((2, 3, 4)), n_channels=7)
+
+
+def test_as_2d_channel_first_layout():
+    """_as_2d handles the (n_channels, n_times, n_epochs) layout."""
+    out = _as_2d(np.zeros((3, 5, 2)), n_channels=3)
+    assert out.shape == (3, 10)
+
+
+def test_selector_explicit_sfreq_without_info(synthetic_data):
+    """An explicit sfreq is used when no info is available."""
+    arr = np.asarray(synthetic_data.get_data())[0]  # (n_ch, n_times)
+    dss = DSS(n_components=2, bias=lambda x: x).fit(arr)
+    sel = plot_component_selector(dss, arr, info=None, sfreq=100.0, show=False)
+    assert isinstance(sel, ComponentSelector)
+
+
+def test_selector_subset_picks_topomap(fitted_dss, synthetic_data):
+    """A picks subset smaller than the fitted channels still renders topomaps."""
+    sel = plot_component_selector(
+        fitted_dss,
+        synthetic_data,
+        info=synthetic_data.info,
+        picks=[0, 1, 2, 3],
+        n_components=[0],
+        show=False,
+    )
+    assert isinstance(sel, ComponentSelector)
+
+
+def test_selector_empty_components_raises(fitted_dss, synthetic_data):
+    """Requesting no components is rejected."""
+    with pytest.raises(ValueError, match="No components available"):
+        plot_component_selector(
+            fitted_dss,
+            synthetic_data,
+            info=synthetic_data.info,
+            picks=[0, 1, 2, 3, 4],
+            n_components=[],
+            show=False,
+        )
+
+
+def test_selector_click_outside_components_is_noop(fitted_dss, synthetic_data):
+    """Clicking outside any component row leaves the selection unchanged."""
+    sel = plot_component_selector(
+        fitted_dss,
+        synthetic_data,
+        info=synthetic_data.info,
+        picks=[0, 1, 2, 3, 4],
+        show=False,
+    )
+    _fake_click(sel.fig, sel._preview["ax_gfp"])  # preview axis, not a component
+    assert sel.excluded == []
+
+
+def test_selector_apply_uses_retained_data(fitted_dss, synthetic_data):
+    """apply() with no argument reuses the data the selector was built with."""
+    sel = plot_component_selector(
+        fitted_dss,
+        synthetic_data,
+        info=synthetic_data.info,
+        picks=[0, 1, 2, 3, 4],
+        show=False,
+    )
+    assert np.allclose(sel.apply(), sel.apply(synthetic_data))
+
+
+def test_selector_zapline_unexclude_all_returns_input(fitted_zapline, zapline_data):
+    """With every noise component restored, ZapLine returns the input unchanged."""
+    data, _ = zapline_data
+    sel = plot_component_selector(fitted_zapline, data, show=False)
+    for comp in (0, 1):
+        _fake_click(sel.fig, _axes_for(sel, comp))
+    assert sel.excluded == []
+    assert np.allclose(sel.apply(data), data, atol=1e-9)
