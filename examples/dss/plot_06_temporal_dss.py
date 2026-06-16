@@ -325,6 +325,7 @@ try:
     raw_path = eegbci.load_data(subject, runs)[0]
 except Exception as e:
     import sys
+
     print(f"Skipping EEGBCI example due to network error: {e}")
     sys.exit(0)
 

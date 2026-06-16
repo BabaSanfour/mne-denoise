@@ -356,7 +356,9 @@ def test_asr_unknown_method_raises():
 
     rng = np.random.default_rng(42)
     with pytest.raises(NotImplementedError, match="Supported methods"):
-        ASR(sfreq=250.0, method="bogus", verbose=False).fit(rng.standard_normal((8, 2000)))
+        ASR(sfreq=250.0, method="bogus", verbose=False).fit(
+            rng.standard_normal((8, 2000))
+        )
 
 
 def test_asr_riemannian_requires_experimental():
