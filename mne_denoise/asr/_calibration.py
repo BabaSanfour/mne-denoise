@@ -1,10 +1,14 @@
-"""ASR calibration: fit the reconstruction model from clean reference data.
+"""ASR Calibration Module.
 
-``calibrate_asr`` selects clean calibration windows, estimates the robust
-covariance (standard or Riemannian geometry), and derives the mixing square
-root ``M`` and the direction-dependent threshold matrix ``T`` that drive
-reconstruction. ``_fit_component_thresholds`` fits the per-component RMS
-thresholds from the EEG amplitude distribution.
+This module is responsible for fitting the core Artifact Subspace Reconstruction
+(ASR) statistical model from continuous reference data.
+
+The primary entry point, ``calibrate_asr``, executes a multi-step pipeline:
+1. Automatically identifies "clean" spatial covariance windows.
+2. Aggregates these windows using robust geometry (Standard or Riemannian).
+3. Derives the mixing square-root matrix ``M`` to map data into principal space.
+4. Fits a generalized Gaussian distribution to windowed RMS values to calculate
+   the direction-dependent threshold cutoff matrix ``T``.
 """
 
 from __future__ import annotations
@@ -14,7 +18,7 @@ from typing import Any
 import numpy as np
 
 from ._covariance import _aggregate_block_covariances
-from ._distribution import fit_eeg_distribution
+from ._distribution import fit_rms_distribution
 from ._filters import _apply_statistics_filter, _design_statistics_filter
 from ._spd import (
     _regularize_spd,
@@ -29,9 +33,9 @@ from ._validation import (
     _validate_array_2d,
     _validate_common_params,
 )
-from ._windows import (
-    _clean_rawdata_window_starts,
-    _sample_mask_from_removed_windows,
+from ._windowing import (
+    _create_sample_mask_from_windows,
+    _get_fractional_window_starts,
     _select_clean_windows,
 )
 
@@ -39,7 +43,6 @@ from ._windows import (
 def calibrate_asr(
     X: np.ndarray,
     sfreq: float,
-    *,
     cutoff: float = 20.0,
     window_length: float = 0.5,
     window_overlap: float = 0.66,
@@ -104,9 +107,21 @@ def calibrate_asr(
     Returns
     -------
     state : ASRState
-        Fitted ASR state.
+        Fitted ASR state containing the threshold matrix T and mixing matrix M.
     diagnostics : dict
-        Calibration diagnostics.
+        Calibration diagnostics, including filter state and geometry info.
+
+    Examples
+    --------
+    Calibrate an ASR model from a 10-channel, 1000-sample array:
+
+    >>> import numpy as np
+    >>> from mne_denoise.asr import calibrate_asr
+    >>> rng = np.random.default_rng(42)
+    >>> data = rng.standard_normal((10, 1000))
+    >>> state, diagnostics = calibrate_asr(data, sfreq=250.0, cutoff=20.0)
+    >>> print(f"Threshold matrix shape: {state.T.shape}")
+    Threshold matrix shape: (10, 10)
     """
     _validate_common_params(
         sfreq=sfreq,
@@ -138,7 +153,7 @@ def calibrate_asr(
     X_stats = _apply_statistics_filter(X, filter_b, filter_a)
 
     cal_len = _round_half_up(calibration_window_length * sfreq)
-    cal_starts = _clean_rawdata_window_starts(
+    cal_starts = _get_fractional_window_starts(
         n_times,
         cal_len,
         calibration_window_overlap,
@@ -160,7 +175,7 @@ def calibrate_asr(
                 "Not enough clean calibration windows: "
                 f"{clean_window_mask.sum()} found, {min_clean_windows} required"
             )
-        clean_sample_mask = _sample_mask_from_removed_windows(
+        clean_sample_mask = _create_sample_mask_from_windows(
             n_times,
             cal_starts,
             cal_len,
@@ -176,7 +191,7 @@ def calibrate_asr(
     # Both Riemannian variants aggregate block covariances with Riemannian primitives
     # (geometric median + Karcher-style block reduction). The difference is the
     # eigenspace family used for V (and downstream T):
-    #   - "riemannian"           : tangent-space V (MATLAB-faithful one-shot processing)
+    #   - "riemannian"           : tangent-space V (standard reference one-shot processing)
     #   - "riemannian_windowed"  : standard eigh on the Riemannian-aggregated C
     #                              (cutoff-sensitive per-window processing)
     use_riemannian_aggregation = method in ("riemannian", "riemannian_windowed")
@@ -184,7 +199,7 @@ def calibrate_asr(
         X_clean,
         blocksize,
         cov_estimator,
-        covariance_kind="rasr" if use_riemannian_aggregation else "clean_rawdata",
+        covariance_kind="standard" if use_riemannian_aggregation else "padded",
         max_mem_mb=max_mem_mb,
     )
     C = _regularize_spd(C, regularization)
@@ -266,8 +281,42 @@ def _fit_component_thresholds(
     min_clean_fraction: float,
     max_dropout_fraction: float,
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    """Fit threshold statistics for all principal components.
+
+    Projects the continuous clean data into the principal subspace defined by V,
+    calculates the windowed RMS for each component, and fits the generalized
+    Gaussian distribution to determine robust cutoff thresholds.
+
+    Parameters
+    ----------
+    X : ndarray, shape (n_channels, n_times)
+        The clean calibration data array.
+    V : ndarray, shape (n_channels, n_components)
+        The mixing matrix defining the principal subspace.
+    sfreq : float
+        The sampling frequency in Hz.
+    window_length : float
+        Length of the sliding window for RMS calculation, in seconds.
+    window_overlap : float
+        Overlap fraction of the sliding windows.
+    cutoff : float
+        Multiplier for the robust standard deviation to determine the threshold.
+    min_clean_fraction : float
+        Minimum central fraction used to estimate clean RMS statistics.
+    max_dropout_fraction : float
+        Fraction of the lowest RMS values excluded as dropouts.
+
+    Returns
+    -------
+    thresholds : ndarray, shape (n_components,)
+        The final calculated upper RMS thresholds for each component.
+    info : dict
+        A dictionary containing the full set of diagnostic arrays for each
+        component, including 'mu', 'sigma', 'beta', 'fit_error', and
+        'fit_interval'.
+    """
     win_len = _round_half_up(window_length * sfreq)
-    starts = _clean_rawdata_window_starts(X.shape[1], win_len, window_overlap)
+    starts = _get_fractional_window_starts(X.shape[1], win_len, window_overlap)
     projected = V.T @ X
     thresholds = np.empty(projected.shape[0], dtype=np.float64)
     mu_values = np.empty(projected.shape[0], dtype=np.float64)
@@ -280,7 +329,7 @@ def _fit_component_thresholds(
         for idx, start in enumerate(starts):
             segment = comp[start : start + win_len]
             rms[idx] = np.sqrt(np.mean(segment**2))
-        mu, sigma, info = fit_eeg_distribution(
+        mu, sigma, info = fit_rms_distribution(
             rms,
             min_clean_fraction=min_clean_fraction,
             max_dropout_fraction=max_dropout_fraction,

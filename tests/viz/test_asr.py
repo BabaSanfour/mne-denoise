@@ -44,7 +44,7 @@ def fitted_asr():
         spatial = rng.standard_normal(8)
         spatial /= np.linalg.norm(spatial)
         X[:, s : s + 150] += 10.0 * np.outer(spatial, rng.standard_normal(150))
-    asr = ASR(sfreq=SFREQ, cutoff=10.0, picks=None, verbose=False)
+    asr = ASR(sfreq=SFREQ, cutoff=10.0, verbose=False)
     asr.fit_transform(X)
     return asr
 
@@ -74,7 +74,7 @@ def test_plot_asr_component_reconstruction(fitted_asr):
 
 def test_plot_asr_calibration_fraction(fitted_asr):
     rng = np.random.default_rng(4)
-    juggler = JugglerASR(sfreq=SFREQ, cutoff=10.0, picks=None, verbose=False)
+    juggler = JugglerASR(sfreq=SFREQ, cutoff=10.0, verbose=False)
     juggler.fit_transform(0.5 * rng.standard_normal((8, 8000)))
     _assert_fig_ax(
         plot_asr_calibration_fraction(
@@ -83,18 +83,18 @@ def test_plot_asr_calibration_fraction(fitted_asr):
     )
 
 
-def test_calibration_fraction_single_estimator(fitted_asr):
+def test_calibration_fraction_singlecore(fitted_asr):
     _assert_fig_ax(plot_asr_calibration_fraction(fitted_asr, show=False))
 
 
 def test_repair_timeline_unfitted_raises():
-    fresh = ASR(sfreq=SFREQ, picks=None, verbose=False)
+    fresh = ASR(sfreq=SFREQ, verbose=False)
     with pytest.raises(ValueError, match="diagnostics"):
         plot_asr_repair_timeline(fresh, show=False)
 
 
 def test_component_reconstruction_unfitted_raises():
-    fresh = ASR(sfreq=SFREQ, picks=None, verbose=False)
+    fresh = ASR(sfreq=SFREQ, verbose=False)
     with pytest.raises(ValueError, match="diagnostics"):
         plot_asr_component_reconstruction(fresh, show=False)
 

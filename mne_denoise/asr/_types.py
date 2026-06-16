@@ -1,14 +1,13 @@
-"""Shared dataclasses and types for the ASR package.
+"""Shared dataclasses and types for the ASR module.
 
 This module holds the fitted-state container shared by the standard, adaptive,
-Juggler, and Riemannian ASR variants. It is kept separate from the calibration
-and processing logic so every variant module can depend on the type without
-importing the whole pipeline.
+Juggler, and Riemannian ASR variants.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -51,3 +50,49 @@ class ASRState:
     rank: int
     method: str = "standard"
     riemannian_solver: str | None = None
+
+
+def _copy_asr_state(state: ASRState) -> ASRState:
+    """Create a deep copy of an ASRState object.
+
+    Parameters
+    ----------
+    state : ASRState
+        The state object to copy.
+
+    Returns
+    -------
+    ASRState
+        A new ASRState instance with copied arrays.
+    """
+    return ASRState(
+        M=state.M.copy(),
+        T=state.T.copy(),
+        thresholds=state.thresholds.copy(),
+        calibration_patterns=state.calibration_patterns.copy(),
+        filter_b=state.filter_b.copy(),
+        filter_a=state.filter_a.copy(),
+        cov=state.cov.copy(),
+        rank=int(state.rank),
+        method=state.method,
+        riemannian_solver=state.riemannian_solver,
+    )
+
+
+def _copy_process_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Create a deep copy of an ASR process state dictionary.
+
+    Parameters
+    ----------
+    state : dict
+        The process state dictionary containing NumPy arrays or scalar values.
+
+    Returns
+    -------
+    dict
+        A new dictionary with copied arrays and values.
+    """
+    copied: dict[str, Any] = {}
+    for key, value in state.items():
+        copied[key] = value.copy() if isinstance(value, np.ndarray) else value
+    return copied

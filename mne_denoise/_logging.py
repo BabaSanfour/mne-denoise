@@ -1,22 +1,21 @@
-"""Logging helpers for the ASR package.
+"""Centralized logging utility for the mne-denoise package.
 
-Follows the mne-denoise convention of a per-package :class:`logging.Logger`
-(``mne_denoise.asr``). The estimators expose an MNE-style ``verbose`` parameter;
-:func:`set_log_level_from_verbose` maps it onto this logger so progress messages
-are emitted at the requested level. Child module loggers
-(``logging.getLogger(__name__)``) inherit this level unless configured
-otherwise.
+This module provides a unified `set_log_level_from_verbose` function that maps
+MNE-style `verbose` arguments (e.g., `True`, `False`, `"INFO"`, `"DEBUG"`) directly
+onto the root `mne_denoise` Python logger. This ensures consistent log filtering
+across all package modules (ASR, DSS, ZapLine, etc.) while allowing individual
+submodules to inherit the global logging level gracefully.
 """
 
 from __future__ import annotations
 
 import logging
 
-logger = logging.getLogger("mne_denoise.asr")
+logger = logging.getLogger("mne_denoise")
 
 
 def set_log_level_from_verbose(verbose: bool | str | int | None) -> None:
-    """Set the ASR logger level from an MNE-style ``verbose`` value.
+    """Set the mne-denoise logger level from an MNE-style ``verbose`` value.
 
     Parameters
     ----------

@@ -313,18 +313,18 @@ After ``transform``, the estimator stores audit fields:
    Returns the retained-sample mask from optional clean_windows-style final
    window rejection.
 
-``compute_asr_qa_metrics()``
+``variance_removed()``
    Computes ASR-specific variance-change and repair-extent metrics from
    before/after data and an optional fitted ``ASR`` instance.
 
-``compute_asr_rejection_mask()``
+``compute_clean_window_mask()``
    Exposes clean_windows-style retained-sample masking as a standalone helper
    for continuous arrays.
 
 Threshold fitting
 -----------------
 
-ASR calibration uses ``fit_eeg_distribution()`` to estimate robust clean RMS
+ASR calibration uses ``fit_rms_distribution()`` to estimate robust clean RMS
 statistics for each calibration component. The fitter follows the
 clean_rawdata truncated generalized-Gaussian grid search and stores
 per-component ``threshold_mu``, ``threshold_sigma``, ``threshold_beta``, and

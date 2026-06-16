@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import mne
 import numpy as np
 
-from mne_denoise.asr import ASR, compute_asr_qa_metrics
+from mne_denoise.asr import ASR
 from mne_denoise.viz import plot_signal_overlay
 
 # %%
@@ -67,14 +67,12 @@ asr = ASR(
 raw_clean = asr.fit_transform(raw)
 repair_annotations = asr.to_annotations()
 reject_annotations = asr.to_annotations("rejection")
-metrics = compute_asr_qa_metrics(raw, raw_clean, asr)
 
 print(f"Repaired sample fraction: {asr.fraction_reconstructed_samples_:.2%}")
 print(
     "Retained after final window rejection: "
-    f"{metrics['fraction_retained_after_window_rejection']:.2%}"
+    f"{asr.fraction_retained_after_window_rejection_:.2%}"
 )
-print(f"Variance removed: {metrics['variance_removed_pct']:.2f}%")
 
 # %%
 # Plot One EEG Channel

@@ -1,20 +1,4 @@
-"""Unit tests for the MW-ASR variant of :class:`AdaptiveASR`.
-
-MW-ASR (multi-window ASR, the AASR demo's Cell 4 pipeline) has no MATLAB
-oracle fixtures, so these tests pin its documented Python semantics instead of
-comparing against a reference ``.mat`` file:
-
-* ``mw_mode="final_state"`` (default) -- each ``mw_window_length`` window is
-  calibrated independently and recorded in ``mw_diagnostics_``; the final
-  estimator state is the calibration of the *last* window. A single covering
-  window therefore collapses to a plain PSP calibration.
-* ``mw_mode="sliding"`` -- each window is calibrated on itself and cleaned with
-  that local calibration; a single covering window equals
-  ``AdaptiveASR(variant="psp").fit_transform``.
-
-Because PSP is MATLAB-parity-tested in ``test_aasr_parity.py``, the
-equivalences asserted below transitively validate the MW machinery.
-"""
+"""Unit tests for the adaptive ASR."""
 
 from __future__ import annotations
 
@@ -33,11 +17,6 @@ def _epochs(n_epochs=3, n_per=2000):
     info = mne.create_info([f"EEG{i:02d}" for i in range(8)], SFREQ, "eeg")
     data = X.reshape(8, n_epochs, n_per).transpose(1, 0, 2) * 1e-6
     return mne.EpochsArray(data, info, verbose=False)
-
-
-# =============================================================================
-# Synthetic data
-# =============================================================================
 
 
 def _make_synthetic(
@@ -76,11 +55,6 @@ def _make_synthetic(
         temporal = rng.standard_normal(stop - start)
         data[:, start:stop] += 7.0 * np.outer(spatial, temporal)
     return data
-
-
-# =============================================================================
-# MW final-state mode (default)
-# =============================================================================
 
 
 def test_mw_single_window_equals_psp():
@@ -166,11 +140,6 @@ def test_mw_diagnostics_empty_for_psp_psw():
         asr = AdaptiveASR(sfreq=sfreq, cutoff=20.0, variant=variant, verbose=False)
         asr.fit(data)
         assert asr.mw_diagnostics_ == []
-
-
-# =============================================================================
-# MW sliding mode (robustness sprint addition)
-# =============================================================================
 
 
 def test_mw_sliding_invalid_mw_mode_raises():
@@ -286,12 +255,6 @@ def test_mw_sliding_default_final_state_unchanged():
     assert "mw_n_windows" in asr.calibration_info_
 
 
-# ===========================================================================
-# Tests relocated from former test_coverage.py / test_robustness.py (PR #36).
-# Grouped here by the module they exercise.
-# ===========================================================================
-
-
 def _eeg(n_channels=8, n_times=8000, seed=0, bursts=5):
     rng = np.random.default_rng(seed)
     t = np.arange(n_times) / SFREQ
@@ -371,7 +334,6 @@ def test_adaptive_mw_bad_window_length_raises():
             sfreq=SFREQ,
             variant="mw",
             mw_window_length=-1.0,
-            picks=None,
             verbose=False,
         ).fit(_eeg())
 
@@ -382,23 +344,20 @@ def test_adaptive_mw_bad_mode_raises():
             sfreq=SFREQ,
             variant="mw",
             mw_mode="bogus",
-            picks=None,
             verbose=False,
         ).fit(_eeg())
 
 
 def test_adaptive_max_dims_zero_is_identity():
     X = _eeg()
-    aasr = AdaptiveASR(
-        sfreq=SFREQ, variant="psp", max_dims=0.0, picks=None, verbose=False
-    )
+    aasr = AdaptiveASR(sfreq=SFREQ, variant="psp", max_dims=0.0, verbose=False)
     cleaned = np.asarray(aasr.fit_transform(X))
     np.testing.assert_allclose(cleaned, X, atol=1e-9)
 
 
 def test_adaptive_partial_fit_calibration_mask():
     X = _eeg(n_times=8000)
-    aasr = AdaptiveASR(sfreq=SFREQ, variant="psp", picks=None, verbose=False)
+    aasr = AdaptiveASR(sfreq=SFREQ, variant="psp", verbose=False)
     aasr.fit(X[:, :4000])
     with pytest.raises(ValueError, match="calibration_mask must have shape"):
         aasr.partial_fit(X[:, 4000:], calibration_mask=np.ones(10, dtype=bool))
@@ -439,9 +398,7 @@ def test_adaptive_transform_raw_with_window_criterion():
 )
 def test_adaptive_validate_param_guards(kwargs, msg):
     with pytest.raises(ValueError, match=msg):
-        AdaptiveASR(
-            sfreq=SFREQ, variant="psp", picks=None, verbose=False, **kwargs
-        ).fit(_eeg())
+        AdaptiveASR(sfreq=SFREQ, variant="psp", verbose=False, **kwargs).fit(_eeg())
 
 
 @pytest.mark.parametrize("length_s", [5.0, 20.0, 40.0])
@@ -455,7 +412,6 @@ def test_mw_window_length_parametric(length_s, mode):
         variant="mw",
         mw_window_length=length_s,
         mw_mode=mode,
-        picks=None,
         verbose=False,
     )
     if mode == "sliding":
@@ -467,3 +423,232 @@ def test_mw_window_length_parametric(length_s, mode):
     assert np.all(np.isfinite(cleaned))
     # Number of windows should be > 0
     assert len(asr.mw_diagnostics_) > 0
+
+
+def test_adaptive_asr_psw_updates_and_reduces_bursts(synthetic_burst_data):
+    """Adaptive PSW-ASR updates thresholds and suppresses burst residuals."""
+    data, brain, burst_mask, sfreq = synthetic_burst_data
+    asr = AdaptiveASR(
+        sfreq=sfreq,
+        cutoff=5.0,
+        variant="psw",
+        verbose=False,
+    )
+    asr.fit(data[:, : int(4 * sfreq)])
+    initial_T = asr.T_.copy()
+    asr.partial_fit(data[:, int(4 * sfreq) : int(8 * sfreq)])
+
+    assert len(asr.adaptive_update_history_) == 2
+    assert asr.calibration_info_["event"] == "update"
+    assert asr.calibration_info_["adaptive_variant"] == "psw"
+    assert not np.allclose(initial_T, asr.T_)
+
+    asr.reset_process_state()
+    cleaned = asr.transform(data)
+
+    assert cleaned.shape == data.shape
+    assert np.all(np.isfinite(cleaned))
+    assert asr.diagnostics_["adaptive_variant"] == "psw"
+    before = np.var(data[:, burst_mask] - brain[:, burst_mask])
+    after = np.var(cleaned[:, burst_mask] - brain[:, burst_mask])
+    assert after < before
+
+
+def test_adaptive_asr_reset_process_state_is_reproducible(synthetic_burst_data):
+    """Resetting adaptive process state restores deterministic replay."""
+    data, _, _, sfreq = synthetic_burst_data
+    asr = AdaptiveASR(
+        sfreq=sfreq,
+        cutoff=5.0,
+        variant="psp",
+        verbose=False,
+    )
+    asr.fit(data[:, : int(6 * sfreq)])
+    cleaned_first = asr.transform(data)
+    asr.reset_process_state()
+    cleaned_second = asr.transform(data)
+    np.testing.assert_allclose(cleaned_first, cleaned_second, atol=1e-10)
+
+
+def test_adaptive_asr_low_memory_matches_full_path(synthetic_burst_data):
+    """Adaptive ASR honors max_mem_mb without changing reconstruction."""
+    data, _, _, sfreq = synthetic_burst_data
+    calibration = data[:, : int(6 * sfreq)]
+
+    full = AdaptiveASR(
+        sfreq=sfreq,
+        cutoff=5.0,
+        variant="psw",
+        max_mem_mb=None,
+        verbose=False,
+    )
+    low_mem = AdaptiveASR(
+        sfreq=sfreq,
+        cutoff=5.0,
+        variant="psw",
+        max_mem_mb=0.001,
+        verbose=False,
+    )
+    full.fit(calibration)
+    low_mem.fit(calibration)
+
+    cleaned_full = full.transform(data)
+    cleaned_low_mem = low_mem.transform(data)
+
+    assert full.calibration_info_["memory_mode"] == "full"
+    assert low_mem.calibration_info_["memory_mode"] == "chunked"
+    assert full.diagnostics_["memory_mode"] == "full"
+    assert low_mem.diagnostics_["memory_mode"] == "chunked"
+    assert low_mem.diagnostics_["used_memory_bound"]
+    np.testing.assert_allclose(cleaned_low_mem, cleaned_full, atol=1e-10)
+
+
+def test_adaptive_asr_mne_raw_preserves_non_picked_channels(synthetic_burst_data):
+    """Adaptive ASR cleans EEG picks and preserves non-picked channels."""
+    mne = pytest.importorskip("mne")
+    data, _, _, sfreq = synthetic_burst_data
+    eog = np.vstack(
+        [
+            np.sin(2 * np.pi * 1.0 * np.arange(data.shape[1]) / sfreq),
+            np.cos(2 * np.pi * 1.0 * np.arange(data.shape[1]) / sfreq),
+        ]
+    )
+    raw_data = np.vstack([data, eog])
+    ch_names = [f"EEG{idx}" for idx in range(data.shape[0])] + ["EOG1", "EOG2"]
+    ch_types = ["eeg"] * data.shape[0] + ["eog", "eog"]
+    info = mne.create_info(ch_names, sfreq, ch_types)
+    raw = mne.io.RawArray(raw_data, info, verbose=False)
+
+    asr = AdaptiveASR(cutoff=5.0, variant="psp", verbose=False)
+    raw_clean = asr.fit_transform(raw)
+
+    assert isinstance(raw_clean, mne.io.RawArray)
+    assert raw_clean.get_data().shape == raw_data.shape
+    np.testing.assert_allclose(raw_clean.get_data(picks=["EOG1", "EOG2"]), eog)
+    assert asr.ch_names_ == ch_names[: data.shape[0]]
+
+
+def test_adaptive_edge_cases():
+    mne = pytest.importorskip("mne")
+    sfreq = 250.0
+    data = _make_synthetic(n_samples=4000, sfreq=sfreq, seed=1)
+
+    info = mne.create_info([f"EEG{i}" for i in range(8)], sfreq, "eeg")
+    evoked = mne.EvokedArray(data, info)
+    asr = AdaptiveASR(sfreq=sfreq, variant="psp", verbose=False)
+
+    with pytest.raises(ValueError, match="does not support Evoked"):
+        asr.fit(evoked)
+
+    with pytest.raises(ValueError, match="calibration_mask must have shape"):
+        asr.fit(data, calibration_mask=np.ones(10, dtype=bool))
+
+    mask = np.ones(data.shape[1], dtype=bool)
+    mask[:200] = False
+    asr.fit(data, calibration_mask=mask)
+
+    asr.fit(data)
+
+    asr2 = AdaptiveASR(sfreq=sfreq, variant="psp", verbose=False)
+    asr2.partial_fit(data)
+
+    with pytest.raises(ValueError, match="does not support Evoked"):
+        asr.partial_fit(evoked)
+
+    info_bad = mne.create_info([f"EEG{i}" for i in range(8)], 100.0, "eeg")
+    raw_bad = mne.io.RawArray(data, info_bad)
+    with pytest.raises(ValueError, match="does not match fitted sfreq"):
+        asr.partial_fit(raw_bad)
+
+    epochs = _epochs()
+    asr.partial_fit(epochs)
+
+    annot = mne.Annotations(onset=[1.0], duration=[1.0], description=["BAD_TEST"])
+    raw_annot = mne.io.RawArray(data, info)
+    raw_annot.set_annotations(annot)
+    asr3 = AdaptiveASR(
+        sfreq=sfreq, variant="psp", reject_by_annotation=True, verbose=False
+    )
+    asr3.fit(raw_annot)
+    asr3.partial_fit(raw_annot)
+
+    with pytest.raises(ValueError, match="does not support Evoked"):
+        asr.transform(evoked)
+
+    with pytest.raises(ValueError, match="does not match fitted sfreq"):
+        asr.transform(raw_bad)
+
+    asr4 = AdaptiveASR(
+        sfreq=sfreq,
+        variant="psp",
+        reject_by_annotation=True,
+        window_criterion=0.3,
+        verbose=False,
+    )
+    asr4.fit(raw_annot)
+    asr4.transform(raw_annot)
+
+    asr4_false = AdaptiveASR(
+        sfreq=sfreq,
+        variant="psp",
+        reject_by_annotation=False,
+        window_criterion=0.3,
+        verbose=False,
+    )
+    asr4_false.fit(raw_annot)
+    asr4_false.transform(raw_annot)
+
+    asr5 = AdaptiveASR(sfreq=sfreq, variant="psp", window_criterion=0.3, verbose=False)
+    asr5.fit(epochs)
+    asr5.transform(epochs)
+
+    cleaned, diag = asr.transform(data, return_diagnostics=True)
+    assert isinstance(diag, dict)
+
+    asr.reset_process_state()
+
+    mw = AdaptiveASR(sfreq=sfreq, variant="mw", mw_mode="sliding", verbose=False)
+    with pytest.raises(ValueError, match="does not support Evoked"):
+        mw.fit_transform(evoked)
+
+    mw.fit_transform(epochs)
+    _, mw_diag = mw.fit_transform(data, return_diagnostics=True)
+    assert isinstance(mw_diag, dict)
+
+    asr_epochs = AdaptiveASR(sfreq=sfreq, variant="psp", verbose=False)
+    asr_epochs.fit(epochs)
+    asr_epochs.transform(epochs)
+
+    mw2 = AdaptiveASR(
+        sfreq=sfreq,
+        variant="mw",
+        mw_mode="sliding",
+        reject_by_annotation=True,
+        verbose=False,
+    )
+    mw2.fit_transform(raw_annot)
+
+    mw3 = AdaptiveASR(
+        sfreq=sfreq, variant="mw", mw_mode="sliding", blocksize=100000, verbose=False
+    )
+    with pytest.raises(RuntimeError, match="MW-ASR sliding-mode fit_transform"):
+        mw3.fit_transform(data)
+
+    mw4 = AdaptiveASR(sfreq=sfreq, variant="mw", blocksize=100000, verbose=False)
+    with pytest.raises(RuntimeError, match="MW-ASR fit.* no usable window"):
+        mw4.fit(data)
+
+    import unittest.mock as mock
+
+    with mock.patch.object(
+        AdaptiveASR, "_fit_adaptive_state", side_effect=ValueError("mock error")
+    ):
+        mw5 = AdaptiveASR(sfreq=sfreq, variant="mw", verbose=False)
+        with pytest.raises(RuntimeError):
+            mw5.fit(data)
+
+    asr_tau = AdaptiveASR(sfreq=sfreq, variant="psp", tau=0.5, verbose=False)
+    assert asr_tau._resolved_tau() == 0.5
+
+    asr_tau_none = AdaptiveASR(sfreq=sfreq, variant="psp", tau=None, verbose=False)
+    assert asr_tau_none._resolved_tau() == 0.8

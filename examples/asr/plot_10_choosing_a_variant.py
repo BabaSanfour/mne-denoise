@@ -22,7 +22,8 @@ See ``plot_06`` (cutoff), ``plot_07`` (Riemannian), ``plot_08`` (adaptive) and
 import matplotlib.pyplot as plt
 import numpy as np
 
-from mne_denoise.asr import ASR, JugglerASR, compute_asr_qa_metrics
+from mne_denoise.asr import ASR, JugglerASR
+from mne_denoise.qa import variance_removed
 
 rng = np.random.default_rng(3)
 sfreq = 250.0
@@ -63,9 +64,9 @@ estimators = {
 rows = {}
 for name, est in estimators.items():
     cleaned = np.asarray(est.fit_transform(contaminated))
-    metrics = compute_asr_qa_metrics(contaminated, cleaned, est)
+    pct = variance_removed(contaminated, cleaned)
     corr = float(np.corrcoef(cleaned.ravel(), brain.ravel())[0, 1])
-    rows[name] = (metrics["variance_removed_pct"], corr)
+    rows[name] = (pct, corr)
     print(
         f"  {name:22s} variance removed={rows[name][0]:5.1f}%  corr-to-clean={corr:.3f}"
     )

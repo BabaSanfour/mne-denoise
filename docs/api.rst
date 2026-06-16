@@ -10,11 +10,10 @@ ASR
    mne_denoise.asr.ASR
    mne_denoise.asr.AdaptiveASR
    mne_denoise.asr.JugglerASR
-   mne_denoise.asr.ASRState
    mne_denoise.asr.calibrate_asr
-   mne_denoise.asr.compute_asr_rejection_mask
-   mne_denoise.asr.compute_asr_qa_metrics
-   mne_denoise.asr.fit_eeg_distribution
+   mne_denoise.asr.compute_clean_window_mask
+   mne_denoise.asr.variance_removed
+   mne_denoise.asr.fit_rms_distribution
    mne_denoise.asr.process_asr
    mne_denoise.asr.select_juggler_reference_samples
 

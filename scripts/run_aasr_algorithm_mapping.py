@@ -274,7 +274,7 @@ def _write_markdown(
         "Streaming reconstruction kernel: 0.5 s window, 0.25 s lookahead, raised-cosine blending. |"
     )
     lines.append(
-        "| `test_eeg_dist_revi.m` | `fit_eeg_distribution` | "
+        "| `test_eeg_dist_revi.m` | `fit_rms_distribution` | "
         "Generalized Gaussian fit by KL-divergence grid search; defaults match Tsai's: "
         "MinCleanFraction=0.25, MaxDropoutFraction=0.1, FitQuantiles=[0.022, 0.6]. |"
     )

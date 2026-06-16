@@ -36,7 +36,7 @@ I/O, QC, and pipelines
 ----------------------
 
 - ``plot_11_epochs_and_meg.py``: ASR on ``mne.Epochs`` and on MEG magnetometers.
-- ``plot_12_diagnostics_qc.py``: ``get_diagnostics`` / ``compute_asr_qa_metrics``
+- ``plot_12_diagnostics_qc.py``: ``get_diagnostics`` / ``variance_removed``
   / ``to_annotations`` and the three ASR diagnostic plots.
 - ``plot_13_pipeline_filter_asr_ica.py``: A realistic ``filter -> ASR -> ICA``
   workflow on real EEG.

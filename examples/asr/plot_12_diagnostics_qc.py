@@ -6,7 +6,7 @@ Every fitted ASR estimator records what it did, so you can audit the cleaning
 instead of trusting it blindly. This example tours the QC surface:
 
 - ``get_diagnostics()`` -- the per-window reconstruction record;
-- ``compute_asr_qa_metrics()`` -- scalar before/after summaries;
+- ``variance_removed()`` -- scalar before/after summaries;
 - ``to_annotations(kind=...)`` -- repaired / rejected / calibration spans as
   ``mne.Annotations`` (mark, do not delete);
 - the three ASR-specific diagnostic plots.
@@ -19,7 +19,8 @@ import matplotlib.pyplot as plt
 import mne
 import numpy as np
 
-from mne_denoise.asr import ASR, compute_asr_qa_metrics
+from mne_denoise.asr import ASR
+from mne_denoise.qa import variance_removed
 from mne_denoise.viz import (
     plot_asr_calibration_fraction,
     plot_asr_component_reconstruction,
@@ -61,11 +62,12 @@ print(
     f"samples modified={diag['fraction_reconstructed_samples']:.1%}"
 )
 
-metrics = compute_asr_qa_metrics(raw, raw_clean, asr)
+from mne_denoise.qa import channel_variance_ratio, rms_change
+
 print(
-    f"QA: variance removed={metrics['variance_removed_pct']:.1f}%  "
-    f"rms change={metrics['rms_change']:.3g}  "
-    f"median channel variance ratio={metrics['median_channel_variance_ratio']:.2f}"
+    f"QA: variance removed={variance_removed(raw.get_data(picks='eeg'), raw_clean.get_data(picks='eeg')):.1f}%  "
+    f"rms change={rms_change(raw.get_data(picks='eeg'), raw_clean.get_data(picks='eeg')):.3g}  "
+    f"median channel variance ratio={np.median(channel_variance_ratio(raw.get_data(picks='eeg'), raw_clean.get_data(picks='eeg'))):.2f}"
 )
 
 # %%

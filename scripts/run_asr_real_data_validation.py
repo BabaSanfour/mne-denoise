@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from mne_denoise.asr import ASR, AdaptiveASR, JugglerASR, compute_asr_qa_metrics
+from mne_denoise.asr import ASR, AdaptiveASR, JugglerASR
 
 
 DEFAULT_VARIANTS = (
@@ -368,7 +368,7 @@ def _run_variant(
     eeg_picks: np.ndarray,
     args: argparse.Namespace,
 ) -> dict[str, Any]:
-    estimator = _make_estimator(variant, input_raw.info["sfreq"], args)
+    estimator = _makecore(variant, input_raw.info["sfreq"], args)
     run: dict[str, Any] = {"variant": variant, "status": "passed"}
     try:
         with ResourceMeter() as meter:
@@ -379,8 +379,16 @@ def _run_variant(
                 original_raw, input_raw, cleaned, burst_mask, eeg_picks
             )
         )
-        qa = compute_asr_qa_metrics(input_raw, cleaned, estimator)
-        run["qa"] = _select_scalars(qa)
+        from mne_denoise.qa import variance_removed, max_abs_change
+
+        run["qa"] = {
+            "variance_removed_pct": variance_removed(
+                input_raw.get_data(picks="eeg"), cleaned.get_data(picks="eeg")
+            ),
+            "max_abs_change": max_abs_change(
+                input_raw.get_data(picks="eeg"), cleaned.get_data(picks="eeg")
+            ),
+        }
         run["calibration"] = _select_scalars(
             getattr(estimator, "calibration_info_", {})
         )
@@ -397,7 +405,7 @@ def _run_variant(
     return _json_safe(run)
 
 
-def _make_estimator(
+def _makecore(
     variant: str, sfreq: float, args: argparse.Namespace
 ) -> ASR | AdaptiveASR | JugglerASR:
     common = {

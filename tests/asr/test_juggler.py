@@ -1,10 +1,4 @@
-"""Python self-consistency tests for JugglerASR.
-
-There is no public MATLAB oracle for Juggler ASR (Kim et al. 2025 — paper
-dataset is request-only and no MATLAB code is published). These tests verify
-the Python implementation's correctness against synthetic inputs with known
-properties.
-"""
+"""JugglerASR."""
 
 from __future__ import annotations
 
@@ -65,11 +59,6 @@ def _inject_bursts(
         )
         mask[start:stop] = True
     return contaminated, mask
-
-
-# ============================================================================
-# select_juggler_reference_samples — function-level tests
-# ============================================================================
 
 
 def test_juggler_clean_input_keeps_most_samples():
@@ -169,11 +158,6 @@ def test_juggler_min_reference_fraction_raises():
         )
 
 
-# ============================================================================
-# JugglerASR class — estimator-level tests
-# ============================================================================
-
-
 def test_juggler_asr_dbscan_fit_transform_round_trip():
     """JugglerASR(dbscan) should fit + transform end-to-end on synthetic data."""
     sfreq = 250.0
@@ -184,7 +168,6 @@ def test_juggler_asr_dbscan_fit_transform_round_trip():
         sfreq=sfreq,
         cutoff=20.0,
         strategy="dbscan",
-        picks=None,
         random_state=42,
         verbose=False,
     )
@@ -208,7 +191,6 @@ def test_juggler_asr_gev_fit_transform_round_trip():
         sfreq=sfreq,
         cutoff=20.0,
         strategy="gev",
-        picks=None,
         random_state=42,
         verbose=False,
     )
@@ -228,7 +210,6 @@ def test_juggler_calibration_mask_kind_is_sample():
         sfreq=sfreq,
         cutoff=20.0,
         strategy="dbscan",
-        picks=None,
         random_state=42,
         verbose=False,
     )
@@ -244,7 +225,6 @@ def test_juggler_get_calibration_mask_after_fit():
         sfreq=sfreq,
         cutoff=20.0,
         strategy="dbscan",
-        picks=None,
         random_state=42,
         verbose=False,
     )
@@ -263,7 +243,6 @@ def test_juggler_invalid_strategy_raises():
         sfreq=sfreq,
         cutoff=20.0,
         strategy="bogus",
-        picks=None,
         verbose=False,
     )
     with pytest.raises(ValueError, match="strategy must be"):
@@ -279,7 +258,6 @@ def test_juggler_dbscan_deterministic():
         sfreq=sfreq,
         cutoff=20.0,
         strategy="dbscan",
-        picks=None,
         random_state=42,
         verbose=False,
     )
@@ -287,7 +265,6 @@ def test_juggler_dbscan_deterministic():
         sfreq=sfreq,
         cutoff=20.0,
         strategy="dbscan",
-        picks=None,
         random_state=42,
         verbose=False,
     )
@@ -298,12 +275,6 @@ def test_juggler_dbscan_deterministic():
     np.testing.assert_array_equal(
         asr1.get_calibration_mask(), asr2.get_calibration_mask()
     )
-
-
-# ===========================================================================
-# Tests relocated from former test_coverage.py / test_robustness.py (PR #36).
-# Grouped here by the module they exercise.
-# ===========================================================================
 
 
 def _eeg(n_channels=8, n_times=8000, seed=0, bursts=5):
@@ -342,9 +313,7 @@ def _make_clean_eeg(
 
 def test_juggler_to_annotations_calibration_ok():
     mne = pytest.importorskip("mne")
-    j = JugglerASR(
-        sfreq=SFREQ, cutoff=20.0, strategy="dbscan", picks=None, verbose=False
-    )
+    j = JugglerASR(sfreq=SFREQ, cutoff=20.0, strategy="dbscan", verbose=False)
     j.fit_transform(_eeg())
     ann = j.to_annotations("calibration")
     assert isinstance(ann, mne.Annotations)
@@ -365,12 +334,12 @@ def test_juggler_evoked_calibration_raises():
     info = mne.create_info([f"EEG{i:02d}" for i in range(8)], SFREQ, "eeg")
     evoked = mne.EvokedArray(_eeg(n_times=2000) * 1e-6, info, tmin=0.0, verbose=False)
     with pytest.raises(ValueError, match="Evoked"):
-        JugglerASR(sfreq=SFREQ, picks=None, verbose=False).fit(evoked)
+        JugglerASR(sfreq=SFREQ, verbose=False).fit(evoked)
 
 
 def test_juggler_calibration_mask_shape_raises():
     with pytest.raises(ValueError, match="calibration_mask must have shape"):
-        JugglerASR(sfreq=SFREQ, picks=None, verbose=False).fit(
+        JugglerASR(sfreq=SFREQ, verbose=False).fit(
             _eeg(), calibration_mask=np.ones(10, dtype=bool)
         )
 
@@ -439,7 +408,7 @@ def test_select_juggler_reference_samples_param_guards():
 )
 def test_juggler_constructor_param_guards(kwargs, msg):
     with pytest.raises(ValueError, match=msg):
-        JugglerASR(sfreq=SFREQ, picks=None, verbose=False, **kwargs).fit(_eeg())
+        JugglerASR(sfreq=SFREQ, verbose=False, **kwargs).fit(_eeg())
 
 
 @pytest.mark.parametrize("eps_multiplier", [0.5, 1.0, 2.0])
@@ -452,7 +421,6 @@ def test_juggler_dbscan_eps_parametric(eps_multiplier):
         sfreq=250.0,
         cutoff=20.0,
         strategy="dbscan",
-        picks=None,
         verbose=False,
     )
     base.fit(dirty)
@@ -463,9 +431,160 @@ def test_juggler_dbscan_eps_parametric(eps_multiplier):
         cutoff=20.0,
         strategy="dbscan",
         dbscan_eps=eps,
-        picks=None,
         verbose=False,
     )
     asr.fit(dirty)
     rf = float(asr.calibration_info_["reference_selected_fraction"])
     assert 0.0 < rf <= 1.0
+
+
+@pytest.mark.parametrize("strategy", ["dbscan", "gev"])
+def test_select_juggler_reference_samples_rejects_burst_samples(
+    synthetic_burst_data,
+    strategy,
+):
+    """Juggler reference selectors prefer low-amplitude samples."""
+    data, _, burst_mask, sfreq = synthetic_burst_data
+    reference, sample_mask, diagnostics = select_juggler_reference_samples(
+        data,
+        sfreq,
+        strategy=strategy,
+    )
+
+    assert reference.shape[0] == data.shape[0]
+    assert reference.shape[1] == int(np.sum(sample_mask))
+    assert sample_mask.shape == (data.shape[1],)
+    assert np.mean(sample_mask[burst_mask]) < np.mean(sample_mask[~burst_mask])
+    assert diagnostics["reference_selection_strategy"] == strategy
+    assert diagnostics["reference_selected_samples"] == int(np.sum(sample_mask))
+
+
+@pytest.mark.parametrize("strategy", ["dbscan", "gev"])
+def test_juggler_asr_reduces_synthetic_bursts(synthetic_burst_data, strategy):
+    """JugglerASR reuses standard ASR repair after sample-wise calibration."""
+    data, brain, burst_mask, sfreq = synthetic_burst_data
+    asr = JugglerASR(
+        sfreq=sfreq,
+        cutoff=3.0,
+        strategy=strategy,
+        verbose=False,
+    )
+    cleaned = asr.fit_transform(data)
+
+    assert cleaned.shape == data.shape
+    assert np.all(np.isfinite(cleaned))
+    assert asr.get_calibration_mask().shape == (data.shape[1],)
+    assert asr.calibration_info_["reference_selection_strategy"] == strategy
+    assert asr.calibration_info_["reference_selected_samples"] == int(
+        np.sum(asr.reference_sample_mask_)
+    )
+
+    before = np.var(data[:, burst_mask] - brain[:, burst_mask])
+    after = np.var(cleaned[:, burst_mask] - brain[:, burst_mask])
+    assert after < before
+
+
+def test_juggler_asr_reference_annotations_and_metrics(synthetic_burst_data):
+    """JugglerASR exposes the retained reference spans for QC."""
+    mne = pytest.importorskip("mne")
+    data, _, _, sfreq = synthetic_burst_data
+    asr = JugglerASR(
+        sfreq=sfreq,
+        cutoff=3.0,
+        strategy="dbscan",
+        verbose=False,
+    )
+    asr.fit_transform(data)
+    annotations = asr.to_annotations("calibration")
+
+    assert isinstance(annotations, mne.Annotations)
+    assert len(annotations) >= 1
+    assert set(annotations.description) == {"ASR_REFERENCE"}
+    assert asr.calibration_mask_kind_ == "sample"
+
+    assert asr.calibration_info_["reference_selected_samples"] == int(
+        np.sum(asr.reference_sample_mask_)
+    )
+    assert asr.calibration_info_["reference_candidate_samples"] == data.shape[1]
+
+
+def test_juggler_asr_mne_raw_preserves_non_picked_channels(synthetic_burst_data):
+    """JugglerASR cleans EEG picks while leaving non-picked channels alone."""
+    mne = pytest.importorskip("mne")
+    data, _, _, sfreq = synthetic_burst_data
+    eog = np.vstack(
+        [
+            np.sin(2 * np.pi * 1.0 * np.arange(data.shape[1]) / sfreq),
+            np.cos(2 * np.pi * 1.0 * np.arange(data.shape[1]) / sfreq),
+        ]
+    )
+    raw_data = np.vstack([data, eog])
+    ch_names = [f"EEG{idx}" for idx in range(data.shape[0])] + ["EOG1", "EOG2"]
+    ch_types = ["eeg"] * data.shape[0] + ["eog", "eog"]
+    info = mne.create_info(ch_names, sfreq, ch_types)
+    raw = mne.io.RawArray(raw_data, info, verbose=False)
+
+    asr = JugglerASR(cutoff=3.0, strategy="gev", verbose=False)
+    raw_clean = asr.fit_transform(raw)
+
+    assert isinstance(raw_clean, mne.io.RawArray)
+    np.testing.assert_allclose(raw_clean.get_data(picks=["EOG1", "EOG2"]), eog)
+
+
+def test_juggler_edge_cases():
+    from unittest.mock import MagicMock, patch
+
+    from mne_denoise.asr import select_juggler_reference_samples
+    from mne_denoise.asr.juggler import _histogram_mode, _resolve_dbscan_eps
+
+    clean = _make_clean_eeg(duration_s=2.0)
+    JugglerASR(sfreq=SFREQ, verbose=False).fit(
+        clean, calibration_mask=np.ones(clean.shape[1], dtype=bool)
+    )
+
+    with pytest.raises(ValueError, match="empty values"):
+        _histogram_mode(np.array([]))
+
+    assert _histogram_mode(np.array([2.0, 2.0, 2.0])) == 2.0
+
+    with patch("numpy.histogram_bin_edges", return_value=np.array([1.0])):
+        assert _histogram_mode(np.array([1.0, 2.0, 3.0])) == 2.0
+
+    with pytest.raises(RuntimeError, match="zero-amplitude"):
+        _resolve_dbscan_eps("auto", 0.0, np.zeros(10))
+
+    with patch("sklearn.cluster.DBSCAN.fit_predict", return_value=np.full(100, -1)):
+        with pytest.raises(RuntimeError, match="DBSCAN found no non-noise cluster"):
+            select_juggler_reference_samples(clean, SFREQ, strategy="dbscan")
+
+    with patch("scipy.stats.genextreme.fit", side_effect=Exception("mocked")):
+        with pytest.raises(RuntimeError, match="GEV fitting failed"):
+            select_juggler_reference_samples(clean, SFREQ, strategy="gev")
+
+    with patch("scipy.stats.genextreme.fit", return_value=(0.0, 0.0, 0.0)):
+        with pytest.raises(
+            RuntimeError, match="GEV fitting returned a non-positive scale"
+        ):
+            select_juggler_reference_samples(clean, SFREQ, strategy="gev")
+
+    class MockGenExtreme:
+        def fit(self, x):
+            return 1.0, 1.0, 1.0
+
+        def __call__(self, *args, **kwargs):
+            m = MagicMock()
+            m.ppf.side_effect = [np.inf, np.inf]
+            return m
+
+    with patch("mne_denoise.asr.juggler.stats.genextreme", MockGenExtreme()):
+        _, mask, diag = select_juggler_reference_samples(clean, SFREQ, strategy="gev")
+        assert diag["juggler_gev_mode"] > 0
+
+    with patch("scipy.optimize.minimize_scalar", return_value=MagicMock(success=False)):
+        _, mask, diag = select_juggler_reference_samples(clean, SFREQ, strategy="gev")
+        assert diag["juggler_gev_mode"] > 0
+
+    mne = pytest.importorskip("mne")
+    info = mne.create_info(clean.shape[0], SFREQ, "eeg")
+    epochs = mne.EpochsArray(clean.reshape(1, clean.shape[0], -1), info, verbose=False)
+    JugglerASR(sfreq=SFREQ, verbose=False).fit(epochs)

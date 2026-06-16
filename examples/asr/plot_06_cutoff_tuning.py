@@ -27,7 +27,8 @@ References
 import matplotlib.pyplot as plt
 import numpy as np
 
-from mne_denoise.asr import ASR, compute_asr_qa_metrics
+from mne_denoise.asr import ASR
+from mne_denoise.qa import variance_removed
 
 rng = np.random.default_rng(2024)
 sfreq = 250.0
@@ -59,13 +60,13 @@ for start, amp in zip(starts, amplitudes):
 # Sweep the cutoff
 # ----------------
 # For each cutoff, fit + transform and read the two headline metrics straight
-# from :func:`~mne_denoise.asr.compute_asr_qa_metrics`.
+# from :func:`~mne_denoise.asr.variance_removed`.
 cutoffs = [1, 5, 10, 20, 30, 50, 100]
 pct_modified, pct_var_removed = [], []
 for k in cutoffs:
     asr = ASR(sfreq=sfreq, cutoff=float(k), picks=None, verbose=False)
     cleaned = np.asarray(asr.fit_transform(contaminated))
-    metrics = compute_asr_qa_metrics(contaminated, cleaned, asr)
+    metrics = variance_removed(contaminated, cleaned, asr)
     pct_modified.append(100.0 * metrics["fraction_reconstructed_samples"])
     pct_var_removed.append(metrics["variance_removed_pct"])
     print(

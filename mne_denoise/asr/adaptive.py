@@ -1,580 +1,164 @@
-"""Adaptive Artifact Subspace Reconstruction (AASR) variants.
+"""Adaptive Artifact Subspace Reconstruction (AASR) module.
 
-This module implements the adaptive ASR variants from the ``AASR`` reference
-(Hebbian / anti-Hebbian similarity-matching learning), exposed as
-:class:`AdaptiveASR`. The estimator keeps standard ASR's burst reconstruction
-but updates the clean-subspace model between data chunks:
+This module implements the ``AdaptiveASR`` class, an experimental scikit-learn
+and MNE-compatible estimator that extends standard ASR with continuous tracking
+of the clean signal subspace using Hebbian or anti-Hebbian similarity-matching learning.
 
-- ``variant="psp"`` -- plasticity-stabilized (Hebbian) similarity matching;
-- ``variant="psw"`` -- plasticity-stabilized whitening (anti-Hebbian);
-- ``variant="mw"`` -- moving-window calibration (``mw_mode`` selects the
+Unlike standard ASR which relies on a fixed static calibration, Adaptive ASR
+operates in three stages:
+1. **Initial Calibration**: Computes a starting robust covariance matrix and baseline
+   thresholds using an initial clean data window (via ``fit``).
+2. **Adaptive Tracking**: Continuously updates the clean-subspace model across incoming
+   data chunks using moving-window aggregations and similarity-matching rules
+   (via ``partial_fit`` or internally during streaming).
+3. **Reconstruction**: Repairs burst artifacts using standard ASR logic, but applies
+   the dynamically tracked covariance state instead of a fixed baseline (via ``transform``).
+
+This module exposes three distinct adaptive tracking variants:
+- ``variant="psp"`` -- plasticity-stabilized (Hebbian) similarity matching.
+- ``variant="psw"`` -- plasticity-stabilized whitening (anti-Hebbian).
+- ``variant="mw"`` -- moving-window calibration (where ``mw_mode`` selects either
   ``"final_state"`` or per-segment ``"sliding"`` semantics).
-
-It follows the package scikit-learn-style API: ``fit`` for the initial
-calibration, ``partial_fit`` for streaming chunk updates, and ``transform``
-for burst repair with the current adaptive state. The AASR pre-emphasis
-statistics filter is designed in :mod:`mne_denoise.asr._aasr_filter`.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from scipy import signal
 
+from .._logging import set_log_level_from_verbose
 from ..utils import extract_data_from_mne, reconstruct_mne_object
-from ._aasr_filter import design_aasr_filter as _design_aasr_filter
 from ._covariance import (
-    _aggregate_block_covariances,
-    _covariance_chunk_blocks,
-    _covariance_stack_bytes,
-    _max_mem_bytes,
-    _moving_average_clean_rawdata,
-    _process_memory_info,
+    _adaptive_covariance_sqrt,
 )
-from ._distribution import fit_eeg_distribution
-from ._estimator import ASR
-from ._filters import _append_clean_rawdata_tail
-from ._logging import set_log_level_from_verbose
-from ._reconstruction import _empty_process_diagnostics
-from ._spd import _regularize_spd, _sqrtm_spd
-from ._types import ASRState
+from ._distribution import (
+    _AASR_BETA_GRID,
+    _fit_adaptive_thresholds,
+)
+from ._filters import _design_aasr_filter, _lfilter_channels
+from ._learner import _AdaptiveSimilarityMatcher, _build_adaptive_learner
+from ._reconstruction import _process_adaptive_chunk
+from ._types import ASRState, _copy_asr_state, _copy_process_state
 from ._validation import (
-    _resolve_max_dims_clean_rawdata,
-    _round_half_up,
+    _check_transform_channels,
+    _validate_adaptive_params,
     _validate_array_2d,
+    _validate_backend_params,
+    _validate_common_params,
 )
-from ._windows import (
-    _clean_rawdata_window_starts,
-    _clean_windows_grid_diagnostics,
-    _good_raw_sample_mask,
-    _sample_mask_from_removed_windows,
+from ._windowing import (
+    _create_good_sample_mask_from_mne,
+    _extract_clean_calibration_samples,
+    compute_clean_window_mask,
 )
+from .core import ASR
 
 try:
     from mne.epochs import BaseEpochs
     from mne.evoked import Evoked
     from mne.io import BaseRaw
-except ImportError:  # pragma: no cover - MNE is a required project dependency
+except ImportError:  # pragma: no cover
+    mne = None
     BaseEpochs = Any
-    BaseRaw = Any
     Evoked = Any
-
-
-_AASR_BETA_GRID = np.arange(1.7, 3.5 + 1e-12, 0.15, dtype=np.float64)
-
-
-@dataclass
-class _AdaptiveSimilarityMatcher:
-    """Similarity-matching adaptive subspace learner."""
-
-    variant: str
-    tau: float
-    learning_rate: float
-    M: np.ndarray
-    W: np.ndarray
-    Minv: np.ndarray
-
-    def fit_next(self, X: np.ndarray) -> np.ndarray:
-        """Update the subspace learner on one calibration chunk."""
-        y = self.Minv @ (self.W @ X)
-
-        step = float(self.learning_rate)
-        self.W = (1.0 - 2.0 * step) * self.W + (2.0 * step * y) @ X.T / X.shape[1]
-
-        lateral_step = step / float(self.tau)
-        yy = (y @ y.T) / X.shape[1]
-        if self.variant == "psw":
-            target = np.eye(yy.shape[0], dtype=np.float64)
-        else:
-            target = self.M
-        self.M = self.M + lateral_step * (yy - target)
-        try:
-            self.Minv = np.linalg.inv(self.M)
-        except np.linalg.LinAlgError:
-            self.M = _regularize_spd(self.M, 1e-8)
-            self.Minv = np.linalg.inv(self.M)
-        return y
-
-    def get_components(self) -> np.ndarray:
-        """Return the orthonormalized adaptive basis."""
-        components = (self.Minv @ self.W).T
-        q, _ = np.linalg.qr(components, mode="reduced")
-        return q.astype(np.float64, copy=False)
-
-
-def _lfilter_channels(
-    X: np.ndarray,
-    b: np.ndarray,
-    a: np.ndarray,
-    zi: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Apply a causal IIR filter channel-wise and return final conditions."""
-    X = np.asarray(X, dtype=np.float64)
-    order = max(len(a), len(b)) - 1
-    if order <= 0:
-        empty = np.empty((X.shape[0], 0), dtype=np.float64)
-        return X.copy(), empty
-    if zi is None:
-        zi = np.zeros((X.shape[0], order), dtype=np.float64)
-    else:
-        zi = np.asarray(zi, dtype=np.float64)
-        if zi.shape != (X.shape[0], order):
-            raise ValueError(
-                "Filter state shape does not match data: "
-                f"{zi.shape} vs {(X.shape[0], order)}"
-            )
-
-    out = np.empty_like(X, dtype=np.float64)
-    zf = np.empty_like(zi, dtype=np.float64)
-    for ch_idx in range(X.shape[0]):
-        out[ch_idx], zf[ch_idx] = signal.lfilter(b, a, X[ch_idx], zi=zi[ch_idx])
-    return out, zf
-
-
-def _copy_asr_state(state: ASRState) -> ASRState:
-    return ASRState(
-        M=state.M.copy(),
-        T=state.T.copy(),
-        thresholds=state.thresholds.copy(),
-        calibration_patterns=state.calibration_patterns.copy(),
-        filter_b=state.filter_b.copy(),
-        filter_a=state.filter_a.copy(),
-        cov=state.cov.copy(),
-        rank=int(state.rank),
-        method=state.method,
-        riemannian_solver=state.riemannian_solver,
-    )
-
-
-def _copy_process_state(state: dict[str, Any]) -> dict[str, Any]:
-    copied: dict[str, Any] = {}
-    for key, value in state.items():
-        copied[key] = value.copy() if isinstance(value, np.ndarray) else value
-    return copied
-
-
-def _select_aasr_clean_samples(
-    X: np.ndarray,
-    sfreq: float,
-    *,
-    window_length: float,
-    window_overlap: float,
-    max_bad_channels: float,
-    zthresholds: tuple[float, float],
-    max_dropout_fraction: float,
-    min_clean_fraction: float,
-) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
-    win_len = _round_half_up(window_length * sfreq)
-    starts = _clean_rawdata_window_starts(X.shape[1], win_len, window_overlap)
-    diagnostics = _clean_windows_grid_diagnostics(
-        X,
-        starts,
-        win_len,
-        max_bad_channels=max_bad_channels,
-        zthresholds=zthresholds,
-        max_dropout_fraction=max_dropout_fraction,
-        min_clean_fraction=min_clean_fraction,
-        fit_quantiles=(0.022, 0.6),
-        beta_grid=_AASR_BETA_GRID,
-    )
-    if not np.any(diagnostics["window_keep_mask"]):
-        scores = diagnostics["window_rms_zscores"]
-        penalty = np.mean(np.maximum(scores - max(zthresholds), 0.0), axis=1)
-        diagnostics["window_keep_mask"][int(np.argmin(penalty))] = True
-        diagnostics["window_remove_mask"] = ~diagnostics["window_keep_mask"]
-
-    sample_mask = _sample_mask_from_removed_windows(
-        X.shape[1],
-        starts,
-        win_len,
-        diagnostics["window_remove_mask"],
-    )
-    return X[:, sample_mask], sample_mask, diagnostics
-
-
-def _adaptive_covariance_sqrt(
-    X: np.ndarray,
-    *,
-    blocksize: int,
-    regularization: float,
-    max_mem_mb: int | float | None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
-    C, memory_info = _aggregate_block_covariances(
-        X,
-        blocksize,
-        "geometric_median",
-        covariance_kind="clean_rawdata",
-        max_mem_mb=max_mem_mb,
-    )
-    C = _regularize_spd(C, regularization)
-    M = _sqrtm_spd(C, regularization)
-    eigvals, V = np.linalg.eigh(M)
-    return M, C, eigvals, V, memory_info
-
-
-class _ChunkedMovingCovariances:
-    """Yield moving covariances at update positions without a full time stack."""
-
-    def __init__(
-        self,
-        X: np.ndarray,
-        update_at: np.ndarray,
-        window_length: int,
-        *,
-        chunk_samples: int,
-        zi: np.ndarray | None,
-    ) -> None:
-        self.X = X
-        self.update_at = np.asarray(update_at, dtype=int)
-        self.window_length = int(window_length)
-        self.chunk_samples = int(chunk_samples)
-        self.cov_state = zi.copy() if zi is not None else None
-
-    def __iter__(self):
-        n_channels, n_times = self.X.shape
-        update_idx = 0
-        for start in range(0, n_times, self.chunk_samples):
-            stop = min(start + self.chunk_samples, n_times)
-            chunk = self.X[:, start:stop]
-            outer = np.einsum("it,jt->ijt", chunk, chunk, optimize=True)
-            flat = outer.reshape(n_channels * n_channels, stop - start, order="F")
-            flat, self.cov_state = _moving_average_clean_rawdata(
-                self.window_length,
-                flat,
-                zi=self.cov_state,
-            )
-            while (
-                update_idx < self.update_at.size
-                and start < self.update_at[update_idx] <= stop
-            ):
-                local = int(self.update_at[update_idx] - start - 1)
-                yield flat[:, local].reshape(n_channels, n_channels, order="F")
-                update_idx += 1
-        if update_idx != self.update_at.size:
-            raise RuntimeError("Failed to produce all adaptive ASR covariance updates")
-
-
-def _fit_adaptive_thresholds(
-    X: np.ndarray,
-    V: np.ndarray,
-    *,
-    sfreq: float,
-    window_length: float,
-    window_overlap: float,
-    cutoff: float,
-    min_clean_fraction: float,
-    max_dropout_fraction: float,
-) -> tuple[np.ndarray, dict[str, np.ndarray]]:
-    n_times = X.shape[1]
-    win_len = _round_half_up(window_length * sfreq)
-    starts = _clean_rawdata_window_starts(n_times, win_len, window_overlap)
-    projected = np.abs(X.T @ V)
-
-    thresholds = np.empty(projected.shape[1], dtype=np.float64)
-    mu_values = np.empty(projected.shape[1], dtype=np.float64)
-    sigma_values = np.empty(projected.shape[1], dtype=np.float64)
-    beta_values = np.empty(projected.shape[1], dtype=np.float64)
-    fit_errors = np.empty(projected.shape[1], dtype=np.float64)
-    fit_intervals = np.empty((projected.shape[1], 2), dtype=np.float64)
-    for comp_idx in range(projected.shape[1]):
-        rms = np.empty(len(starts), dtype=np.float64)
-        comp = projected[:, comp_idx]
-        for idx, start in enumerate(starts):
-            segment = comp[start : start + win_len]
-            rms[idx] = np.sqrt(np.mean(segment**2))
-        mu, sigma, info = fit_eeg_distribution(
-            rms,
-            min_clean_fraction=min_clean_fraction,
-            max_dropout_fraction=max_dropout_fraction,
-            return_info=True,
-        )
-        mu_values[comp_idx] = mu
-        sigma_values[comp_idx] = sigma
-        beta_values[comp_idx] = info["beta"]
-        fit_errors[comp_idx] = info["fit_error"]
-        fit_intervals[comp_idx] = info["fit_interval"]
-        thresholds[comp_idx] = mu + cutoff * sigma
-
-    info_out: dict[str, Any] = {
-        "mu": mu_values,
-        "sigma": sigma_values,
-        "beta": beta_values,
-        "fit_error": fit_errors,
-        "fit_interval": fit_intervals,
-        "window_starts": starts,
-        "window_length_samples": int(win_len),
-    }
-    return thresholds, info_out
-
-
-def _build_adaptive_learner(
-    X_filtered: np.ndarray,
-    V: np.ndarray,
-    *,
-    variant: str,
-    learning_rate: float,
-    tau: float,
-    regularization: float,
-) -> _AdaptiveSimilarityMatcher:
-    Y0 = V.T @ X_filtered
-    n_samples = X_filtered.shape[1]
-    M0 = (Y0 @ Y0.T) / n_samples
-    W0 = (Y0 @ X_filtered.T) / n_samples
-    M0 = _regularize_spd(M0, regularization)
-    return _AdaptiveSimilarityMatcher(
-        variant=variant,
-        tau=float(tau),
-        learning_rate=float(learning_rate),
-        M=M0,
-        W=W0.astype(np.float64, copy=False),
-        Minv=np.linalg.inv(M0),
-    )
-
-
-def _process_adaptive_chunk(
-    X: np.ndarray,
-    sfreq: float,
-    state: ASRState,
-    process_state: dict[str, Any],
-    *,
-    window_length: float,
-    lookahead: float | None,
-    stepsize: int | None,
-    max_dims: float | int,
-    store_reconstruction_matrices: bool,
-    adaptive_variant: str,
-    max_mem_mb: int | float | None,
-) -> tuple[np.ndarray, dict[str, Any], dict[str, Any]]:
-    """Mirror the AASR ``reconstruct()`` wrapper around ``asr_process``."""
-    X = _validate_array_2d(X)
-    n_channels, n_times = X.shape
-    lookahead_samples = (
-        _round_half_up((window_length / 2.0) * sfreq)
-        if lookahead is None
-        else _round_half_up(lookahead * sfreq)
-    )
-    if lookahead_samples >= n_times:
-        raise ValueError("lookahead is too long for the data length")
-    win_len = max(
-        _round_half_up(window_length * sfreq), _round_half_up(1.5 * n_channels)
-    )
-    stepsize = 32 if stepsize is None else int(stepsize)
-    if stepsize < 1:
-        raise ValueError("stepsize must be at least 1 sample")
-
-    sig = _append_clean_rawdata_tail(X, lookahead_samples)
-    n_stream_input = sig.shape[1]
-    max_bad = _resolve_max_dims_clean_rawdata(max_dims, n_channels)
-    if max_bad <= 0:
-        diagnostics = _empty_process_diagnostics(n_times)
-        diagnostics.update(
-            _process_memory_info(
-                n_channels=n_channels,
-                n_stream_input=n_stream_input,
-                max_mem_mb=max_mem_mb,
-                memory_mode="identity",
-                peak_cov_buffer_bytes=0,
-                chunk_samples=0,
-                used_memory_bound=False,
-            )
-        )
-        return X.copy(), diagnostics, _copy_process_state(process_state)
-
-    carry = process_state.get("carry")
-    if carry is None:
-        data_stream = np.concatenate(
-            [
-                2.0 * sig[:, [0]] - sig[:, lookahead_samples:0:-1],
-                sig,
-            ],
-            axis=1,
-        )
-    else:
-        data_stream = np.concatenate([carry, sig], axis=1)
-    data_stream = np.asarray(data_stream, dtype=np.float64)
-    data_stream[~np.isfinite(data_stream)] = 0.0
-
-    X_stats, iir_state = _lfilter_channels(
-        data_stream[:, lookahead_samples : lookahead_samples + n_stream_input],
-        state.filter_b,
-        state.filter_a,
-        zi=process_state.get("iir"),
-    )
-
-    update_at = np.minimum(
-        np.arange(stepsize, n_stream_input + stepsize, stepsize, dtype=int),
-        n_stream_input,
-    )
-    if update_at.size == 0 or update_at[-1] != n_stream_input:
-        update_at = np.append(update_at, n_stream_input)
-    update_at = np.unique(update_at)
-
-    last_R = process_state.get("last_R")
-    last_trivial = bool(process_state.get("last_trivial", True))
-    if last_R is None:
-        last_R = np.eye(n_channels, dtype=np.float64)
-        last_trivial = True
-        update_at = np.concatenate(([1], update_at))
-
-    estimated_cov_bytes = _covariance_stack_bytes(n_stream_input, n_channels)
-    max_mem_bytes = _max_mem_bytes(max_mem_mb)
-    use_chunked_covariance = (
-        max_mem_bytes is not None and estimated_cov_bytes > max_mem_bytes
-    )
-    cov_state_in = process_state.get("cov")
-    cov_source = None
-    if use_chunked_covariance:
-        chunk_samples = _covariance_chunk_blocks(n_channels, max_mem_bytes)
-        cov_source = _ChunkedMovingCovariances(
-            X_stats,
-            update_at,
-            win_len,
-            chunk_samples=chunk_samples,
-            zi=cov_state_in,
-        )
-        covariance_iter = iter(cov_source)
-        Xcov_flat = None
-        cov_state = None
-        peak_cov_buffer_bytes = _covariance_stack_bytes(chunk_samples, n_channels)
-    else:
-        chunk_samples = n_stream_input
-        outer = np.einsum("it,jt->ijt", X_stats, X_stats, optimize=True)
-        Xcov_flat = outer.reshape(n_channels * n_channels, n_stream_input, order="F")
-        Xcov_flat, cov_state = _moving_average_clean_rawdata(
-            win_len,
-            Xcov_flat,
-            zi=cov_state_in,
-        )
-        covariance_iter = None
-        peak_cov_buffer_bytes = estimated_cov_bytes
-
-    sample_mask = np.zeros(n_times, dtype=bool)
-    n_reconstructed: list[int] = []
-    component_variances: list[np.ndarray] = []
-    component_thresholds: list[np.ndarray] = []
-    reconstruction_matrices: list[np.ndarray] = []
-    window_starts: list[int] = []
-    window_stops: list[int] = []
-
-    last_n = 0
-    for n in update_at:
-        if covariance_iter is None:
-            assert Xcov_flat is not None
-            Cw = Xcov_flat[:, n - 1].reshape(n_channels, n_channels, order="F")
-        else:
-            Cw = next(covariance_iter)
-        Cw = (Cw + Cw.T) / 2.0
-        D, V = np.linalg.eigh(Cw)
-        order = np.argsort(D)
-        D = D[order]
-        V = V[:, order]
-        theta2 = np.sum((state.T @ V) ** 2, axis=0)
-        keep = (theta2 > D) | (np.arange(1, n_channels + 1) < (n_channels - max_bad))
-        trivial = bool(np.all(keep))
-        n_bad = int(n_channels - np.count_nonzero(keep))
-        if trivial:
-            R = np.eye(n_channels, dtype=np.float64)
-        else:
-            basis = keep[:, np.newaxis].astype(np.float64) * (V.T @ state.M)
-            R = state.M @ np.linalg.pinv(basis) @ V.T
-            R = np.real_if_close(R).astype(np.float64)
-
-        applied = (not trivial) or (not last_trivial)
-        if applied and n > last_n:
-            subrange = slice(last_n, n)
-            width = n - last_n
-            blend = (1.0 - np.cos(np.pi * np.arange(1, width + 1) / width)) / 2.0
-            segment = data_stream[:, subrange]
-            data_stream[:, subrange] = (R @ segment) * blend[np.newaxis, :] + (
-                last_R @ segment
-            ) * (1.0 - blend[np.newaxis, :])
-
-        start_out = max(last_n, lookahead_samples) - lookahead_samples
-        stop_out = min(n, lookahead_samples + n_times) - lookahead_samples
-        if stop_out > start_out:
-            window_starts.append(int(start_out))
-            window_stops.append(int(stop_out))
-            n_reconstructed.append(n_bad)
-            component_variances.append(D.copy())
-            component_thresholds.append(theta2.copy())
-            if applied:
-                sample_mask[start_out:stop_out] = True
-            if store_reconstruction_matrices:
-                reconstruction_matrices.append(R.copy())
-
-        last_n = int(n)
-        last_R = R
-        last_trivial = trivial
-
-    carry_out = (
-        data_stream[:, -lookahead_samples:].copy() if lookahead_samples > 0 else None
-    )
-    delayed = data_stream[:, :n_stream_input].copy()
-    X_clean = delayed[:, lookahead_samples:]
-    if cov_source is not None:
-        cov_state = cov_source.cov_state
-
-    n_reconstructed_arr = np.asarray(n_reconstructed, dtype=int)
-    diagnostics = {
-        "window_starts": np.asarray(window_starts, dtype=int),
-        "window_stops": np.asarray(window_stops, dtype=int),
-        "sample_mask": sample_mask,
-        "n_components_reconstructed": n_reconstructed_arr,
-        "component_variances": np.asarray(component_variances, dtype=np.float64),
-        "component_thresholds": np.asarray(component_thresholds, dtype=np.float64),
-        "n_windows": int(len(n_reconstructed_arr)),
-        "fraction_reconstructed_windows": float(
-            np.mean(n_reconstructed_arr > 0) if n_reconstructed_arr.size else 0.0
-        ),
-        "fraction_reconstructed_samples": float(np.mean(sample_mask)),
-        "max_components_reconstructed": int(n_reconstructed_arr.max(initial=0)),
-        "lookahead_samples": int(lookahead_samples),
-        "stepsize_samples": int(stepsize),
-        "window_length_samples": int(win_len),
-        "covariance_geometry": "standard",
-        "adaptive_variant": adaptive_variant,
-    }
-    diagnostics.update(
-        _process_memory_info(
-            n_channels=n_channels,
-            n_stream_input=n_stream_input,
-            max_mem_mb=max_mem_mb,
-            memory_mode="chunked" if use_chunked_covariance else "full",
-            peak_cov_buffer_bytes=peak_cov_buffer_bytes,
-            chunk_samples=chunk_samples,
-            used_memory_bound=use_chunked_covariance,
-        )
-    )
-    if store_reconstruction_matrices:
-        diagnostics["reconstruction_matrices"] = np.asarray(reconstruction_matrices)
-
-    next_state = {
-        "cov": cov_state.copy() if cov_state is not None else None,
-        "carry": carry_out,
-        "iir": iir_state.copy() if iir_state is not None else None,
-        "last_R": last_R.copy(),
-        "last_trivial": bool(last_trivial),
-    }
-    return X_clean, diagnostics, next_state
+    BaseRaw = Any
 
 
 class AdaptiveASR(ASR):
-    """Experimental adaptive ASR with MATLAB-style ``update`` and ``reconstruct``.
+    """Adaptive Artifact Subspace Reconstruction (AASR) estimator.
 
-    This estimator implements the AASR adaptive update rule from the local
-    MATLAB references. Two adaptive variants are exposed:
+    This estimator extends the standard ASR algorithm by dynamically tracking
+    the clean signal subspace over time. Three adaptive variants are exposed:
 
-    - ``variant='psp'``: principal subspace projection updates
-    - ``variant='psw'``: principal subspace whitening updates
+    - ``variant='psp'``: principal subspace projection updates (Hebbian)
+    - ``variant='psw'``: principal subspace whitening updates (anti-Hebbian)
+    - ``variant='mw'``: moving-window calibration updates
+
+    Parameters
+    ----------
+    sfreq : float | None, default=None
+        Sampling frequency in Hz. Required for NumPy arrays. For MNE objects,
+        this may be ``None`` and is inferred from ``info['sfreq']``.
+    cutoff : float, default=20.0
+        ASR threshold multiplier. Values around 20 are conservative; lower
+        values clean more aggressively.
+    variant : {'psw', 'psp'}, default='psw'
+        The adaptive update rule to use.
+    window_length : float, default=0.5
+        Processing/statistics window length in seconds.
+    update_window_length : float, default=0.1
+        The window length in seconds for adaptive tracking.
+    calibration_window_length : float, default=1.0
+        Window length in seconds for automatic clean-window selection.
+    calibration_window_overlap : float, default=0.66
+        Overlap fraction for automatic clean-window selection.
+    ref_max_bad_channels : float, default=0.2
+        Maximum fraction of channels exceeding robust tolerances in a clean
+        calibration window.
+    ref_tolerances : tuple of float, default=(-3.5, 5.0)
+        Lower and upper robust z-score bounds for clean-window selection.
+    blocksize : int, default=10
+        Number of successive samples averaged into each covariance block for
+        eigendecomposition.
+    max_dims : float | int, default=0.66
+        Maximum fraction or absolute number of spatial dimensions to retain
+        during reconstruction.
+    max_dropout_fraction : float, default=0.1
+        Fraction of lowest RMS values ignored while estimating thresholds.
+    min_clean_fraction : float, default=0.25
+        Minimum central fraction used to estimate clean RMS statistics.
+    picks : str | list of str | list of int | slice | None, default='eeg'
+        Channels to include. Slices and lists of integers will be interpreted
+        as channel indices.
+    reject_by_annotation : bool, default=True
+        Whether to reject bad segments based on annotations during calibration.
+    skip_by_annotation : tuple of str, default=('bad', 'bad_acq_skip')
+        If a string in this tuple is a prefix of an annotation description,
+        that segment is ignored during calibration.
+    regularization : float, default=1e-8
+        Ridge regularization added to covariance matrices to prevent singular
+        inversions.
+    window_criterion : float | int | str | None, default=None
+        Pre-rejection criterion for entirely bad windows. If a float, acts
+        as a threshold multiplier.
+    window_criterion_tolerances : tuple of float, default=(-np.inf, 7.0)
+        Tolerances for window_criterion testing.
+    lookahead : float | None, default=None
+        Lookahead time in seconds for the sliding window reconstruction.
+        Defaults to half the window length.
+    stepsize : int | None, default=None
+        Stepsize in samples for the sliding window. Defaults to 32.
+    max_mem_mb : int | None, default=512
+        Maximum memory (in megabytes) allowed for internal chunking operations.
+    copy : bool, default=True
+        If True, data is copied before processing. If False, processing
+        happens in place.
+    store_reconstruction_matrices : bool, default=False
+        If True, the diagnostic dictionaries will contain the applied
+        reconstruction mixing matrices.
+    learning_rate : float, default=0.2
+        Step size parameter controlling how fast the subspace projection matrix
+        incorporates new samples.
+    tau : float | None, default=None
+        Time constant for the lateral connections (similarity tracking). If None,
+        it defaults to `10.0 / learning_rate`.
+    mw_window_length : float, default=20.0
+        The length of the moving window (in seconds) over which covariance is
+        aggregated before triggering adaptive updates.
+    mw_mode : {'final_state', 'cumulative'}, default='final_state'
+        Mode for moving-window aggregation.
+    random_state : int | None, default=None
+        Random state for reproducibility in stochastic internal steps.
+    n_jobs : int | None, default=None
+        Number of jobs to run in parallel.
+    verbose : bool | str | int | None, default=None
+        Verbosity level.
     """
 
     def __init__(
         self,
         sfreq: float | None = None,
-        *,
         cutoff: float = 20.0,
         variant: str = "psw",
         window_length: float = 0.5,
@@ -654,25 +238,62 @@ class AdaptiveASR(ASR):
         self,
         X: BaseRaw | BaseEpochs | np.ndarray,
         y=None,
-        *,
         calibration: BaseRaw | BaseEpochs | np.ndarray | None = None,
         calibration_mask: np.ndarray | None = None,
     ) -> AdaptiveASR:
-        """Fit the initial adaptive ASR state from calibration data."""
+        """Fit the initial adaptive ASR state from calibration data.
+
+        This method estimates the initial robust spatial covariance matrix and
+        computes the variance thresholds that define the clean signal subspace.
+
+        Parameters
+        ----------
+        X : mne.io.Raw | mne.Epochs | np.ndarray
+            The input data to be processed. If ``calibration`` is None, this data
+            is used to compute the initial calibration state. For ``np.ndarray``,
+            the shape should be (n_channels, n_times) for continuous data or
+            (n_epochs, n_channels, n_times) for epoched data.
+        y : None
+            Ignored. Present for scikit-learn compatibility.
+        calibration : mne.io.Raw | mne.Epochs | np.ndarray | None, default=None
+            Optional separate calibration dataset. If provided, the initial baseline
+            is learned from this dataset instead of ``X``.
+        calibration_mask : np.ndarray | None, default=None
+            Optional boolean mask of shape (n_times,) denoting which samples in the
+            calibration data are clean and should be used to estimate the initial state.
+            If None, the mask is estimated automatically.
+
+        Returns
+        -------
+        self : AdaptiveASR
+            The fitted estimator instance.
+        """
         del y
         set_log_level_from_verbose(self.verbose)
-        self._validate_adaptive_params()
+        _validate_adaptive_params(
+            variant=self.variant,
+            update_window_length=self.update_window_length,
+            calibration_window_length=self.calibration_window_length,
+            calibration_window_overlap=self.calibration_window_overlap,
+            ref_max_bad_channels=self.ref_max_bad_channels,
+            learning_rate=self.learning_rate,
+            tau=self.tau,
+            mw_window_length=self.mw_window_length,
+            mw_mode=self.mw_mode,
+        )
         fit_input = X if calibration is None else calibration
-        data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
-            fit_input, auto_pick=False
+        data, sfreq, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
+            fit_input, auto_pick=True
         )
         if mne_type == "evoked":
             raise ValueError(
                 "AdaptiveASR.fit() does not support Evoked calibration data"
             )
         sfreq = self._resolve_sfreq(sfreq)
-        picks, ch_names = self._resolve_picks(fit_input, data, mne_type)
-        data_2d = self._select_fit_data(data, mne_type, picks)
+        if mne_type == "epochs":
+            data_2d = np.transpose(data, (1, 0, 2)).reshape(data.shape[1], -1)
+        else:
+            data_2d = np.asarray(data, dtype=np.float64)
         if calibration_mask is not None:
             calibration_mask = np.asarray(calibration_mask, dtype=bool)
             if calibration_mask.shape != (data_2d.shape[1],):
@@ -682,16 +303,18 @@ class AdaptiveASR(ASR):
                 )
             data_2d = data_2d[:, calibration_mask]
         if mne_type == "raw" and self.reject_by_annotation:
-            good_mask = _good_raw_sample_mask(orig_inst, self.skip_by_annotation)
+            good_mask = _create_good_sample_mask_from_mne(
+                orig_inst, self.skip_by_annotation
+            )
             data_2d = data_2d[:, good_mask]
 
         self._warn_preprocessing_state(orig_inst, mne_type)
 
         if self.variant == "mw":
             # MW-ASR (sliding-window subspace, no Hebbian carry-over).
-            # MATLAB AASR_demo.ipynb cell 4 semantics: per-window subspace
-            # calibration; final state = last window's calibration; one
-            # reconstruction pass over the whole stream uses that state.
+            # Semantics: per-window subspace calibration; final state is the
+            # last window's calibration. A single reconstruction pass over the
+            # whole stream then uses that state.
             (
                 state,
                 cal_info,
@@ -711,7 +334,7 @@ class AdaptiveASR(ASR):
         self.sfreq_ = float(sfreq)
         self.picks_ = picks
         self.ch_names_ = ch_names
-        self.n_channels_ = int(len(picks))
+        self.n_channels_ = data_2d.shape[0]
         self.M_ = state.M
         self.mixing_ = state.M
         self.T_ = state.T
@@ -741,10 +364,30 @@ class AdaptiveASR(ASR):
         self,
         X: BaseRaw | BaseEpochs | np.ndarray,
         y=None,
-        *,
         calibration_mask: np.ndarray | None = None,
     ) -> AdaptiveASR:
-        """Update the adaptive calibration state on a new clean chunk."""
+        """Update the adaptive calibration state on a new clean chunk.
+
+        This method applies the chosen adaptive similarity-matching rule to gently
+        update the underlying clean subspace model using incoming data.
+        It is designed for online, streaming workflows.
+
+        Parameters
+        ----------
+        X : mne.io.Raw | mne.Epochs | np.ndarray
+            The incoming data chunk to update the state with. For ``np.ndarray``,
+            shape must be (n_channels, n_times) or (n_epochs, n_channels, n_times).
+        y : None
+            Ignored. Present for scikit-learn compatibility.
+        calibration_mask : np.ndarray | None, default=None
+            Optional boolean mask of shape (n_times,) designating which samples in
+            the incoming chunk are clean. If None, it is estimated automatically.
+
+        Returns
+        -------
+        self : AdaptiveASR
+            The updated estimator instance.
+        """
         del y
         set_log_level_from_verbose(self.verbose)
         if self.variant == "mw":
@@ -757,8 +400,8 @@ class AdaptiveASR(ASR):
         if not hasattr(self, "state_"):
             return self.fit(X, calibration_mask=calibration_mask)
 
-        data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
-            X, auto_pick=False
+        data, sfreq, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
+            X, auto_pick=True
         )
         if mne_type == "evoked":
             raise ValueError("AdaptiveASR.partial_fit() does not support Evoked data")
@@ -767,11 +410,17 @@ class AdaptiveASR(ASR):
             raise ValueError(
                 f"Input sfreq {sfreq} does not match fitted sfreq {self.sfreq_}"
             )
-        picks, ch_names = self._resolve_picks(X, data, mne_type)
-        self._check_transform_channels(picks, ch_names)
+        _check_transform_channels(
+            self.n_channels_,
+            self.ch_names_,
+            data.shape[1] if mne_type == "epochs" else data.shape[0],
+            ch_names,
+        )
         self._warn_preprocessing_state(orig_inst, mne_type)
-
-        data_2d = self._select_fit_data(data, mne_type, picks)
+        if mne_type == "epochs":
+            data_2d = np.transpose(data, (1, 0, 2)).reshape(data.shape[1], -1)
+        else:
+            data_2d = np.asarray(data, dtype=np.float64)
         if calibration_mask is not None:
             calibration_mask = np.asarray(calibration_mask, dtype=bool)
             if calibration_mask.shape != (data_2d.shape[1],):
@@ -781,7 +430,9 @@ class AdaptiveASR(ASR):
                 )
             data_2d = data_2d[:, calibration_mask]
         if mne_type == "raw" and self.reject_by_annotation:
-            good_mask = _good_raw_sample_mask(orig_inst, self.skip_by_annotation)
+            good_mask = _create_good_sample_mask_from_mne(
+                orig_inst, self.skip_by_annotation
+            )
             data_2d = data_2d[:, good_mask]
 
         update_info = self._update_adaptive_state(data_2d, sfreq)
@@ -804,16 +455,40 @@ class AdaptiveASR(ASR):
         self,
         X: BaseRaw | BaseEpochs | Evoked | np.ndarray,
         y=None,
-        *,
         copy: bool | None = None,
         return_diagnostics: bool = False,
     ) -> Any:
-        """Clean data using the current adaptive ASR state."""
+        """Clean data using the current adaptive ASR state.
+
+        Detects high-variance artifact bursts and reconstructs them using the
+        dynamically tracked spatial mixing matrices.
+
+        Parameters
+        ----------
+        X : mne.io.Raw | mne.Epochs | np.ndarray
+            The target data to be cleaned. Must match the channel count and
+            sampling frequency used during ``fit``.
+        y : None
+            Ignored. Present for scikit-learn compatibility.
+        copy : bool | None, default=None
+            Ignored parameter provided for scikit-learn API compatibility.
+        return_diagnostics : bool, default=False
+            If True, returns a tuple ``(cleaned_data, diagnostics)`` where
+            ``diagnostics`` is a dictionary detailing the reconstruction process.
+
+        Returns
+        -------
+        X_clean : mne.io.Raw | mne.Epochs | np.ndarray
+            The artifact-repaired data. Returns the same type as the input ``X``.
+        diagnostics : dict, optional
+            A dictionary containing processing metadata (e.g., sample masks,
+            eigenvalues). Only returned if ``return_diagnostics=True``.
+        """
         del y, copy
         set_log_level_from_verbose(self.verbose)
         self._check_is_fitted()
-        data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
-            X, auto_pick=False
+        data, sfreq, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
+            X, auto_pick=True
         )
         if mne_type == "evoked":
             raise ValueError("AdaptiveASR.transform() does not support Evoked data")
@@ -822,17 +497,18 @@ class AdaptiveASR(ASR):
             raise ValueError(
                 f"Input sfreq {sfreq} does not match fitted sfreq {self.sfreq_}"
             )
-        picks, ch_names = self._resolve_picks(X, data, mne_type)
-        self._check_transform_channels(picks, ch_names)
+        _check_transform_channels(
+            self.n_channels_,
+            self.ch_names_,
+            data.shape[1] if mne_type == "epochs" else data.shape[0],
+            ch_names,
+        )
         self._warn_preprocessing_state(orig_inst, mne_type)
 
         if mne_type == "epochs":
-            cleaned_data, diagnostics = self._transform_epochs_adaptive(
-                data, picks, sfreq
-            )
+            cleaned_data, diagnostics = self._transform_epochs_adaptive(data, sfreq)
         else:
-            data_out = np.asarray(data, dtype=np.float64).copy()
-            selected = data_out[picks, :]
+            selected = np.asarray(data, dtype=np.float64)
             selected_clean, diagnostics, next_process_state = _process_adaptive_chunk(
                 selected,
                 sfreq,
@@ -847,12 +523,21 @@ class AdaptiveASR(ASR):
                 max_mem_mb=self.max_mem_mb,
             )
             if mne_type == "raw" and self.reject_by_annotation:
-                good_mask = _good_raw_sample_mask(orig_inst, self.skip_by_annotation)
+                good_mask = _create_good_sample_mask_from_mne(
+                    orig_inst, self.skip_by_annotation
+                )
                 selected_clean[:, ~good_mask] = selected[:, ~good_mask]
                 diagnostics["sample_mask"] = diagnostics["sample_mask"] & good_mask
-            if self._window_criterion_enabled():
-                rejection_mask, rejection_diag = self._compute_window_rejection(
-                    selected_clean, sfreq
+            if self.window_criterion is not None:
+                rejection_mask, rejection_diag = compute_clean_window_mask(
+                    selected_clean,
+                    sfreq,
+                    max_bad_channels=self.window_criterion,
+                    zthresholds=self.window_criterion_tolerances,
+                    window_length=self.calibration_window_length,
+                    window_overlap=self.calibration_window_overlap,
+                    max_dropout_fraction=self.max_dropout_fraction,
+                    min_clean_fraction=self.min_clean_fraction,
                 )
                 if mne_type == "raw" and self.reject_by_annotation:
                     rejection_mask = rejection_mask & good_mask
@@ -875,13 +560,12 @@ class AdaptiveASR(ASR):
                         ),
                     }
                 )
-            data_out[picks, :] = selected_clean
-            cleaned_data = data_out
+            cleaned_data = selected_clean
             self.process_state_ = next_process_state
 
         self._store_transform_diagnostics(diagnostics)
         cleaned = reconstruct_mne_object(
-            cleaned_data, orig_inst, mne_type, verbose=False
+            cleaned_data, orig_inst, mne_type, picks=picks, verbose=False
         )
         if return_diagnostics:
             return cleaned, diagnostics
@@ -891,7 +575,6 @@ class AdaptiveASR(ASR):
         self,
         X: BaseRaw | BaseEpochs | np.ndarray,
         y=None,
-        *,
         calibration: BaseRaw | BaseEpochs | np.ndarray | None = None,
         return_diagnostics: bool = False,
     ) -> Any:
@@ -905,11 +588,27 @@ class AdaptiveASR(ASR):
         applies only the final window's state — semantically equivalent to
         ``mw_mode="final_state"``. The true per-segment behavior requires
         this ``fit_transform`` entry point.
+
+        Parameters
+        ----------
+        X : mne.io.Raw | mne.Epochs | np.ndarray
+            The input data to be fitted and transformed.
+        y : None
+            Ignored. Present for scikit-learn compatibility.
+        calibration : mne.io.Raw | mne.Epochs | np.ndarray | None, default=None
+            Optional separate calibration dataset.
+        return_diagnostics : bool, default=False
+            If True, returns a tuple ``(cleaned_data, diagnostics)``.
+
+        Returns
+        -------
+        X_clean : mne.io.Raw | mne.Epochs | np.ndarray
+            The artifact-repaired data.
+        diagnostics : dict, optional
+            A dictionary containing processing metadata. Only returned if
+            ``return_diagnostics=True``.
         """
-        if (
-            self.variant == "mw"
-            and getattr(self, "mw_mode", "final_state") == "sliding"
-        ):
+        if self.variant == "mw" and self.mw_mode == "sliding":
             return self._fit_transform_mw_sliding(
                 X, calibration=calibration, return_diagnostics=return_diagnostics
             )
@@ -919,7 +618,6 @@ class AdaptiveASR(ASR):
     def _fit_transform_mw_sliding(
         self,
         X: BaseRaw | BaseEpochs | np.ndarray,
-        *,
         calibration: BaseRaw | BaseEpochs | np.ndarray | None = None,
         return_diagnostics: bool = False,
     ) -> Any:
@@ -933,12 +631,56 @@ class AdaptiveASR(ASR):
 
         Windows shorter than ``blocksize`` are skipped (data passes through
         unchanged). Calibration failures are also passed through.
+
+        Parameters
+        ----------
+        X : mne.io.Raw | mne.Epochs | np.ndarray
+            The input data to be processed using the sliding window approach.
+        calibration : mne.io.Raw | mne.Epochs | np.ndarray | None, default=None
+            Optional separate calibration dataset. For sliding MW mode, this is
+            rarely used, as the calibration usually happens dynamically per window.
+        return_diagnostics : bool, default=False
+            If True, returns a tuple ``(cleaned_data, diagnostics)`` where
+            ``diagnostics`` compiles metadata across all processed windows.
+
+        Returns
+        -------
+        X_clean : mne.io.Raw | mne.Epochs | np.ndarray
+            The artifact-repaired data.
+        diagnostics : dict, optional
+            A dictionary containing aggregated processing metadata. Only returned if
+            ``return_diagnostics=True``.
         """
-        self._validate_estimator_params()
-        self._validate_adaptive_params()
+        _validate_backend_params(
+            method=self.method,
+            experimental=self.experimental,
+            lookahead=self.lookahead,
+            stepsize=self.stepsize,
+            window_criterion=self.window_criterion,
+        )
+        _validate_common_params(
+            sfreq=self.sfreq if self.sfreq is not None else 1.0,
+            cutoff=self.cutoff,
+            window_length=self.window_length,
+            window_overlap=self.window_overlap,
+            max_dropout_fraction=self.max_dropout_fraction,
+            min_clean_fraction=self.min_clean_fraction,
+            regularization=self.regularization,
+        )
+        _validate_adaptive_params(
+            variant=self.variant,
+            update_window_length=self.update_window_length,
+            calibration_window_length=self.calibration_window_length,
+            calibration_window_overlap=self.calibration_window_overlap,
+            ref_max_bad_channels=self.ref_max_bad_channels,
+            learning_rate=self.learning_rate,
+            tau=self.tau,
+            mw_window_length=self.mw_window_length,
+            mw_mode=self.mw_mode,
+        )
         fit_input = X if calibration is None else calibration
-        data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
-            fit_input, auto_pick=False
+        data, sfreq, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
+            fit_input, auto_pick=True
         )
         if mne_type == "evoked":
             raise ValueError(
@@ -946,10 +688,14 @@ class AdaptiveASR(ASR):
                 "with variant='mw', mw_mode='sliding'."
             )
         sfreq_val = self._resolve_sfreq(sfreq)
-        picks, ch_names = self._resolve_picks(fit_input, data, mne_type)
-        data_2d = self._select_fit_data(data, mne_type, picks)
+        if mne_type == "epochs":
+            data_2d = np.transpose(data, (1, 0, 2)).reshape(data.shape[1], -1)
+        else:
+            data_2d = np.asarray(data, dtype=np.float64)
         if mne_type == "raw" and self.reject_by_annotation:
-            good_mask = _good_raw_sample_mask(orig_inst, self.skip_by_annotation)
+            good_mask = _create_good_sample_mask_from_mne(
+                orig_inst, self.skip_by_annotation
+            )
             data_2d_masked = data_2d[:, good_mask]
         else:
             data_2d_masked = data_2d
@@ -1009,6 +755,7 @@ class AdaptiveASR(ASR):
                 )
                 last = (state, cal_info, learner, process_state)
             except Exception as exc:  # noqa: BLE001
+                print("CAUGHT:", repr(exc))
                 entry.update(
                     {
                         "status": "failed",
@@ -1037,7 +784,7 @@ class AdaptiveASR(ASR):
         self.sfreq_ = float(sfreq_val)
         self.picks_ = picks
         self.ch_names_ = ch_names
-        self.n_channels_ = int(len(picks))
+        self.n_channels_ = data_2d.shape[0]
         self.M_ = state.M
         self.mixing_ = state.M
         self.T_ = state.T
@@ -1048,7 +795,7 @@ class AdaptiveASR(ASR):
         self.rank_ = state.rank
         self.clean_window_mask_ = np.array([], dtype=bool)
         self.calibration_mask_kind_ = "window"
-        self.clean_window_scores_ = np.empty((0, len(picks)), dtype=np.float64)
+        self.clean_window_scores_ = np.empty((0, data_2d.shape[0]), dtype=np.float64)
         self.calibration_info_ = cal_info
         self.mw_diagnostics_ = mw_diagnostics
         self.process_state_ = _copy_process_state(process_state)
@@ -1072,20 +819,22 @@ class AdaptiveASR(ASR):
             "n_windows": int(len(mw_diagnostics)),
         }
 
-        # Wire the cleaned 2D array back into whatever MNE container the caller
-        # provided (or pass through if ndarray input).
         full = np.asarray(data, dtype=np.float64).copy()
+        idx = slice(None) if picks is None else picks
         if mne_type == "raw" and self.reject_by_annotation:
-            # Two-step indexing: full[picks] gives a (n_picks, n_times) view;
-            # then mask the good samples and write cleaned in. Plain
-            # full[picks, good_mask] triggers advanced-indexing broadcasting
-            # which fails when picks and good_mask have incompatible shapes.
-            sub = full[picks].copy()
+            sub = full[idx].copy()
             sub[:, good_mask] = cleaned
             sub[:, ~good_mask] = data_2d[:, ~good_mask]
-            full[picks] = sub
+            full[idx] = sub
+        elif mne_type == "epochs":
+            n_epochs = data.shape[0]
+            n_times_ep = data.shape[2]
+            reshaped = cleaned.reshape(
+                cleaned.shape[0], n_epochs, n_times_ep
+            ).transpose(1, 0, 2)
+            full[:, idx, :] = reshaped
         else:
-            full[picks, :] = cleaned
+            full[idx, :] = cleaned
         result = reconstruct_mne_object(full, orig_inst, mne_type, verbose=False)
         if return_diagnostics:
             return result, self.diagnostics_
@@ -1095,38 +844,6 @@ class AdaptiveASR(ASR):
         """Reset the streaming reconstruction state to the fitted baseline."""
         self._check_is_fitted()
         self.process_state_ = _copy_process_state(self._initial_process_state_template_)
-
-    def _validate_adaptive_params(self) -> None:
-        if self.variant not in ("psp", "psw", "mw"):
-            raise ValueError("variant must be 'psp', 'psw', or 'mw'")
-        if self.update_window_length <= 0:
-            raise ValueError("update_window_length must be positive")
-        if self.calibration_window_length <= 0:
-            raise ValueError("clean_window_length must be positive")
-        if not (0 <= self.calibration_window_overlap < 1):
-            raise ValueError("clean_window_overlap must be in [0, 1)")
-        if self.ref_max_bad_channels < 0:
-            raise ValueError("clean_max_bad_channels must be non-negative")
-        if self.learning_rate <= 0:
-            raise ValueError("learning_rate must be positive")
-        if self.tau is not None and self.tau <= 0:
-            raise ValueError("tau must be positive")
-        if self.variant == "mw" and self.mw_window_length <= 0:
-            raise ValueError("mw_window_length must be positive for variant='mw'")
-        if self.variant == "mw" and self.mw_mode not in ("final_state", "sliding"):
-            raise ValueError(
-                "mw_mode must be 'final_state' or 'sliding' for variant='mw'"
-            )
-
-    def _variant_for_learner(self) -> str:
-        """Map the public variant onto the learner's 'psp' / 'psw' vocabulary.
-
-        The underlying Hebbian learner only knows ``'psp'`` / ``'psw'``. MW-ASR
-        builds a fresh learner per window but never streams updates through it
-        (partial_fit is disabled), so the choice of underlying learner variant
-        is cosmetic for MW.
-        """
-        return "psp" if self.variant == "mw" else self.variant
 
     def _fit_mw_state(
         self,
@@ -1141,14 +858,35 @@ class AdaptiveASR(ASR):
     ]:
         """MW-ASR: per-window subspace calibration, final-window state.
 
-        Implements the MATLAB ``AASR_demo.ipynb`` Cell 4 pattern: split the
-        input into non-overlapping windows of length ``mw_window_length``
-        seconds, run the standard subspace calibration on each window,
-        record per-window diagnostics, and keep only the final window's
-        state for the subsequent reconstruction pass.
+        Splits the input into non-overlapping windows of length
+        ``mw_window_length`` seconds, runs the standard subspace calibration
+        on each window, records per-window diagnostics, and returns only the
+        final window's state for the subsequent reconstruction pass.
 
-        Windows shorter than ``blocksize`` samples are skipped (cannot
-        calibrate).
+        Windows shorter than ``blocksize`` samples are skipped because they
+        are too short for robust calibration.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            The input data array of shape (n_channels, n_times).
+        sfreq : float
+            The sampling frequency of the data in Hz.
+
+        Returns
+        -------
+        state : ASRState
+            The standard ASR calibration state from the final valid window.
+        cal_info : dict
+            Calibration diagnostics dictionary from the final valid window,
+            updated with MW-specific metadata (number of windows, length).
+        learner : _AdaptiveSimilarityMatcher
+            The adaptive learner instantiated for the final window.
+        process_state : dict
+            The process state dictionary for streaming reconstruction.
+        diagnostics_list : list of dict
+            A list containing calibration diagnostic dictionaries for every
+            processed window.
         """
         X = _validate_array_2d(X)
         sfreq = float(sfreq)
@@ -1169,6 +907,7 @@ class AdaptiveASR(ASR):
                     window, sfreq
                 )
             except Exception as exc:  # noqa: BLE001
+                print("CAUGHT:", repr(exc))
                 diagnostics_list.append(
                     {
                         "window_idx": int(window_idx),
@@ -1217,7 +956,7 @@ class AdaptiveASR(ASR):
         sfreq: float,
     ) -> tuple[ASRState, dict[str, Any], _AdaptiveSimilarityMatcher, dict[str, Any]]:
         X = _validate_array_2d(X)
-        X_clean, clean_sample_mask, clean_diag = _select_aasr_clean_samples(
+        X_clean, clean_sample_mask, clean_diag = _extract_clean_calibration_samples(
             X,
             sfreq,
             window_length=self.calibration_window_length,
@@ -1226,6 +965,7 @@ class AdaptiveASR(ASR):
             zthresholds=self.ref_tolerances,
             max_dropout_fraction=self.max_dropout_fraction,
             min_clean_fraction=self.min_clean_fraction,
+            beta_grid=_AASR_BETA_GRID,
         )
         filter_b, filter_a = _design_aasr_filter(sfreq)
         X_filtered, iir_state = _lfilter_channels(X_clean, filter_b, filter_a)
@@ -1260,7 +1000,7 @@ class AdaptiveASR(ASR):
         learner = _build_adaptive_learner(
             X_filtered,
             V,
-            variant=self._variant_for_learner(),
+            variant="psp" if self.variant == "mw" else self.variant,
             learning_rate=self.learning_rate,
             tau=self._resolved_tau(),
             regularization=self.regularization,
@@ -1284,8 +1024,28 @@ class AdaptiveASR(ASR):
         return state, diagnostics, learner, process_state
 
     def _update_adaptive_state(self, X: np.ndarray, sfreq: float) -> dict[str, Any]:
+        """Update the adaptive tracking state on a new chunk of data.
+
+        Extracts clean calibration samples from the new chunk, runs them through the
+        similarity-matching learner to update the principal components (V), re-estimates
+        the covariance metric (M), and updates the statistical thresholds. The resulting
+        matrices are saved back into the estimator's ``state_``.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            The incoming data chunk of shape (n_channels, n_times).
+        sfreq : float
+            The sampling frequency in Hz.
+
+        Returns
+        -------
+        diagnostics : dict
+            A dictionary containing update diagnostics, threshold fit metrics, and
+            covariance memory usage info.
+        """
         X = _validate_array_2d(X)
-        X_clean, clean_sample_mask, clean_diag = _select_aasr_clean_samples(
+        X_clean, clean_sample_mask, clean_diag = _extract_clean_calibration_samples(
             X,
             sfreq,
             window_length=self.calibration_window_length,
@@ -1294,6 +1054,7 @@ class AdaptiveASR(ASR):
             zthresholds=self.ref_tolerances,
             max_dropout_fraction=self.max_dropout_fraction,
             min_clean_fraction=self.min_clean_fraction,
+            beta_grid=_AASR_BETA_GRID,
         )
         X_filtered, _ = _lfilter_channels(
             X_clean, self.state_.filter_b, self.state_.filter_a
@@ -1340,9 +1101,28 @@ class AdaptiveASR(ASR):
         clean_sample_mask: np.ndarray,
         thresholds: np.ndarray,
         threshold_info: dict[str, np.ndarray],
-        *,
         event: str,
     ) -> dict[str, Any]:
+        """Compile calibration and thresholding diagnostics into a unified dictionary.
+
+        Parameters
+        ----------
+        clean_diag : dict
+            Diagnostics from the window cleaning step.
+        clean_sample_mask : np.ndarray
+            Boolean array of shape (n_times,) indicating samples kept for calibration.
+        thresholds : np.ndarray
+            The fitted cutoff thresholds for each principal component.
+        threshold_info : dict
+            Metadata from the threshold fitting process (e.g., mu, sigma, beta).
+        event : str
+            The name of the event triggering the calibration (e.g., 'fit', 'update').
+
+        Returns
+        -------
+        info : dict
+            A comprehensive diagnostics dictionary containing all calibration parameters.
+        """
         return {
             "event": event,
             "clean_window_mask": np.asarray(
@@ -1386,7 +1166,6 @@ class AdaptiveASR(ASR):
     def _transform_epochs_adaptive(
         self,
         data: np.ndarray,
-        picks: np.ndarray,
         sfreq: float,
     ) -> tuple[np.ndarray, dict[str, Any]]:
         cleaned = np.asarray(data, dtype=np.float64).copy()
@@ -1401,7 +1180,7 @@ class AdaptiveASR(ASR):
         rejection_remove_masks: list[np.ndarray] = []
         counts: list[np.ndarray] = []
         for epoch_idx in range(cleaned.shape[0]):
-            selected = cleaned[epoch_idx, picks, :]
+            selected = cleaned[epoch_idx, :, :]
             selected_clean, diag, _ = _process_adaptive_chunk(
                 selected,
                 sfreq,
@@ -1415,11 +1194,17 @@ class AdaptiveASR(ASR):
                 adaptive_variant=self.variant,
                 max_mem_mb=self.max_mem_mb,
             )
-            cleaned[epoch_idx, picks, :] = selected_clean
-            if self._window_criterion_enabled():
-                rejection_mask, rejection_diag = self._compute_window_rejection(
+            cleaned[epoch_idx, :, :] = selected_clean
+            if self.window_criterion is not None:
+                rejection_mask, rejection_diag = compute_clean_window_mask(
                     selected_clean,
                     sfreq,
+                    max_bad_channels=self.window_criterion,
+                    zthresholds=self.window_criterion_tolerances,
+                    window_length=self.calibration_window_length,
+                    window_overlap=self.calibration_window_overlap,
+                    max_dropout_fraction=self.max_dropout_fraction,
+                    min_clean_fraction=self.min_clean_fraction,
                 )
                 diag["rejection_sample_mask"] = rejection_mask
                 diag["rejection_window_starts"] = rejection_diag["window_starts"]

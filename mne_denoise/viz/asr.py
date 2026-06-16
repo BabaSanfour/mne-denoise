@@ -1,13 +1,18 @@
 """ASR-specific visualization diagnostics.
 
-These helpers cover the few diagnostics that are intrinsic to Artifact
-Subspace Reconstruction (per-window repair timeline, calibration / reference
-fraction, and the component variance-vs-threshold map) and have no generic
-equivalent. For before/after signal overlays, PSD comparison, per-channel
-power-ratio topographies, grand averages, and metric scatters, use the generic
-:mod:`mne_denoise.viz` helpers (``plot_signal_overlay``, ``plot_psd_comparison``,
-``plot_power_ratio_map``, ``plot_grand_average_evokeds``, ``plot_tradeoff_scatter``)
-directly -- they work on any denoiser's input/output.
+This module provides plotting helpers for diagnostics that are intrinsic to
+Artifact Subspace Reconstruction and have no generic equivalent:
+
+- :func:`plot_asr_repair_timeline` -- per-window count of reconstructed
+  components over time.
+- :func:`plot_asr_calibration_fraction` -- bar chart comparing the fraction
+  of data retained as clean calibration across one or more estimators.
+- :func:`plot_asr_component_reconstruction` -- heatmap of per-window
+  component variance relative to the rejection threshold.
+
+For before/after signal overlays, PSD comparisons, per-channel power-ratio
+topographies, grand averages, and metric scatters, use the generic
+:mod:`mne_denoise.viz` helpers which work on any denoiser's input/output.
 """
 
 from __future__ import annotations
@@ -21,14 +26,14 @@ from .theme import (
     themed_figure,
 )
 
-try:  # pragma: no cover - matplotlib is a hard dependency of the viz package
+try:
     import matplotlib.pyplot as plt
-except ImportError:  # pragma: no cover
+except ImportError:
     plt = None
 
 try:
     import mne
-except ImportError:  # pragma: no cover - MNE is a required project dependency
+except ImportError:
     mne = None
 
 __all__ = [
@@ -44,7 +49,24 @@ __all__ = [
 
 
 def _finish(fig, ax, *, show: bool, fname: str | None):
-    """Apply the save/show convention shared by every plot function."""
+    """Apply the save-and-show convention shared by every plot in this module.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        The figure to save/show.
+    ax : matplotlib.axes.Axes
+        The axes object to return.
+    show : bool
+        If True, call ``plt.show()``.
+    fname : str | None
+        If not None, save the figure to this path.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    ax : matplotlib.axes.Axes
+    """
     if fname is not None:
         fig.savefig(fname, dpi=fig.dpi, bbox_inches="tight")
     if show and plt is not None:
@@ -53,7 +75,7 @@ def _finish(fig, ax, *, show: bool, fname: str | None):
 
 
 # ---------------------------------------------------------------------------
-# 5. Repair timeline
+# Repair timeline
 # ---------------------------------------------------------------------------
 
 
@@ -65,22 +87,40 @@ def plot_asr_repair_timeline(
     show: bool = True,
     fname: str | None = None,
 ):
-    """Per-window count of reconstructed components over time.
+    """Plot the per-window count of reconstructed components over time.
 
-    Audits whether ASR surgically repaired brief bursts (good) or modified the
-    whole recording (over-cleaning). Reads the fitted estimator's
-    ``diagnostics_``.
+    Visualizes whether ASR surgically repaired isolated bursts (sparse
+    activity is good) or modified a large portion of the recording
+    (potential over-cleaning). The data is read from the fitted
+    estimator's ``diagnostics_`` attribute.
 
     Parameters
     ----------
     estimator : ASR | AdaptiveASR | JugglerASR
-        A fitted estimator that has run ``transform``.
-    title, ax, show, fname
-        Standard controls.
+        A fitted estimator that has been used to ``transform`` data, so that
+        ``diagnostics_`` is populated.
+    title : str | None, default=None
+        Custom title for the plot. If None, an auto-generated title showing
+        the percentage of modified windows is used.
+    ax : matplotlib.axes.Axes | None, default=None
+        Axes to plot into. If None, a new themed figure is created.
+    show : bool, default=True
+        Whether to call ``plt.show()`` after plotting.
+    fname : str | None, default=None
+        If provided, the figure is saved to this file path.
 
     Returns
     -------
-    fig, ax
+    fig : matplotlib.figure.Figure
+        The figure containing the plot.
+    ax : matplotlib.axes.Axes
+        The axes with the repair timeline.
+
+    Raises
+    ------
+    ValueError
+        If the estimator has no transform diagnostics or if diagnostics
+        contain no processing windows.
     """
     diag = getattr(estimator, "diagnostics_", None)
     sfreq = float(getattr(estimator, "sfreq_", 0.0) or 0.0)
@@ -109,7 +149,7 @@ def plot_asr_repair_timeline(
 
 
 # ---------------------------------------------------------------------------
-# 6. Calibration / reference fraction
+# Calibration / reference fraction
 # ---------------------------------------------------------------------------
 
 
@@ -122,23 +162,36 @@ def plot_asr_calibration_fraction(
     show: bool = True,
     fname: str | None = None,
 ):
-    """Bar chart of the clean-window / reference-sample fraction per estimator.
+    """Bar chart of the clean calibration fraction for one or more estimators.
 
-    Validates that calibration is sane (Kim 2025 Fig 8): too small a fraction
-    means the cutoff or data quality is wrong.
+    Compares how much of the candidate calibration data was retained as
+    clean reference material. For standard ASR this is the fraction of
+    clean *windows*; for JugglerASR it is the fraction of clean *samples*
+    selected by DBSCAN or GEV. Too small a fraction suggests the cutoff
+    or data quality needs adjustment.
 
     Parameters
     ----------
-    estimators : fitted estimator | sequence of fitted estimators
-        Each contributes one bar from its ``calibration_info_``.
-    labels : sequence of str, optional
-        Bar labels; defaults to the estimator class names.
-    title, ax, show, fname
-        Standard controls.
+    estimators : fitted estimator | list of fitted estimators
+        One or more fitted ASR-family estimators. Each contributes one bar
+        extracted from its ``calibration_info_`` attribute.
+    labels : list of str | None, default=None
+        Bar labels. If None, defaults to the class name of each estimator.
+    title : str | None, default=None
+        Custom title for the plot. If None, uses a sensible default.
+    ax : matplotlib.axes.Axes | None, default=None
+        Axes to plot into. If None, a new themed figure is created.
+    show : bool, default=True
+        Whether to call ``plt.show()`` after plotting.
+    fname : str | None, default=None
+        If provided, the figure is saved to this file path.
 
     Returns
     -------
-    fig, ax
+    fig : matplotlib.figure.Figure
+        The figure containing the plot.
+    ax : matplotlib.axes.Axes
+        The axes with the bar chart.
     """
     if not isinstance(estimators, list | tuple):
         estimators = [estimators]
@@ -179,7 +232,7 @@ def plot_asr_calibration_fraction(
 
 
 # ---------------------------------------------------------------------------
-# 7. Component-reconstruction map
+# Component-reconstruction map
 # ---------------------------------------------------------------------------
 
 
@@ -191,21 +244,39 @@ def plot_asr_component_reconstruction(
     show: bool = True,
     fname: str | None = None,
 ):
-    """Heatmap of per-window component variances vs thresholds.
+    """Heatmap of per-window component variance relative to rejection thresholds.
 
-    Shows which principal components crossed the rejection threshold in each
-    processing window (the rows that are "hot" are the ones ASR reconstructed).
+    Displays a 2D image where each column is a processing window and each
+    row is a principal component. The color encodes the ratio of the
+    component's variance to the rejection threshold: values above 1.0
+    indicate components that ASR reconstructed in that window.
 
     Parameters
     ----------
     estimator : ASR | AdaptiveASR | JugglerASR
-        A fitted estimator that has run ``transform``.
-    title, ax, show, fname
-        Standard controls.
+        A fitted estimator that has been used to ``transform`` data, so that
+        ``diagnostics_`` is populated.
+    title : str | None, default=None
+        Custom title for the plot. If None, uses a sensible default.
+    ax : matplotlib.axes.Axes | None, default=None
+        Axes to plot into. If None, a new themed figure is created.
+    show : bool, default=True
+        Whether to call ``plt.show()`` after plotting.
+    fname : str | None, default=None
+        If provided, the figure is saved to this file path.
 
     Returns
     -------
-    fig, ax
+    fig : matplotlib.figure.Figure
+        The figure containing the plot.
+    ax : matplotlib.axes.Axes
+        The axes with the heatmap.
+
+    Raises
+    ------
+    ValueError
+        If the estimator has no transform diagnostics or if diagnostics
+        lack per-window ``component_variances``.
     """
     diag = getattr(estimator, "diagnostics_", None)
     sfreq = float(getattr(estimator, "sfreq_", 0.0) or 0.0)

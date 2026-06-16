@@ -12,7 +12,8 @@ with short spatial burst artifacts.
 import matplotlib.pyplot as plt
 import numpy as np
 
-from mne_denoise.asr import ASR, compute_asr_qa_metrics
+from mne_denoise.asr import ASR
+from mne_denoise.qa import variance_removed
 from mne_denoise.viz import plot_signal_overlay
 
 # %%
@@ -62,8 +63,7 @@ clean = asr.fit_transform(data)
 print(f"Calibration windows kept: {asr.clean_window_mask_.sum()}")
 print(f"Repaired windows: {(asr.n_components_reconstructed_ > 0).sum()}")
 print(f"Repaired sample fraction: {asr.fraction_reconstructed_samples_:.2%}")
-metrics = compute_asr_qa_metrics(data, clean, asr)
-print(f"Variance removed: {metrics['variance_removed_pct']:.2f}%")
+print(f"Variance removed: {variance_removed(data, clean):.2f}%")
 
 # %%
 # Plot One Channel

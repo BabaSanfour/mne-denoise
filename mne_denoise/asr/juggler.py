@@ -1,8 +1,18 @@
-"""Juggler-style ASR calibration variants.
+"""Juggler Artifact Subspace Reconstruction (JugglerASR) module.
 
-This module implements the calibration-selection stage described in Kim et al.
-(2025) for extreme-motion EEG. The downstream burst reconstruction path
-remains the standard ASR implementation already present in ``mne_denoise``.
+This module implements the ``JugglerASR`` class and its associated helper functions,
+providing a scikit-learn and MNE-compatible estimator for extreme-motion EEG.
+
+Unlike standard ASR which uses sliding-window thresholding to extract clean
+calibration blocks, Juggler relies on instantaneous amplitude thresholding via
+DBSCAN or Generalized Extreme Value (GEV) distribution fitting to isolate clean
+reference samples.
+
+This module exposes the following core components:
+- :class:`JugglerASR`: The primary estimator class matching the ASR API.
+- :func:`select_juggler_reference_samples`: The standalone sample selection routine
+  (exposing the ``'dbscan'`` and ``'gev'`` strategies) which can be used independently
+  of subspace reconstruction.
 """
 
 from __future__ import annotations
@@ -13,18 +23,25 @@ import numpy as np
 from scipy import optimize, stats
 from sklearn.cluster import DBSCAN
 
+from .._logging import set_log_level_from_verbose
 from ..utils import extract_data_from_mne
 from ._calibration import calibrate_asr
-from ._estimator import ASR
 from ._filters import _apply_statistics_filter, _design_statistics_filter
-from ._logging import set_log_level_from_verbose
-from ._validation import _validate_array_2d
-from ._windows import _good_raw_sample_mask
+from ._validation import (
+    _validate_array_2d,
+    _validate_backend_params,
+    _validate_common_params,
+    _validate_juggler_params,
+)
+from ._windowing import _create_good_sample_mask_from_mne
+from .core import ASR
 
 try:
+    import mne
     from mne.epochs import BaseEpochs
     from mne.io import BaseRaw
-except ImportError:  # pragma: no cover - MNE is a required project dependency
+except ImportError:  # pragma: no cover
+    mne = None
     BaseEpochs = Any
     BaseRaw = Any
 
@@ -32,7 +49,6 @@ except ImportError:  # pragma: no cover - MNE is a required project dependency
 def select_juggler_reference_samples(
     X: np.ndarray,
     sfreq: float,
-    *,
     strategy: str = "dbscan",
     selection_filter_kind: str = "asr",
     dbscan_top_k: int = 5,
@@ -78,16 +94,31 @@ def select_juggler_reference_samples(
     diagnostics : dict
         Selection diagnostics including fitted modes, DBSCAN labels, and the
         retained fraction.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from mne_denoise.asr.juggler import select_juggler_reference_samples
+    >>> rng = np.random.default_rng(42)
+    >>> sfreq = 100.0
+    >>> # Generate 10 seconds of 4-channel noise
+    >>> data = rng.standard_normal((4, 1000))
+    >>> # Inject a large artifact in the middle
+    >>> data[:, 450:550] *= 20.0
+    >>> X_ref, sample_mask, diagnostics = select_juggler_reference_samples(
+    ...     data, sfreq, strategy="dbscan"
+    ... )
+    >>> # The reference dataset should be smaller than the original
+    >>> X_ref.shape[1] < data.shape[1]
+    True
     """
     X = _validate_array_2d(X)
-    if strategy not in ("dbscan", "gev"):
-        raise ValueError("strategy must be 'dbscan' or 'gev'")
-    if dbscan_top_k < 1:
-        raise ValueError("dbscan_top_k must be at least 1")
-    if gev_grid_size < 32:
-        raise ValueError("gev_grid_size must be at least 32")
-    if not (0.0 < min_reference_fraction < 1.0):
-        raise ValueError("min_reference_fraction must be in (0, 1)")
+    _validate_juggler_params(
+        strategy=strategy,
+        dbscan_top_k=dbscan_top_k,
+        gev_grid_size=gev_grid_size,
+        min_reference_fraction=min_reference_fraction,
+    )
 
     filter_b, filter_a = _design_statistics_filter(sfreq, selection_filter_kind)
     X_stats = _apply_statistics_filter(X, filter_b, filter_a)
@@ -143,20 +174,93 @@ def select_juggler_reference_samples(
 
 
 class JugglerASR(ASR):
-    """Juggler's ASR calibration selector on top of standard ASR.
+    """Juggler Artifact Subspace Reconstruction (JugglerASR).
 
-    The burst-repair stage is identical to :class:`mne_denoise.asr.ASR`.
-    Only the reference-data selection stage is replaced with the pointwise
-    amplitude procedures from Kim et al. (2025):
+    This estimator replaces standard ASR's sliding-window calibration logic
+    with a pointwise amplitude procedure to select clean reference samples (Kim et al. 2025).
+    The burst-repair (reconstruction) stage remains identical to :class:`mne_denoise.asr.ASR`.
 
-    - ``strategy='dbscan'``: ASRDBSCAN
-    - ``strategy='gev'``: ASRGEV
+    Two strategies for reference selection are available:
+    - ``strategy='dbscan'``: Density-based spatial clustering (ASRDBSCAN)
+    - ``strategy='gev'``: Generalized Extreme Value distribution fitting (ASRGEV)
+
+    Parameters
+    ----------
+    sfreq : float | None, default=None
+        Sampling frequency in Hz.
+    cutoff : float, default=20.0
+        ASR threshold multiplier.
+    strategy : {'dbscan', 'gev'}, default='dbscan'
+        The reference sample selection strategy.
+    window_length : float, default=0.5
+        Length of the burst-repair reconstruction window in seconds.
+    window_overlap : float, default=0.66
+        Overlap fraction of the reconstruction window.
+    max_dropout_fraction : float, default=0.1
+        Maximum allowed fraction of dropped out (zeroed) samples per window.
+    min_clean_fraction : float, default=0.25
+        Minimum allowed fraction of clean components per window.
+    picks : str | list[str] | list[int] | None, default="eeg"
+        Channels to process.
+    calibration_window_length : float, default=1.0
+        Fallback calibration window parameter (rarely used in Juggler, which selects point-by-point).
+    calibration_window_overlap : float, default=0.66
+        Fallback calibration overlap.
+    ref_max_bad_channels : float, default=0.075
+        Maximum fraction of bad channels in a window.
+    ref_tolerances : tuple[float, float], default=(-np.inf, 5.5)
+        Z-score tolerances for fallback rejection.
+    blocksize : int, default=10
+        Processing blocksize for covariance matrix memory.
+    max_dims : float | int, default=0.66
+        Maximum retained variance/dimensions for reconstruction.
+    reject_by_annotation : bool, default=True
+        Whether to reject bad segments annotated in MNE.
+    skip_by_annotation : tuple[str, ...], default=("bad", "bad_acq_skip")
+        Annotation descriptions to skip.
+    cov_estimator : str, default="geometric_median"
+        Covariance estimator ('geometric_median' or 'euclidean').
+    regularization : float, default=1e-8
+        Covariance regularization.
+    filter_kind : str, default="asr"
+        Pre-emphasis filter applied during calibration and reconstruction.
+    window_criterion : float | int | str | None, default=None
+        Additional criterion for dropping dirty windows.
+    window_criterion_tolerances : tuple[float, float], default=(-np.inf, 7.0)
+        Tolerances for window dropping.
+    lookahead : float | None, default=None
+        State tracking parameter.
+    stepsize : int | None, default=None
+        Step size.
+    max_mem_mb : int | None, default=512
+        Maximum memory allowed for block processing.
+    copy : bool, default=True
+        Whether to copy data.
+    store_reconstruction_matrices : bool, default=False
+        Whether to store all per-window reconstruction matrices.
+    selection_filter_kind : str, default="asr"
+        Filter applied *before* DBSCAN/GEV sample selection.
+    dbscan_top_k : int, default=5
+        Number of largest per-sample channel amplitudes to keep as DBSCAN features.
+    dbscan_eps : float | str, default="auto"
+        DBSCAN neighborhood radius.
+    dbscan_min_samples : int | float | str, default="auto"
+        DBSCAN core-neighborhood count.
+    gev_grid_size : int, default=2048
+        Number of grid points for GEV fitting.
+    min_reference_fraction : float, default=0.05
+        Minimum fraction of samples that must be retained as clean reference.
+    random_state : int | None, default=None
+        Random state for reproducibility.
+    n_jobs : int | None, default=None
+        Number of parallel jobs.
+    verbose : bool | str | int | None, default=None
+        Logging verbosity.
     """
 
     def __init__(
         self,
         sfreq: float | None = None,
-        *,
         cutoff: float = 20.0,
         strategy: str = "dbscan",
         window_length: float = 0.5,
@@ -237,27 +341,69 @@ class JugglerASR(ASR):
         self,
         X: BaseRaw | BaseEpochs | np.ndarray,
         y=None,
-        *,
         calibration: BaseRaw | BaseEpochs | np.ndarray | None = None,
         calibration_mask: np.ndarray | None = None,
     ) -> JugglerASR:
-        """Fit Juggler's ASR from a contaminated or clean calibration stream."""
+        """Fit JugglerASR from a contaminated or clean calibration stream.
+
+        Unlike standard ASR, this step runs DBSCAN or GEV on instantaneous
+        amplitudes to isolate clean reference samples, then estimates the
+        clean signal subspace covariance.
+
+        Parameters
+        ----------
+        X : mne.io.Raw | mne.Epochs | np.ndarray
+            The primary data stream.
+        y : None
+            Ignored. Included for scikit-learn compatibility.
+        calibration : mne.io.Raw | mne.Epochs | np.ndarray | None, default=None
+            Separate calibration dataset. If None, `X` is used.
+        calibration_mask : np.ndarray | None, default=None
+            Optional boolean mask shape `(n_times,)` to pre-select samples.
+
+        Returns
+        -------
+        self : JugglerASR
+            The fitted instance.
+        """
         del y
         set_log_level_from_verbose(self.verbose)
-        self._validate_estimator_params()
-        self._validate_juggler_params()
+        _validate_backend_params(
+            method=self.method,
+            experimental=self.experimental,
+            lookahead=self.lookahead,
+            stepsize=self.stepsize,
+            window_criterion=self.window_criterion,
+        )
+        _validate_common_params(
+            sfreq=self.sfreq if self.sfreq is not None else 1.0,
+            cutoff=self.cutoff,
+            window_length=self.window_length,
+            window_overlap=self.window_overlap,
+            max_dropout_fraction=self.max_dropout_fraction,
+            min_clean_fraction=self.min_clean_fraction,
+            regularization=self.regularization,
+        )
+        _validate_juggler_params(
+            strategy=self.strategy,
+            dbscan_top_k=self.dbscan_top_k,
+            gev_grid_size=self.gev_grid_size,
+            min_reference_fraction=self.min_reference_fraction,
+        )
 
         fit_input = X if calibration is None else calibration
-        data, sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(
-            fit_input, auto_pick=False
+        data, sfreq, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
+            fit_input, auto_pick=True
         )
         if mne_type == "evoked":
             raise ValueError(
                 "JugglerASR.fit() does not support Evoked calibration data"
             )
         sfreq = self._resolve_sfreq(sfreq)
-        picks, ch_names = self._resolve_picks(fit_input, data, mne_type)
-        data_2d = self._select_fit_data(data, mne_type, picks)
+        if mne_type == "epochs":
+            data_2d = np.transpose(data, (1, 0, 2)).reshape(data.shape[1], -1)
+        else:
+            data_2d = np.asarray(data, dtype=np.float64)
         if calibration_mask is not None:
             calibration_mask = np.asarray(calibration_mask, dtype=bool)
             if calibration_mask.shape != (data_2d.shape[1],):
@@ -267,7 +413,9 @@ class JugglerASR(ASR):
                 )
             data_2d = data_2d[:, calibration_mask]
         if mne_type == "raw" and self.reject_by_annotation:
-            good_mask = _good_raw_sample_mask(orig_inst, self.skip_by_annotation)
+            good_mask = _create_good_sample_mask_from_mne(
+                orig_inst, self.skip_by_annotation
+            )
             data_2d = data_2d[:, good_mask]
 
         self._warn_preprocessing_state(orig_inst, mne_type)
@@ -306,7 +454,9 @@ class JugglerASR(ASR):
         )
         cal_info.update(reference_info)
         cal_info["clean_window_mask"] = np.array([], dtype=bool)
-        cal_info["clean_window_scores"] = np.empty((0, len(picks)), dtype=np.float64)
+        cal_info["clean_window_scores"] = np.empty(
+            (0, data_2d.shape[0]), dtype=np.float64
+        )
         cal_info["n_clean_windows"] = 0
         cal_info["n_calibration_windows"] = 0
         cal_info["reference_selection_strategy"] = self.strategy
@@ -316,7 +466,7 @@ class JugglerASR(ASR):
         self.sfreq_ = float(sfreq)
         self.picks_ = picks
         self.ch_names_ = ch_names
-        self.n_channels_ = int(len(picks))
+        self.n_channels_ = data_2d.shape[0]
         self.M_ = state.M
         self.mixing_ = state.M
         self.T_ = state.T
@@ -327,7 +477,7 @@ class JugglerASR(ASR):
         self.rank_ = state.rank
         self.reference_sample_mask_ = reference_mask
         self.clean_window_mask_ = np.array([], dtype=bool)
-        self.clean_window_scores_ = np.empty((0, len(picks)), dtype=np.float64)
+        self.clean_window_scores_ = np.empty((0, data_2d.shape[0]), dtype=np.float64)
         # JugglerASR selects calibration data sample-by-sample, not by windows.
         self.calibration_mask_kind_ = "sample"
         self.calibration_info_ = cal_info
@@ -345,34 +495,45 @@ class JugglerASR(ASR):
 
         JugglerASR selects calibration data point-by-point (Kim et al. 2025),
         so the mask is **sample-based** (``calibration_mask_kind_ == "sample"``),
-        unlike the window-based mask of the other backends.
+        unlike the window-based mask of the standard ASR backends.
 
         Returns
         -------
         mask : ndarray of bool, shape (n_times,)
-            ``True`` where the sample was retained as calibration reference.
+            Boolean array where ``True`` indicates the sample was retained as a
+            clean calibration reference by the DBSCAN/GEV selector.
         """
         self._check_is_fitted()
         return np.asarray(self.reference_sample_mask_, dtype=bool).copy()
-
-    def _validate_juggler_params(self) -> None:
-        if self.strategy not in ("dbscan", "gev"):
-            raise ValueError("strategy must be 'dbscan' or 'gev'")
-        if self.dbscan_top_k < 1:
-            raise ValueError("dbscan_top_k must be at least 1")
-        if self.gev_grid_size < 32:
-            raise ValueError("gev_grid_size must be at least 32")
-        if not (0.0 < self.min_reference_fraction < 1.0):
-            raise ValueError("min_reference_fraction must be in (0, 1)")
 
 
 def _select_dbscan_reference_mask(
     features: np.ndarray,
     leading_amplitude: np.ndarray,
-    *,
     dbscan_eps: float | str,
     dbscan_min_samples: int | float | str,
 ) -> tuple[np.ndarray, dict[str, Any]]:
+    """Select reference samples using the DBSCAN clustering strategy.
+
+    Parameters
+    ----------
+    features : np.ndarray
+        2D array of shape (n_samples, top_k) representing the sorted top-K channel
+        amplitudes for each sample.
+    leading_amplitude : np.ndarray
+        1D array of the maximum amplitude per sample.
+    dbscan_eps : float | str
+        The DBSCAN neighborhood radius parameter or 'auto'/'paper' for automatic sizing.
+    dbscan_min_samples : int | float | str
+        The DBSCAN core samples parameter or 'auto'/'paper' for automatic sizing.
+
+    Returns
+    -------
+    sample_mask : np.ndarray
+        Boolean array where ``True`` indicates the sample is selected as clean.
+    diagnostics : dict
+        A dictionary containing the resolved DBSCAN parameters, cluster scores, and labels.
+    """
     del leading_amplitude
     feature_scale = np.linalg.norm(features, axis=1)
     mode = _histogram_mode(feature_scale)
@@ -428,12 +589,27 @@ def _select_dbscan_reference_mask(
 
 def _select_gev_reference_mask(
     leading_amplitude: np.ndarray,
-    *,
     grid_size: int,
 ) -> tuple[np.ndarray, dict[str, Any]]:
+    """Select reference samples using the Generalized Extreme Value (GEV) strategy.
+
+    Parameters
+    ----------
+    leading_amplitude : np.ndarray
+        1D array containing the maximum absolute amplitude across channels for each sample.
+    grid_size : int
+        Number of grid points to use when finding the mode of the fitted GEV distribution.
+
+    Returns
+    -------
+    sample_mask : np.ndarray
+        Boolean array where ``True`` indicates the sample is selected as clean.
+    diagnostics : dict
+        A dictionary containing the fitted GEV parameters and mode.
+    """
     try:
         shape, loc, scale = stats.genextreme.fit(leading_amplitude)
-    except Exception as exc:  # pragma: no cover - SciPy fit failures are rare
+    except Exception as exc:
         raise RuntimeError(f"GEV fitting failed: {exc}") from exc
     if not np.isfinite(scale) or scale <= np.finfo(float).eps:
         raise RuntimeError("GEV fitting returned a non-positive scale")
@@ -466,6 +642,18 @@ def _select_gev_reference_mask(
 
 
 def _histogram_mode(values: np.ndarray) -> float:
+    """Calculate the mode of a distribution using a histogram approach.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        1D array of numerical values.
+
+    Returns
+    -------
+    mode : float
+        The estimated mode of the distribution.
+    """
     values = np.asarray(values, dtype=np.float64)
     values = values[np.isfinite(values)]
     if values.size == 0:
@@ -485,6 +673,26 @@ def _resolve_dbscan_eps(
     mode: float,
     feature_scale: np.ndarray,
 ) -> float:
+    """Resolve the DBSCAN ``eps`` neighborhood radius.
+
+    When ``value`` is ``'auto'`` or ``'paper'``, eps is set to one tenth of the
+    histogram mode of the feature scale. If the resulting eps is non-positive or
+    non-finite, a fallback based on the median of positive feature scales is used.
+
+    Parameters
+    ----------
+    value : float | str
+        User-specified eps or ``'auto'``/``'paper'`` for automatic derivation.
+    mode : float
+        The histogram mode of the L2-normed feature scale.
+    feature_scale : np.ndarray
+        1D array of per-sample L2 norms used as a fallback anchor.
+
+    Returns
+    -------
+    eps : float
+        The resolved positive neighborhood radius.
+    """
     if isinstance(value, str):
         if value not in ("auto", "paper"):
             raise ValueError("dbscan_eps must be a positive float, 'auto', or 'paper'")
@@ -506,6 +714,26 @@ def _resolve_dbscan_min_samples(
     estimated_clean_count: int,
     n_times: int,
 ) -> int:
+    """Resolve the DBSCAN ``min_samples`` core-neighborhood count.
+
+    When ``value`` is ``'auto'`` or ``'paper'``, min_samples is set to 10% of the
+    estimated clean sample count. A float in (0, 1] is treated as a fraction of
+    the estimated clean count. The result is clamped to [2, n_times].
+
+    Parameters
+    ----------
+    value : int | float | str
+        User-specified count, a fraction, or ``'auto'``/``'paper'``.
+    estimated_clean_count : int
+        Number of samples estimated to be clean (amplitude <= mode).
+    n_times : int
+        Total number of time samples in the data.
+
+    Returns
+    -------
+    min_samples : int
+        The resolved core-neighborhood count, at least 2.
+    """
     if isinstance(value, str):
         if value not in ("auto", "paper"):
             raise ValueError(
