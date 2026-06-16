@@ -12,7 +12,6 @@ ASR
    mne_denoise.asr.JugglerASR
    mne_denoise.asr.calibrate_asr
    mne_denoise.asr.compute_clean_window_mask
-   mne_denoise.asr.variance_removed
    mne_denoise.asr.fit_rms_distribution
    mne_denoise.asr.process_asr
    mne_denoise.asr.select_juggler_reference_samples
@@ -85,6 +84,26 @@ Variants
    mne_denoise.dss.variants.narrowband_scan
    mne_denoise.dss.variants.ssvep_dss
    mne_denoise.dss.variants.tsr
+
+Quality Assurance
+-----------------
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   mne_denoise.qa.peak_attenuation_db
+   mne_denoise.qa.suppression_ratio
+   mne_denoise.qa.noise_surround_ratio
+   mne_denoise.qa.below_noise_distortion_db
+   mne_denoise.qa.spectral_distortion
+   mne_denoise.qa.overclean_proportion
+   mne_denoise.qa.underclean_proportion
+   mne_denoise.qa.geometric_mean_psd_ratio
+   mne_denoise.qa.variance_removed
+   mne_denoise.qa.compute_all_qa_metrics
+   mne_denoise.qa.rms_change
+   mne_denoise.qa.max_abs_change
+   mne_denoise.qa.channel_variance_ratio
 
 Visualization
 -------------
