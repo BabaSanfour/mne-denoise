@@ -66,9 +66,8 @@ pct_modified, pct_var_removed = [], []
 for k in cutoffs:
     asr = ASR(sfreq=sfreq, cutoff=float(k), picks=None, verbose=False)
     cleaned = np.asarray(asr.fit_transform(contaminated))
-    metrics = variance_removed(contaminated, cleaned, asr)
-    pct_modified.append(100.0 * metrics["fraction_reconstructed_samples"])
-    pct_var_removed.append(metrics["variance_removed_pct"])
+    pct_modified.append(100.0 * asr.fraction_reconstructed_samples_)
+    pct_var_removed.append(variance_removed(contaminated, cleaned))
     print(
         f"cutoff={k:3d}:  data modified={pct_modified[-1]:5.1f}%   "
         f"variance removed={pct_var_removed[-1]:5.1f}%"

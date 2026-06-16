@@ -354,8 +354,9 @@ def test_asr_unknown_method_raises():
 
     from mne_denoise.asr import ASR
 
+    rng = np.random.default_rng(42)
     with pytest.raises(NotImplementedError, match="Supported methods"):
-        ASR(sfreq=250.0, method="bogus", verbose=False).fit(np.random.randn(8, 1000))
+        ASR(sfreq=250.0, method="bogus", verbose=False).fit(rng.standard_normal((8, 2000)))
 
 
 def test_asr_riemannian_requires_experimental():
@@ -364,9 +365,10 @@ def test_asr_riemannian_requires_experimental():
 
     from mne_denoise.asr import ASR
 
+    rng = np.random.default_rng(42)
     with pytest.raises(ValueError, match="experimental"):
         ASR(sfreq=250.0, method="riemannian", verbose=False).fit(
-            np.random.randn(8, 1000)
+            rng.standard_normal((8, 2000))
         )
 
 
@@ -376,8 +378,9 @@ def test_get_rejection_mask_without_window_criterion_raises():
 
     from mne_denoise.asr import ASR
 
+    rng = np.random.default_rng(42)
     asr = ASR(sfreq=250.0, cutoff=20.0, verbose=False)
-    asr.fit_transform(np.random.randn(8, 1000))
+    asr.fit_transform(rng.standard_normal((8, 2000)))
     with pytest.raises(RuntimeError, match="rejection mask"):
         asr.get_rejection_mask()
 
@@ -388,8 +391,9 @@ def test_to_annotations_bad_kind_raises():
 
     from mne_denoise.asr import ASR
 
+    rng = np.random.default_rng(42)
     asr = ASR(sfreq=250.0, cutoff=20.0, verbose=False)
-    asr.fit_transform(np.random.randn(8, 1000))
+    asr.fit_transform(rng.standard_normal((8, 2000)))
     with pytest.raises(ValueError, match="kind must be"):
         asr.to_annotations("bogus")
 
@@ -400,7 +404,8 @@ def test_to_annotations_calibration_on_window_backend_raises():
 
     from mne_denoise.asr import ASR
 
+    rng = np.random.default_rng(42)
     asr = ASR(sfreq=250.0, cutoff=20.0, verbose=False)
-    asr.fit_transform(np.random.randn(8, 1000))
+    asr.fit_transform(rng.standard_normal((8, 2000)))
     with pytest.raises(RuntimeError, match="sample-based"):
         asr.to_annotations("calibration")
