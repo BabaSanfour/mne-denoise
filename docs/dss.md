@@ -54,7 +54,7 @@ For nonlinear source separation using fixed-point iteration:
 ```python
 from mne_denoise.dss import IterativeDSS, KurtosisDenoiser
 
-denoiser = KurtosisDenoiser(nonlinearity='tanh')
+denoiser = KurtosisDenoiser(nonlinearity="tanh")
 it_dss = IterativeDSS(denoiser, n_components=5, max_iter=100)
 it_dss.fit(data)
 sources = it_dss.transform(data)
@@ -68,7 +68,7 @@ Remove 50/60 Hz line noise and harmonics:
 from mne_denoise.zapline import ZapLine, dss_zapline_plus
 
 # Clean line noise (fixed frequency)
-est = ZapLine(line_freq=50, sfreq=500, n_remove='auto')
+est = ZapLine(line_freq=50, sfreq=500, n_remove="auto")
 est.fit(data)
 cleaned = est.transform(data)
 
@@ -122,7 +122,7 @@ from mne_denoise.dss import detect_bad_channels, interpolate_bad_channels
 bad_mask, details = detect_bad_channels(data, z_threshold=3.5)
 print(f"Bad channels: {np.where(bad_mask)[0]}")
 
-data_clean = interpolate_bad_channels(data, bad_mask, method='spline')
+data_clean = interpolate_bad_channels(data, bad_mask, method="spline")
 ```
 
 ### Robust DSS
@@ -152,13 +152,13 @@ When MNE-Python is installed, additional functions are available:
 from mne_denoise.dss import apply_dss_to_epochs, apply_zapline_to_raw
 
 # Enhance evoked responses in epochs
-epochs_clean = apply_dss_to_epochs(epochs, bias='evoked', n_components=5)
+epochs_clean = apply_dss_to_epochs(epochs, bias="evoked", n_components=5)
 
 # Remove line noise from raw
 raw_clean = apply_zapline_to_raw(raw, line_freq=50)
 
 # Extract DSS components for visualization
-info = get_dss_components(epochs, bias='alpha', n_components=10)
+info = get_dss_components(epochs, bias="alpha", n_components=10)
 ```
 
 ## Algorithm Details
