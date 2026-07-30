@@ -44,6 +44,15 @@ ZapLine
 
    mne_denoise.zapline.ZapLine
 
+Spectrum interpolation
+----------------------
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   mne_denoise.spectrum_interpolation.SpectrumInterpolation
+   mne_denoise.spectrum_interpolation.interpolate_spectrum
+
 
 iCanClean
 ---------
