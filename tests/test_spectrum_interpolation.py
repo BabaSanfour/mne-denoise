@@ -5,6 +5,7 @@ from __future__ import annotations
 import mne
 import numpy as np
 import pytest
+from sklearn.exceptions import NotFittedError
 
 from mne_denoise.spectrum_interpolation import (
     SpectrumInterpolation,
@@ -63,6 +64,23 @@ def test_interpolate_spectrum_preserves_out_of_band_phase():
     assert np.allclose(np.angle(spec_b[:, far]), np.angle(spec_a[:, far]), atol=1e-9)
 
 
+def test_interpolate_spectrum_uses_mean_neighbour_amplitude():
+    """Each replaced bin should receive the mean neighbouring amplitude."""
+    rng = np.random.default_rng(4)
+    data = rng.standard_normal((2, 1000))
+    clean = interpolate_spectrum(
+        data, 1000.0, [60.0], bandwidth=1.0, neighbour_width=2.0
+    )
+
+    freqs = np.fft.rfftfreq(data.shape[1], d=1 / 1000.0)
+    before = np.abs(np.fft.rfft(data, axis=1))
+    after = np.abs(np.fft.rfft(clean, axis=1))
+    band = (freqs >= 59.0) & (freqs <= 61.0)
+    neighbours = ((freqs >= 57.0) & (freqs < 59.0)) | ((freqs > 61.0) & (freqs <= 63.0))
+    expected = before[:, neighbours].mean(axis=1, keepdims=True)
+    assert np.allclose(after[:, band], expected)
+
+
 def test_interpolate_spectrum_shape_and_dtype():
     """Output keeps the input shape and is real-valued."""
     data, sfreq = _synth()
@@ -105,7 +123,7 @@ def test_spectrum_interpolation_default_harmonics_reach_nyquist():
 def test_spectrum_interpolation_explicit_frequency_list():
     """A sequence of frequencies is used directly without harmonics."""
     data, sfreq = _synth()
-    si = SpectrumInterpolation(sfreq=sfreq, line_freq=[60.0]).fit(data)
+    si = SpectrumInterpolation(sfreq=sfreq, line_freq=[60.0], n_harmonics=0).fit(data)
     assert np.array_equal(si.freqs_, np.array([60.0]))
 
 
@@ -183,7 +201,7 @@ def test_spectrum_interpolation_transform_before_fit_raises():
     """Transforming before fitting raises."""
     data, sfreq = _synth()
     si = SpectrumInterpolation(sfreq=sfreq, line_freq=60.0)
-    with pytest.raises(RuntimeError, match="not fitted"):
+    with pytest.raises(NotFittedError):
         si.transform(data)
 
 
@@ -212,11 +230,11 @@ def test_interpolate_spectrum_handles_single_sided_neighbours():
     assert near_dc.shape == data.shape
 
 
-def test_interpolate_spectrum_skips_when_no_neighbours():
-    """With a zero-width neighbour band, no replacement is made."""
+def test_interpolate_spectrum_rejects_zero_neighbour_width():
+    """The reference bands must have positive width."""
     data, sfreq = _synth()
-    clean = interpolate_spectrum(data, sfreq, [60.0], neighbour_width=0.0)
-    assert np.allclose(clean, data, atol=1e-9)
+    with pytest.raises(ValueError, match="neighbour_width"):
+        interpolate_spectrum(data, sfreq, [60.0], neighbour_width=0.0)
 
 
 def test_spectrum_interpolation_rejects_bad_ndim():
@@ -226,8 +244,8 @@ def test_spectrum_interpolation_rejects_bad_ndim():
         si.fit_transform(np.zeros(100))
 
 
-def test_spectrum_interpolation_no_data_channels_fallback():
-    """If MNE exposes no data channels, all channels are processed."""
+def test_spectrum_interpolation_no_data_channels_pass_through():
+    """An MNE object containing only non-data channels is unchanged."""
     data, sfreq = _synth(n_ch=2)
     info = mne.create_info(["MISC0", "MISC1"], sfreq, ["misc", "misc"])
     raw = mne.io.RawArray(data, info, verbose=False)
@@ -235,6 +253,64 @@ def test_spectrum_interpolation_no_data_channels_fallback():
     out = SpectrumInterpolation(line_freq=60.0).fit_transform(raw)
 
     assert isinstance(out, mne.io.BaseRaw)
-    before = _band_power(data, 60, sfreq)
-    after = _band_power(out.get_data(), 60, sfreq)
-    assert after / before < 0.01
+    assert np.array_equal(out.get_data(), raw.get_data())
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"sfreq": 0.0}, "sfreq"),
+        ({"freqs": [0.0]}, "freqs"),
+        ({"bandwidth": 0.0}, "bandwidth"),
+        ({"neighbour_width": 0.0}, "neighbour_width"),
+    ],
+)
+def test_interpolate_spectrum_validates_parameters(kwargs, match):
+    """The low-level API should reject invalid numerical parameters."""
+    data, sfreq = _synth()
+    params = {"sfreq": sfreq, "freqs": [60.0]}
+    params.update(kwargs)
+    with pytest.raises(ValueError, match=match):
+        interpolate_spectrum(data, **params)
+
+
+@pytest.mark.parametrize("n_harmonics", [0, -1, 1.5, True])
+def test_spectrum_interpolation_validates_n_harmonics(n_harmonics):
+    """n_harmonics must be a positive integer or None."""
+    data, sfreq = _synth()
+    si = SpectrumInterpolation(sfreq=sfreq, line_freq=60.0, n_harmonics=n_harmonics)
+    with pytest.raises(ValueError, match="n_harmonics"):
+        si.fit(data)
+
+
+def test_spectrum_interpolation_rejects_frequency_at_nyquist():
+    """Estimator target frequencies must lie below Nyquist."""
+    with pytest.raises(ValueError, match="Nyquist"):
+        SpectrumInterpolation(sfreq=1000.0, line_freq=[60.0, 500.0]).fit(
+            np.zeros((1, 1000))
+        )
+
+
+def test_spectrum_interpolation_rejects_mismatched_mne_sfreq():
+    """Transform must not silently use a sampling rate fitted elsewhere."""
+    data, sfreq = _synth(n_ch=2)
+    si = SpectrumInterpolation(line_freq=60.0).fit(
+        mne.io.RawArray(data, mne.create_info(2, sfreq, "eeg"), verbose=False)
+    )
+    other = mne.io.RawArray(
+        data[:, ::2], mne.create_info(2, sfreq / 2, "eeg"), verbose=False
+    )
+    with pytest.raises(ValueError, match="sampling frequency"):
+        si.transform(other)
+
+
+def test_spectrum_interpolation_3d_matches_epochwise_processing():
+    """The vectorized 3D path should match independent epoch processing."""
+    data, sfreq = _synth(n_ch=2, dur=2.0)
+    epochs = np.stack([data, data * 0.5])
+    si = SpectrumInterpolation(sfreq=sfreq, line_freq=60.0, n_harmonics=1)
+    clean = si.fit_transform(epochs)
+    expected = np.stack(
+        [interpolate_spectrum(epoch, sfreq, [60.0]) for epoch in epochs]
+    )
+    assert np.allclose(clean, expected)

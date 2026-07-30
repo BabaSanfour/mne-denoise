@@ -1,8 +1,8 @@
 """Spectrum interpolation for power-line noise removal.
 
-This module implements the spectrum-interpolation method of Leske & Dalal
-(2019), a frequency-domain line-noise remover translated from FieldTrip's
-``ft_preproc_dftfilter`` spectrum-interpolation mode.
+This module implements the FFT-based spectrum-interpolation method of Leske &
+Dalal (2019), following FieldTrip's ``ft_preproc_dftfilter`` with
+``dftreplace='neighbour_fft'``.
 
 References
 ----------

@@ -6,9 +6,9 @@ This example demonstrates :class:`~mne_denoise.spectrum_interpolation.SpectrumIn
 on a synthetic recording contaminated by 60 Hz line noise and its harmonics.
 
 Spectrum interpolation removes the line frequency by replacing the *amplitude*
-of a thin band around it (and its harmonics) with an interpolation of the
-neighbouring amplitudes, while keeping the phase unchanged. Compared with a
-notch filter, this edits only a narrow amplitude band and leaves the broadband
+of a thin band around it (and its harmonics) with the mean amplitude of the
+neighbouring bins, while keeping the phase unchanged. Compared with a notch
+filter, this edits only a narrow amplitude band and leaves the broadband
 spectrum and phase intact.
 
 Reference:
@@ -53,7 +53,9 @@ for harmonic, amplitude in [(60.0, 3.0), (120.0, 1.5), (180.0, 0.8)]:
 # Apply spectrum interpolation
 # ----------------------------
 # The estimator follows the scikit-learn ``fit`` / ``transform`` API. We target
-# 60 Hz and remove all of its harmonics up to the Nyquist frequency.
+# 60 Hz and remove all of its harmonics below the Nyquist frequency. Spectrum
+# interpolation is best suited to continuous recordings or long segments;
+# inspect short epochs for edge effects.
 
 si = SpectrumInterpolation(sfreq=sfreq, line_freq=60.0)
 clean = si.fit_transform(data)

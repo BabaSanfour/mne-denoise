@@ -8,6 +8,8 @@ Examples demonstrating spectrum-interpolation line-noise removal
 (Leske & Dalal, 2019). The power-line frequency and its harmonics are removed by
 interpolating the amplitude spectrum across a narrow band while preserving the
 phase, leaving broadband activity around the line frequency largely intact.
+The FFT-based method is best suited to continuous recordings or long segments;
+short epochs should be inspected for edge effects.
 
 Files
 -----
