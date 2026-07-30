@@ -103,6 +103,31 @@ def _validate_array_2d(X: np.ndarray) -> np.ndarray:
     return X
 
 
+def _validate_covariance_matrix(
+    covariance: np.ndarray | None,
+    *,
+    n_channels: int,
+    name: str,
+) -> np.ndarray | None:
+    """Validate and symmetrize an optional channel covariance matrix."""
+    if covariance is None:
+        return None
+    covariance = np.asarray(covariance, dtype=np.float64)
+    expected_shape = (n_channels, n_channels)
+    if covariance.shape != expected_shape:
+        raise ValueError(
+            f"{name} must have shape {expected_shape}, got {covariance.shape}"
+        )
+    if not np.all(np.isfinite(covariance)):
+        raise ValueError(f"{name} must contain only finite values")
+    covariance = (covariance + covariance.T) / 2.0
+    eigenvalues = np.linalg.eigvalsh(covariance)
+    scale = max(float(np.max(np.abs(eigenvalues))), np.finfo(np.float64).tiny)
+    if float(eigenvalues[0]) < -1e-10 * scale:
+        raise ValueError(f"{name} must be positive semidefinite")
+    return covariance
+
+
 def _check_enough_samples(n_times: int, sfreq: float, window_length: float) -> None:
     """Ensure data is long enough to compute at least one window.
 

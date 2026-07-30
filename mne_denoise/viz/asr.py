@@ -9,6 +9,8 @@ Artifact Subspace Reconstruction and have no generic equivalent:
   of data retained as clean calibration across one or more estimators.
 - :func:`plot_asr_component_reconstruction` -- heatmap of per-window
   component variance relative to the rejection threshold.
+- :func:`plot_guided_asr_weights` -- heatmap of the experimental GuidedASR
+  soft component weights.
 
 For before/after signal overlays, PSD comparisons, per-channel power-ratio
 topographies, grand averages, and metric scatters, use the generic
@@ -40,6 +42,7 @@ __all__ = [
     "plot_asr_repair_timeline",
     "plot_asr_calibration_fraction",
     "plot_asr_component_reconstruction",
+    "plot_guided_asr_weights",
 ]
 
 
@@ -310,5 +313,82 @@ def plot_asr_component_reconstruction(
     ax.set_xlabel("Time (s)" if extent else "Window index")
     ax.set_ylabel("Component")
     ax.set_title(title or "ASR component reconstruction map")
+    fig.tight_layout()
+    return _finish(fig, ax, show=show, fname=fname)
+
+
+def plot_guided_asr_weights(
+    estimator,
+    *,
+    title: str | None = None,
+    ax=None,
+    show: bool = True,
+    fname: str | None = None,
+):
+    """Plot experimental GuidedASR soft weights by window and component.
+
+    Parameters
+    ----------
+    estimator : GuidedASR
+        A fitted estimator that has run ``transform`` and whose
+        ``diagnostics_`` contains ``soft_weights``.
+    title : str | None, default=None
+        Custom figure title.
+    ax : matplotlib.axes.Axes | None, default=None
+        Axes to plot into. If None, create a themed figure.
+    show : bool, default=True
+        Whether to call ``plt.show()``.
+    fname : str | None, default=None
+        Optional output path.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        Figure containing the heatmap.
+    ax : matplotlib.axes.Axes
+        Axes containing the heatmap.
+
+    Notes
+    -----
+    GuidedASR is an unpublished, unvalidated research prototype. This plot is
+    a diagnostic aid and does not establish that the selected weights separate
+    neural activity from artifacts correctly.
+    """
+    diag = getattr(estimator, "diagnostics_", None)
+    if not diag or "soft_weights" not in diag:
+        raise ValueError(
+            "estimator has no soft_weights; fit + transform a GuidedASR first."
+        )
+    weights = np.asarray(diag["soft_weights"], dtype=float)
+    if weights.ndim != 2 or weights.size == 0:
+        raise ValueError(
+            "soft_weights must be a non-empty (n_windows, n_components) array."
+        )
+
+    sfreq = float(getattr(estimator, "sfreq_", 0.0) or 0.0)
+    starts = np.asarray(diag.get("window_starts", []), dtype=float)
+    stops = np.asarray(diag.get("window_stops", []), dtype=float)
+    extent = None
+    if starts.size == weights.shape[0] and sfreq > 0:
+        stop = stops[-1] if stops.size == starts.size else starts[-1] + 1.0
+        extent = [starts[0] / sfreq, stop / sfreq, 0, weights.shape[1]]
+
+    if ax is None:
+        fig, ax = themed_figure(figsize=(11, 3.6))
+    else:
+        fig = ax.figure
+    image = ax.imshow(
+        weights.T,
+        aspect="auto",
+        origin="lower",
+        cmap="RdYlGn",
+        vmin=0.0,
+        vmax=1.0,
+        extent=extent,
+    )
+    fig.colorbar(image, ax=ax, label="soft weight (1 = keep, 0 = suppress)")
+    ax.set_xlabel("Time (s)" if extent else "Window index")
+    ax.set_ylabel("Component")
+    ax.set_title(title or f"GuidedASR soft weights (mean = {weights.mean():.3f})")
     fig.tight_layout()
     return _finish(fig, ax, show=show, fname=fname)

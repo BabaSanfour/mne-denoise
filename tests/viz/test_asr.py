@@ -19,11 +19,12 @@ import pytest
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from mne_denoise.asr import ASR, JugglerASR
+from mne_denoise.asr import ASR, GuidedASR, JugglerASR
 from mne_denoise.viz import (
     plot_asr_calibration_fraction,
     plot_asr_component_reconstruction,
     plot_asr_repair_timeline,
+    plot_guided_asr_weights,
 )
 
 SFREQ = 250.0
@@ -81,6 +82,22 @@ def test_plot_asr_calibration_fraction(fitted_asr):
             [fitted_asr, juggler], labels=["standard", "juggler"], show=False
         )
     )
+
+
+def test_plot_guided_asr_weights():
+    rng = np.random.default_rng(9)
+    data = rng.standard_normal((8, 2000))
+    guided = GuidedASR(
+        sfreq=SFREQ,
+        reconstruction="soft",
+        experimental=True,
+        max_dims=0,
+        picks=None,
+        verbose=False,
+    )
+    with pytest.warns(UserWarning, match="unpublished, unvalidated"):
+        guided.fit_transform(data)
+    _assert_fig_ax(plot_guided_asr_weights(guided, show=False))
 
 
 def test_calibration_fraction_singlecore(fitted_asr):

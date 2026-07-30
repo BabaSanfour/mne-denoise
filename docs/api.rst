@@ -10,11 +10,20 @@ ASR
    mne_denoise.asr.ASR
    mne_denoise.asr.AdaptiveASR
    mne_denoise.asr.JugglerASR
+   mne_denoise.asr.GuidedASR
    mne_denoise.asr.calibrate_asr
    mne_denoise.asr.compute_clean_window_mask
    mne_denoise.asr.fit_rms_distribution
    mne_denoise.asr.process_asr
+   mne_denoise.asr.process_guided_asr
    mne_denoise.asr.select_juggler_reference_samples
+
+.. warning::
+
+   ``GuidedASR`` and ``process_guided_asr`` are unpublished, unvalidated
+   experimental research prototypes. Their current evidence is limited to unit
+   tests and synthetic benchmarks; independently validate signal preservation
+   and artifact attenuation before scientific use.
 
 DSS
 ---
@@ -114,6 +123,7 @@ Visualization
    mne_denoise.viz.plot_asr_repair_timeline
    mne_denoise.viz.plot_asr_calibration_fraction
    mne_denoise.viz.plot_asr_component_reconstruction
+   mne_denoise.viz.plot_guided_asr_weights
    mne_denoise.viz.plot_component_summary
    mne_denoise.viz.plot_component_time_series
    mne_denoise.viz.plot_component_spectrogram

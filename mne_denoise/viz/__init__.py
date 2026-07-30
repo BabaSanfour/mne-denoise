@@ -4,6 +4,7 @@ from .asr import (
     plot_asr_calibration_fraction,
     plot_asr_component_reconstruction,
     plot_asr_repair_timeline,
+    plot_guided_asr_weights,
 )
 from .components import (
     plot_component_epochs_image,
@@ -75,6 +76,7 @@ __all__ = [
     "plot_asr_repair_timeline",
     "plot_asr_calibration_fraction",
     "plot_asr_component_reconstruction",
+    "plot_guided_asr_weights",
     # Theme
     "COLORS",
     "FONTS",
