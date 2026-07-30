@@ -393,17 +393,16 @@ class JugglerASR(ASR):
 
         fit_input = X if calibration is None else calibration
         data, sfreq, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
-            fit_input, auto_pick=True
+            fit_input,
+            auto_pick=True,
+            concatenate_epochs=True,
         )
         if mne_type == "evoked":
             raise ValueError(
                 "JugglerASR.fit() does not support Evoked calibration data"
             )
         sfreq = self._resolve_sfreq(sfreq)
-        if mne_type == "epochs":
-            data_2d = np.transpose(data, (1, 0, 2)).reshape(data.shape[1], -1)
-        else:
-            data_2d = np.asarray(data, dtype=np.float64)
+        data_2d = np.asarray(data, dtype=np.float64)
         if calibration_mask is not None:
             calibration_mask = np.asarray(calibration_mask, dtype=bool)
             if calibration_mask.shape != (data_2d.shape[1],):

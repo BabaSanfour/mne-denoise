@@ -1,17 +1,24 @@
 r"""
 Guided ASR: preserving neural activity that ASR would over-clean.
-================================================================
+=================================================================
 
 Standard ASR decides purely on variance, so a strong, spatially structured
 **neural** burst (here a transient 10 Hz oscillation) looks just as "abnormal"
 as an artifact and gets reconstructed away. ``GuidedASR`` keeps ASR's
 abnormality detection but adds DSS-style **bias operators** that recognise the
-neural direction and a **soft** (Wiener) reconstruction that rescues it, while
+neural direction and a continuous reconstruction weight that rescues it, while
 still removing a genuine artifact.
 
 This example builds a substrate with a known 10 Hz neural target and a known
 broadband artifact, cleans it with standard ASR and with GuidedASR, and shows
 that GuidedASR preserves the neural projection that standard ASR removes.
+
+.. warning::
+
+   GuidedASR is an unpublished, unvalidated experimental research prototype.
+   This synthetic demonstration is not evidence of validity on real EEG. Check
+   neural-signal preservation, artifact attenuation, and downstream endpoints
+   independently before scientific use.
 """
 
 # %%
@@ -75,6 +82,7 @@ cleaned_asr = np.asarray(asr.transform(contaminated))
 guided = GuidedASR(
     reconstruction="soft",
     experimental=True,
+    guidance_strength=1.0,
     preserve_biases=[PeakFilterBias(10.0, sfreq)],
     artifact_biases=[BandpassBias((30.0, 80.0), sfreq)],
     **common,

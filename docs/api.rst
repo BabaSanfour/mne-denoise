@@ -18,6 +18,13 @@ ASR
    mne_denoise.asr.process_guided_asr
    mne_denoise.asr.select_juggler_reference_samples
 
+.. warning::
+
+   ``GuidedASR`` and ``process_guided_asr`` are unpublished, unvalidated
+   experimental research prototypes. Their current evidence is limited to unit
+   tests and synthetic benchmarks; independently validate signal preservation
+   and artifact attenuation before scientific use.
+
 DSS
 ---
 .. autosummary::

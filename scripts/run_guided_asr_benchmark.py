@@ -24,6 +24,9 @@ Decision rule (the gate): GuidedASR must show **higher neural preservation at
 equal-or-better artifact removal** than plain rASR. Otherwise the bias-scoring
 layer is not justified and only the ``reconstruction="soft"`` option should be
 contributed to the base ``ASR``.
+
+This is a synthetic engineering benchmark, not scientific validation. A pass
+does not establish safety or effectiveness on real EEG recordings.
 """
 
 from __future__ import annotations
@@ -160,6 +163,7 @@ def main() -> int:
     guided = GuidedASR(
         reconstruction="soft",
         experimental=True,
+        guidance_strength=1.0,
         preserve_biases=[PeakFilterBias(10.0, sf)],
         artifact_biases=[BandpassBias((30.0, 80.0), sf)],
         **common,

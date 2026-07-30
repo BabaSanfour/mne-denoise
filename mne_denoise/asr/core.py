@@ -277,6 +277,7 @@ class ASR(BaseEstimator, TransformerMixin):
         self.method = method
         self.experimental = experimental
         self.calibration = calibration
+        self.picks = picks
         self.calibration_window_length = calibration_window_length
         self.calibration_window_overlap = calibration_window_overlap
         self.ref_max_bad_channels = ref_max_bad_channels
@@ -363,15 +364,14 @@ class ASR(BaseEstimator, TransformerMixin):
         )
         fit_input = X if calibration is None else calibration
         data, sfreq, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
-            fit_input, auto_pick=True
+            fit_input,
+            auto_pick=True,
+            concatenate_epochs=True,
         )
         if mne_type == "evoked":
             raise ValueError("ASR.fit() does not support Evoked calibration data")
         sfreq = self._resolve_sfreq(sfreq)
-        if mne_type == "epochs":
-            data_2d = np.transpose(data, (1, 0, 2)).reshape(data.shape[1], -1)
-        else:
-            data_2d = np.asarray(data, dtype=np.float64)
+        data_2d = np.asarray(data, dtype=np.float64)
         if calibration_mask is not None:
             calibration_mask = np.asarray(calibration_mask, dtype=bool)
             if calibration_mask.shape != (data_2d.shape[1],):
@@ -441,6 +441,32 @@ class ASR(BaseEstimator, TransformerMixin):
         }
         return self
 
+    def _process(
+        self,
+        data: np.ndarray,
+        sfreq: float,
+    ) -> tuple[np.ndarray, dict[str, Any]]:
+        """Process one continuous channel-by-time array.
+
+        Subclasses can override this internal hook while retaining the current
+        Raw, Epochs, Evoked, annotation, rejection-mask, and diagnostics
+        workflows implemented by :meth:`transform`.
+        """
+        return process_asr(
+            data,
+            sfreq,
+            self.state_,
+            window_length=self.window_length,
+            window_overlap=self.window_overlap,
+            max_dims=self.max_dims,
+            regularization=self.regularization,
+            store_reconstruction_matrices=self.store_reconstruction_matrices,
+            max_mem_mb=self.max_mem_mb,
+            lookahead=self.lookahead,
+            stepsize=self.stepsize,
+            method=self.method,
+        )
+
     def transform(
         self,
         X: BaseRaw | BaseEpochs | Evoked | np.ndarray,
@@ -502,20 +528,7 @@ class ASR(BaseEstimator, TransformerMixin):
             cleaned_data, diagnostics = self._transform_epochs(data, sfreq)
         else:
             selected = np.asarray(data, dtype=np.float64)
-            selected_clean, diagnostics = process_asr(
-                selected,
-                sfreq,
-                self.state_,
-                window_length=self.window_length,
-                window_overlap=self.window_overlap,
-                max_dims=self.max_dims,
-                regularization=self.regularization,
-                store_reconstruction_matrices=self.store_reconstruction_matrices,
-                max_mem_mb=self.max_mem_mb,
-                lookahead=self.lookahead,
-                stepsize=self.stepsize,
-                method=self.method,
-            )
+            selected_clean, diagnostics = self._process(selected, sfreq)
             if mne_type == "raw" and self.reject_by_annotation:
                 good_mask = _create_good_sample_mask_from_mne(
                     orig_inst, self.skip_by_annotation
@@ -802,20 +815,7 @@ class ASR(BaseEstimator, TransformerMixin):
         counts: list[np.ndarray] = []
         for epoch_idx in range(cleaned.shape[0]):
             selected = cleaned[epoch_idx, :, :]
-            selected_clean, diag = process_asr(
-                selected,
-                sfreq,
-                self.state_,
-                window_length=self.window_length,
-                window_overlap=self.window_overlap,
-                max_dims=self.max_dims,
-                regularization=self.regularization,
-                store_reconstruction_matrices=self.store_reconstruction_matrices,
-                max_mem_mb=self.max_mem_mb,
-                lookahead=self.lookahead,
-                stepsize=self.stepsize,
-                method=self.method,
-            )
+            selected_clean, diag = self._process(selected, sfreq)
             cleaned[epoch_idx, :, :] = selected_clean
             if self.window_criterion is not None:
                 rejection_mask, rejection_diag = compute_clean_window_mask(
@@ -881,6 +881,19 @@ class ASR(BaseEstimator, TransformerMixin):
         diagnostics["max_components_reconstructed"] = int(
             diagnostics["n_components_reconstructed"].max(initial=0)
         )
+        soft_weights = [
+            diag["soft_weights"]
+            for diag in epoch_diags
+            if np.asarray(diag.get("soft_weights", np.empty((0,)))).size
+        ]
+        if soft_weights:
+            diagnostics["soft_weights"] = np.concatenate(soft_weights, axis=0)
+            diagnostics["mean_soft_weight"] = float(
+                np.mean(diagnostics["soft_weights"])
+            )
+        for key in ("covariance_geometry", "reconstruction"):
+            if epoch_diags and key in epoch_diags[0]:
+                diagnostics[key] = epoch_diags[0][key]
         if rejection_masks:
             diagnostics["rejection_sample_mask"] = np.vstack(rejection_masks)
             diagnostics["rejection_window_starts"] = (

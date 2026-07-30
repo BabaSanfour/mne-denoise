@@ -367,9 +367,11 @@ def plot_guided_asr_weights(
 
     sfreq = float(getattr(estimator, "sfreq_", 0.0) or 0.0)
     starts = np.asarray(diag.get("window_starts", []), dtype=float)
+    stops = np.asarray(diag.get("window_stops", []), dtype=float)
     extent = None
     if starts.size == weights.shape[0] and sfreq > 0:
-        extent = [starts[0] / sfreq, starts[-1] / sfreq, 0, weights.shape[1]]
+        stop = stops[-1] if stops.size == starts.size else starts[-1] + 1.0
+        extent = [starts[0] / sfreq, stop / sfreq, 0, weights.shape[1]]
 
     if ax is None:
         fig, ax = themed_figure(figsize=(11, 3.6))

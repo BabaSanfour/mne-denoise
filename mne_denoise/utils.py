@@ -116,24 +116,38 @@ def _get_homogeneous_picks(
 
 
 def extract_data_from_mne(
-    X: Any, ch_names: list[str] | None = None, auto_pick: bool = True
+    X: Any,
+    ch_names: list[str] | None = None,
+    auto_pick: bool = True,
+    concatenate_epochs: bool = False,
 ) -> tuple[np.ndarray, float | None, str, Any, np.ndarray | None, list[str] | None]:
-    """Extract data and metadata from input (MNE object or array).
+    """
+    Extract data and metadata from an MNE object or NumPy-compatible array.
+
+    The function centralizes channel selection and type detection. Epoched
+    inputs can optionally be concatenated along time for algorithms that fit a
+    single spatial model across epochs.
 
     Parameters
     ----------
     X : Raw | Epochs | Evoked | array
         Input data.
-    ch_names : list of str | None
+    ch_names : list of str | None, default=None
         Explicit list of channel names to extract. If None and X is an MNE object,
         the function auto-picks a single homogeneous channel type (if auto_pick=True).
-    auto_pick : bool
+    auto_pick : bool, default=True
         Whether to automatically pick a homogeneous channel type if ch_names is None.
+    concatenate_epochs : bool, default=False
+        If True, convert three-dimensional ``(n_epochs, n_channels, n_times)``
+        data to ``(n_channels, n_epochs * n_times)``. The returned ``mne_type``
+        remains ``'epochs'`` for MNE Epochs input.
 
     Returns
     -------
     data : array
-        Extracted data. If MNE Epochs, data is (n_epochs, n_channels, n_times).
+        Extracted data. MNE Epochs are returned as
+        ``(n_epochs, n_channels, n_times)`` unless
+        ``concatenate_epochs=True``.
     sfreq : float | None
         Sampling frequency.
     mne_type : str
@@ -144,6 +158,20 @@ def extract_data_from_mne(
         Indices of channels extracted (if any filtering occurred).
     extracted_ch_names : list of str | None
         Names of the extracted channels (if an MNE object was passed).
+
+    See Also
+    --------
+    reconstruct_mne_object : Rebuild an MNE object after processing.
+
+    Examples
+    --------
+    Concatenate an epoched array along its time axis:
+
+    >>> import numpy as np
+    >>> epochs = np.arange(24).reshape(2, 3, 4)
+    >>> continuous, *_ = extract_data_from_mne(epochs, concatenate_epochs=True)
+    >>> continuous.shape
+    (3, 8)
     """
     sfreq = None
     mne_type = "array"
@@ -186,6 +214,9 @@ def extract_data_from_mne(
     else:
         # Assume array
         data = np.asarray(X)
+
+    if concatenate_epochs and data.ndim == 3:
+        data = np.transpose(data, (1, 0, 2)).reshape(data.shape[1], -1)
 
     return data, sfreq, mne_type, orig_inst, picks, extracted_ch_names
 

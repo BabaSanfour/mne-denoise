@@ -8,11 +8,18 @@ I/O, and the experimental opt-in / validation guards.
 
 from __future__ import annotations
 
+import inspect
+
 import numpy as np
 import pytest
+from sklearn.base import clone
 
-from mne_denoise.asr import ASR, GuidedASR
-from mne_denoise.asr.guided import _normalize_cov, _soft_component_weights
+from mne_denoise.asr import ASR, GuidedASR, process_guided_asr
+from mne_denoise.asr._guidance import (
+    _compute_guidance_covariance,
+    _guided_component_weights,
+)
+from mne_denoise.asr._validation import _validate_covariance_matrix
 from mne_denoise.dss.denoisers import BandpassBias, LineNoiseBias, PeakFilterBias
 
 SFREQ = 250.0
@@ -70,58 +77,134 @@ def test_hard_no_bias_needs_no_experimental_optin():
     assert np.all(np.isfinite(np.asarray(out)))
 
 
+def test_constructor_tracks_asr_parameter_defaults_and_kinds():
+    asr_parameters = inspect.signature(ASR).parameters
+    guided_parameters = inspect.signature(GuidedASR).parameters
+    for name, parameter in asr_parameters.items():
+        if name == "method":
+            continue
+        assert name in guided_parameters
+        assert guided_parameters[name].default == parameter.default
+        assert guided_parameters[name].kind == parameter.kind
+
+
 # ---------------------------------------------------------------------------
 # Discriminative soft-weight math (the novel core)
 # ---------------------------------------------------------------------------
 
 
-def test_soft_weights_rescue_and_suppress():
+def test_covariance_validation_does_not_change_scale():
+    covariance = np.diag([1.0, 2.0, 3.0, 4.0])
+    prepared = _validate_covariance_matrix(
+        covariance,
+        n_channels=4,
+        name="covariance",
+    )
+    np.testing.assert_allclose(prepared, covariance)
+    np.testing.assert_allclose(
+        _validate_covariance_matrix(
+            100.0 * covariance, n_channels=4, name="covariance"
+        ),
+        100.0 * covariance,
+    )
+    with pytest.raises(ValueError, match="positive semidefinite"):
+        _validate_covariance_matrix(
+            np.diag([1.0, 1.0, 1.0, -1.0]),
+            n_channels=4,
+            name="covariance",
+        )
+
+
+def test_guidance_covariance_uses_equal_scale_invariant_bias_votes():
+    class IdentityBias:
+        def apply(self, data):
+            return data
+
+    class ScaledIdentityBias:
+        def apply(self, data):
+            return 100.0 * data
+
+    data = np.arange(80.0).reshape(4, 20)
+    reference = _compute_guidance_covariance(
+        data,
+        [IdentityBias()],
+        name="biases",
+    )
+    bank = _compute_guidance_covariance(
+        data,
+        [IdentityBias(), ScaledIdentityBias()],
+        name="biases",
+    )
+    assert bank.shape == (4, 4)
+    np.testing.assert_allclose(np.trace(bank), 1.0)
+    np.testing.assert_allclose(bank, reference)
+
+
+def test_guidance_changes_only_asr_flagged_components():
     V = np.eye(4)
     forced = np.zeros(4, dtype=bool)
-    D = np.array([1.0, 1.0, 1.0, 100.0])  # comp 3 high-variance -> ASR rejects
+    D = np.array([100.0, 1.0, 1.0, 100.0])
     theta2 = np.array([5.0, 5.0, 5.0, 5.0])
 
-    # preserve bias aligned to the high-variance comp -> rescued toward 1
-    c_pre = _normalize_cov(np.diag([0.0, 0.0, 0.0, 1.0]))
-    w_pre = _soft_component_weights(
+    c_pre = np.diag([0.0, 0.0, 0.0, 1.0])
+    w_pre = _guided_component_weights(
         D,
         V,
         theta2,
         forced_keep=forced,
-        artifact_cov=None,
-        preserve_cov=c_pre,
-        soft_weight="wiener",
-        scale=1.0,
+        artifact_covariance=None,
+        preserve_covariance=c_pre,
+        strength=1.0,
     )
-    assert w_pre[3] > 0.9  # high-variance neural direction rescued
+    assert w_pre[3] == pytest.approx(1.0)
 
-    # artifact bias aligned to a low-variance (ASR-kept) comp -> suppressed
-    c_art = _normalize_cov(np.diag([1.0, 0.0, 0.0, 0.0]))
-    w_art = _soft_component_weights(
+    c_art = np.diag([1.0, 1.0, 0.0, 0.0])
+    w_art = _guided_component_weights(
         D,
         V,
         theta2,
         forced_keep=forced,
-        artifact_cov=c_art,
-        preserve_cov=None,
-        soft_weight="wiener",
-        scale=1.0,
+        artifact_covariance=c_art,
+        preserve_covariance=None,
+        strength=1.0,
     )
-    assert w_art[0] < 0.1  # ASR-kept but artifact-like direction suppressed
+    assert w_art[0] == pytest.approx(0.0)
+    assert w_art[1] == pytest.approx(1.0)  # unflagged is never changed
 
-    # no bias -> soft ASR weights, all in [0, 1]
-    w_none = _soft_component_weights(
+    w_none = _guided_component_weights(
         D,
         V,
         theta2,
         forced_keep=forced,
-        artifact_cov=None,
-        preserve_cov=None,
-        soft_weight="wiener",
-        scale=1.0,
+        artifact_covariance=None,
+        preserve_covariance=None,
+        strength=1.0,
     )
     assert np.all((w_none >= 0.0) & (w_none <= 1.0))
-    assert w_none[0] == pytest.approx(1.0)  # low-variance kept
+    assert w_none[0] == pytest.approx(0.05)
+    assert w_none[1] == pytest.approx(1.0)
+
+    w_zero_strength = _guided_component_weights(
+        D,
+        V,
+        theta2,
+        forced_keep=forced,
+        artifact_covariance=None,
+        preserve_covariance=c_pre,
+        strength=0.0,
+    )
+    np.testing.assert_allclose(w_zero_strength, w_none)
+
+    w_isotropic = _guided_component_weights(
+        D,
+        V,
+        theta2,
+        forced_keep=forced,
+        artifact_covariance=None,
+        preserve_covariance=np.eye(4),
+        strength=1.0,
+    )
+    np.testing.assert_allclose(w_isotropic, w_none)
 
 
 def test_soft_weights_in_unit_interval_in_pipeline():
@@ -236,6 +319,80 @@ def test_raw_and_epochs_io():
     assert "soft_weights" in gs.get_diagnostics()
 
 
+def test_evoked_and_non_data_channels_follow_current_asr_workflow():
+    mne = pytest.importorskip("mne")
+    eeg = _eeg() * 1e-6
+    eog = np.sin(2 * np.pi * np.arange(eeg.shape[1]) / SFREQ)[None, :]
+    data = np.vstack([eeg, eog])
+    names = [f"EEG{i:02d}" for i in range(8)] + ["EOG"]
+    info = mne.create_info(names, SFREQ, ["eeg"] * 8 + ["eog"])
+    raw = mne.io.RawArray(data, info, verbose=False)
+    evoked = mne.EvokedArray(data, info, verbose=False)
+    guided = GuidedASR(
+        cutoff=20.0,
+        reconstruction="soft",
+        experimental=True,
+        preserve_biases=[PeakFilterBias(10.0, SFREQ)],
+        verbose=False,
+    )
+
+    with pytest.warns(UserWarning, match="unpublished, unvalidated"):
+        raw_out = guided.fit_transform(raw)
+    evoked_out = guided.transform(evoked)
+
+    assert isinstance(evoked_out, mne.Evoked)
+    np.testing.assert_allclose(raw_out.get_data(picks=["EOG"]), eog)
+    np.testing.assert_allclose(evoked_out.get_data(picks=["EOG"]), eog)
+
+
+def test_current_diagnostics_rejection_and_sklearn_workflows():
+    X = _eeg()
+    guided = GuidedASR(
+        sfreq=SFREQ,
+        cutoff=10.0,
+        reconstruction="soft",
+        experimental=True,
+        preserve_biases=[PeakFilterBias(10.0, SFREQ)],
+        window_criterion=0.25,
+        window_criterion_tolerances=(-np.inf, 7.0),
+        picks=None,
+        verbose=False,
+    )
+
+    cloned = clone(guided)
+    assert cloned.get_params()["window_criterion"] == 0.25
+    with pytest.warns(UserWarning, match="unpublished, unvalidated"):
+        cleaned, diagnostics = guided.fit_transform(X, return_diagnostics=True)
+
+    assert np.asarray(cleaned).shape == X.shape
+    assert "rejection_sample_mask" in diagnostics
+    np.testing.assert_array_equal(
+        guided.get_rejection_mask(), diagnostics["rejection_sample_mask"]
+    )
+    assert guided.history_["estimator"] == "GuidedASR"
+
+
+def test_process_guided_asr_validates_public_parameters():
+    X = _eeg()
+    fitted = ASR(
+        sfreq=SFREQ,
+        cutoff=20.0,
+        method="riemannian_windowed",
+        picks=None,
+        verbose=False,
+    ).fit(X)
+
+    with pytest.raises(ValueError, match="artifact_cov must have shape"):
+        process_guided_asr(
+            X,
+            SFREQ,
+            fitted.state_,
+            artifact_cov=np.eye(X.shape[0] - 1),
+        )
+    with pytest.raises(ValueError, match="guidance_strength"):
+        process_guided_asr(X, SFREQ, fitted.state_, guidance_strength=1.1)
+
+
 # ---------------------------------------------------------------------------
 # Diagnostics / annotations / guards
 # ---------------------------------------------------------------------------
@@ -271,7 +428,10 @@ def test_soft_requires_experimental_optin():
     "kwargs,msg",
     [
         ({"reconstruction": "bogus"}, "reconstruction must be"),
-        ({"soft_weight": "bogus", "experimental": True}, "soft_weight must be"),
+        (
+            {"guidance_strength": -0.1, "experimental": True},
+            "guidance_strength must be",
+        ),
     ],
 )
 def test_param_guards(kwargs, msg):

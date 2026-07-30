@@ -8,6 +8,8 @@ Riemannian variants implement the experimental SPD-geometry backends.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -35,6 +37,130 @@ from ._validation import (
     _validate_array_2d,
     _validate_common_params,
 )
+
+
+@dataclass(frozen=True)
+class _PreparedASRStream:
+    """Validated arrays and indices shared by windowed ASR processors."""
+
+    data: np.ndarray
+    n_channels: int
+    n_times: int
+    win_len: int
+    lookahead_samples: int
+    stepsize: int
+    max_bad: int
+    data_stream: np.ndarray | None
+    n_stream_input: int
+    statistics: np.ndarray | None
+    update_at: np.ndarray | None
+    use_rolling_covariance: bool
+
+
+def _prepare_asr_stream(
+    X: np.ndarray,
+    sfreq: float,
+    state: ASRState,
+    *,
+    window_length: float,
+    window_overlap: float,
+    max_dims: float | int,
+    regularization: float,
+    max_mem_mb: int | None,
+    lookahead: float | None,
+    stepsize: int | None,
+) -> _PreparedASRStream:
+    """Validate input and prepare the common streaming ASR representation."""
+    _validate_common_params(
+        sfreq=sfreq,
+        cutoff=1.0,
+        window_length=window_length,
+        window_overlap=window_overlap,
+        max_dropout_fraction=0.1,
+        min_clean_fraction=0.25,
+        regularization=regularization,
+    )
+    X = _validate_array_2d(X)
+    n_channels, n_times = X.shape
+    if state.M.shape != (n_channels, n_channels):
+        raise ValueError(
+            "ASR state channel count does not match data: "
+            f"{state.M.shape[0]} vs {n_channels}"
+        )
+
+    win_len = max(
+        _round_half_up(window_length * sfreq), _round_half_up(1.5 * n_channels)
+    )
+    if n_times < win_len:
+        raise ValueError(
+            f"Window length ({win_len} samples) exceeds data length ({n_times} samples)"
+        )
+    lookahead = (win_len / sfreq) / 2.0 if lookahead is None else float(lookahead)
+    if lookahead < 0:
+        raise ValueError("lookahead must be non-negative")
+    lookahead_samples = _round_half_up(lookahead * sfreq)
+    if lookahead_samples >= n_times:
+        raise ValueError("lookahead is too long for the data length")
+    if stepsize is None:
+        stepsize = max(1, win_len // 2)
+    else:
+        stepsize = int(stepsize)
+    if stepsize < 1:
+        raise ValueError("stepsize must be at least 1 sample")
+    if stepsize > win_len:
+        raise ValueError("stepsize must not exceed window_length in samples")
+
+    max_bad = _resolve_max_dims_padded(max_dims, n_channels)
+    if max_bad <= 0:
+        return _PreparedASRStream(
+            data=X,
+            n_channels=n_channels,
+            n_times=n_times,
+            win_len=win_len,
+            lookahead_samples=lookahead_samples,
+            stepsize=stepsize,
+            max_bad=max_bad,
+            data_stream=None,
+            n_stream_input=n_times,
+            statistics=None,
+            update_at=None,
+            use_rolling_covariance=False,
+        )
+
+    X_proc = _append_streaming_tail(X, lookahead_samples)
+    data_stream = _prepend_streaming_carry(X_proc, lookahead_samples)
+    data_stream[~np.isfinite(data_stream)] = 0.0
+    n_stream_input = X_proc.shape[1]
+    statistics = _apply_statistics_filter_streaming(
+        data_stream[:, lookahead_samples : lookahead_samples + n_stream_input],
+        state.filter_b,
+        state.filter_a,
+    )
+    update_at = np.minimum(
+        np.arange(stepsize, n_stream_input + stepsize, stepsize, dtype=int),
+        n_stream_input,
+    )
+    if update_at.size == 0 or update_at[-1] != n_stream_input:
+        update_at = np.append(update_at, n_stream_input)
+    update_at = np.concatenate(([1], np.unique(update_at)))
+    max_mem_bytes = _max_mem_bytes(max_mem_mb)
+    use_rolling_covariance = max_mem_bytes is not None and (
+        _covariance_stack_bytes(n_stream_input, n_channels) > max_mem_bytes
+    )
+    return _PreparedASRStream(
+        data=X,
+        n_channels=n_channels,
+        n_times=n_times,
+        win_len=win_len,
+        lookahead_samples=lookahead_samples,
+        stepsize=stepsize,
+        max_bad=max_bad,
+        data_stream=data_stream,
+        n_stream_input=n_stream_input,
+        statistics=statistics,
+        update_at=update_at,
+        use_rolling_covariance=use_rolling_covariance,
+    )
 
 
 def process_asr(
@@ -106,52 +232,31 @@ def process_asr(
     >>> print(f"Cleaned data shape: {cleaned_data.shape}")
     Cleaned data shape: (10, 2000)
     """
-    _validate_common_params(
-        sfreq=sfreq,
-        cutoff=1.0,
-        window_length=window_length,
-        window_overlap=window_overlap,
-        max_dropout_fraction=0.1,
-        min_clean_fraction=0.25,
-        regularization=regularization,
-    )
-    X = _validate_array_2d(X)
-    n_channels, n_times = X.shape
-    if state.M.shape != (n_channels, n_channels):
-        raise ValueError(
-            "ASR state channel count does not match data: "
-            f"{state.M.shape[0]} vs {n_channels}"
-        )
     if method is None:
         method = state.method
     if method not in ("standard", "riemannian", "riemannian_windowed"):
         raise ValueError(
             "method must be 'standard', 'riemannian', or 'riemannian_windowed'"
         )
-
-    win_len = max(
-        _round_half_up(window_length * sfreq), _round_half_up(1.5 * n_channels)
+    prepared = _prepare_asr_stream(
+        X,
+        sfreq,
+        state,
+        window_length=window_length,
+        window_overlap=window_overlap,
+        max_dims=max_dims,
+        regularization=regularization,
+        max_mem_mb=max_mem_mb,
+        lookahead=lookahead,
+        stepsize=stepsize,
     )
-    if n_times < win_len:
-        raise ValueError(
-            f"Window length ({win_len} samples) exceeds data length ({n_times} samples)"
-        )
-    lookahead = (win_len / sfreq) / 2.0 if lookahead is None else float(lookahead)
-    if lookahead < 0:
-        raise ValueError("lookahead must be non-negative")
-    lookahead_samples = _round_half_up(lookahead * sfreq)
-    if lookahead_samples >= n_times:
-        raise ValueError("lookahead is too long for the data length")
-    if stepsize is None:
-        stepsize = max(1, int(np.floor(sfreq * (win_len / sfreq) / 2.0)))
-    else:
-        stepsize = int(stepsize)
-    if stepsize < 1:
-        raise ValueError("stepsize must be at least 1 sample")
-    if stepsize > win_len:
-        raise ValueError("stepsize must not exceed window_length in samples")
-
-    max_bad = _resolve_max_dims_padded(max_dims, n_channels)
+    X = prepared.data
+    n_channels = prepared.n_channels
+    n_times = prepared.n_times
+    win_len = prepared.win_len
+    lookahead_samples = prepared.lookahead_samples
+    stepsize = prepared.stepsize
+    max_bad = prepared.max_bad
     if max_bad <= 0:
         diagnostics = _empty_process_diagnostics(n_times)
         diagnostics.update(
@@ -167,28 +272,14 @@ def process_asr(
         )
         return X.copy(), diagnostics
 
-    X_proc = _append_streaming_tail(X, lookahead_samples)
-    data_stream = _prepend_streaming_carry(X_proc, lookahead_samples)
-    data_stream[~np.isfinite(data_stream)] = 0.0
-    n_stream_input = X_proc.shape[1]
-    X_stats = _apply_statistics_filter_streaming(
-        data_stream[:, lookahead_samples : lookahead_samples + n_stream_input],
-        state.filter_b,
-        state.filter_a,
-    )
-    update_at = np.minimum(
-        np.arange(stepsize, n_stream_input + stepsize, stepsize, dtype=int),
-        n_stream_input,
-    )
-    if update_at.size == 0 or update_at[-1] != n_stream_input:
-        update_at = np.append(update_at, n_stream_input)
-    update_at = np.unique(update_at)
-    update_at = np.concatenate(([1], update_at))
-    estimated_cov_bytes = _covariance_stack_bytes(n_stream_input, n_channels)
-    max_mem_bytes = _max_mem_bytes(max_mem_mb)
-    use_rolling_covariance = (
-        max_mem_bytes is not None and estimated_cov_bytes > max_mem_bytes
-    )
+    assert prepared.data_stream is not None
+    assert prepared.statistics is not None
+    assert prepared.update_at is not None
+    data_stream = prepared.data_stream
+    n_stream_input = prepared.n_stream_input
+    X_stats = prepared.statistics
+    update_at = prepared.update_at
+    use_rolling_covariance = prepared.use_rolling_covariance
 
     if method == "riemannian":
         X_clean, diagnostics = _process_asr_riemannian(
@@ -230,7 +321,6 @@ def process_asr(
             max_bad=max_bad,
             stepsize=stepsize,
             win_len=win_len,
-            regularization=regularization,
             store_reconstruction_matrices=store_reconstruction_matrices,
             use_rolling_covariance=use_rolling_covariance,
         )
@@ -363,7 +453,9 @@ def process_asr(
                 n_stream_input=n_stream_input,
                 max_mem_mb=max_mem_mb,
                 memory_mode="full",
-                peak_cov_buffer_bytes=estimated_cov_bytes,
+                peak_cov_buffer_bytes=_covariance_stack_bytes(
+                    n_stream_input, n_channels
+                ),
                 chunk_samples=n_stream_input,
                 used_memory_bound=False,
             )
@@ -444,7 +536,7 @@ def _process_asr_riemannian(
     win_len : int
         Length of the running processing window in samples.
     regularization : float
-        Regularization applied to the symmetric positive definite covariances.
+        Regularization applied to the symmetric positive definite covariance.
     store_reconstruction_matrices : bool
         If True, diagnostic dictionaries will contain per-window reconstruction matrices.
 
@@ -550,7 +642,7 @@ def _process_asr_riemannian(
     return X_clean, diagnostics
 
 
-def _process_asr_riemannian_windowed(
+def _process_asr_windowed(
     data_stream: np.ndarray,
     X_stats: np.ndarray,
     state: ASRState,
@@ -562,19 +654,20 @@ def _process_asr_riemannian_windowed(
     max_bad: int,
     stepsize: int,
     win_len: int,
-    regularization: float,
     store_reconstruction_matrices: bool,
     use_rolling_covariance: bool,
+    component_weight_function: Callable[
+        [np.ndarray, np.ndarray, np.ndarray, np.ndarray], np.ndarray
+    ]
+    | None = None,
+    return_component_weights: bool = False,
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    """Per-window rASR — cutoff-sensitive variant of Riemannian ASR processing.
+    """Process windowed ASR with binary or custom soft component weights.
 
-    The original riemannian backend computes one covariance and one
-    reconstruction matrix across the entire stream, which makes the keep mask
-    cutoff-insensitive on contaminated data.
-
-    This function follows standard recipes: calibration is Riemannian, but
-    per-window processing uses standard SPD eigendecomposition to isolate and
-    remove only the offending components in locally corrupted windows.
+    Standard ``riemannian_windowed`` ASR uses the binary keep mask when
+    ``component_weight_function`` is None. Experimental extensions can provide
+    a callable that returns continuous keep weights without duplicating the
+    covariance, eigendecomposition, blending, and diagnostics loop.
 
     Parameters
     ----------
@@ -598,12 +691,16 @@ def _process_asr_riemannian_windowed(
         Sample step size between consecutive window matrix updates.
     win_len : int
         Length of the running processing window in samples.
-    regularization : float
-        Regularization applied to the symmetric positive definite covariances.
     store_reconstruction_matrices : bool
         If True, diagnostic dictionaries will contain per-window reconstruction matrices.
     use_rolling_covariance : bool
         Whether to optimize performance by iteratively updating the window covariance.
+    component_weight_function : callable | None
+        Optional callable receiving ``(variances, eigenvectors, thresholds,
+        forced_keep)`` and returning one keep weight in ``[0, 1]`` per
+        component. ``None`` selects standard binary ASR reconstruction.
+    return_component_weights : bool
+        If True, include binary or soft component weights in diagnostics.
 
     Returns
     -------
@@ -627,6 +724,7 @@ def _process_asr_riemannian_windowed(
     n_reconstructed: list[int] = []
     component_variances: list[np.ndarray] = []
     component_thresholds: list[np.ndarray] = []
+    component_weights: list[np.ndarray] = []
     reconstruction_matrices: list[np.ndarray] = []
     window_starts: list[int] = []
     window_stops: list[int] = []
@@ -651,15 +749,40 @@ def _process_asr_riemannian_windowed(
         V = V[:, order]
 
         theta2 = np.sum((state.T @ V) ** 2, axis=0)
-        keep = (theta2 > D) | (np.arange(1, n_channels + 1) < (n_channels - max_bad))
-        trivial = bool(np.all(keep))
-
-        n_bad = int(n_channels - np.count_nonzero(keep))
-        if trivial:
-            R = eye
+        forced_keep = np.arange(1, n_channels + 1) < (n_channels - max_bad)
+        if component_weight_function is None:
+            keep = (theta2 > D) | forced_keep
+            weights = keep.astype(np.float64)
+            trivial = bool(np.all(keep))
+            n_bad = int(n_channels - np.count_nonzero(keep))
+            if trivial:
+                R = eye
+            else:
+                basis = keep[:, np.newaxis].astype(np.float64) * (V.T @ state.M)
+                R = state.M @ np.linalg.pinv(basis) @ V.T
+                R = np.real_if_close(R).astype(np.float64)
         else:
-            basis = keep[:, np.newaxis].astype(np.float64) * (V.T @ state.M)
-            R = state.M @ np.linalg.pinv(basis) @ V.T
+            weights = np.asarray(
+                component_weight_function(D, V, theta2, forced_keep),
+                dtype=np.float64,
+            )
+            if weights.shape != (n_channels,):
+                raise ValueError(
+                    "component_weight_function must return shape "
+                    f"({n_channels},), got {weights.shape}"
+                )
+            weights = np.clip(weights, 0.0, 1.0)
+            trivial = bool(np.all(weights >= 1.0 - 1e-12))
+            n_bad = int(np.count_nonzero(weights < 0.5))
+            keep = (weights >= 0.5) | forced_keep
+            if np.all(keep):
+                hard_reconstruction = eye
+            else:
+                basis = keep[:, np.newaxis].astype(np.float64) * (V.T @ state.M)
+                hard_reconstruction = state.M @ np.linalg.pinv(basis) @ V.T
+            R = (V * weights) @ V.T + (
+                (V * (1.0 - weights)) @ V.T @ hard_reconstruction
+            )
             R = np.real_if_close(R).astype(np.float64)
 
         applied = (not trivial) or (not last_trivial)
@@ -680,6 +803,8 @@ def _process_asr_riemannian_windowed(
             n_reconstructed.append(n_bad)
             component_variances.append(D.copy())
             component_thresholds.append(theta2.copy())
+            if component_weight_function is not None or return_component_weights:
+                component_weights.append(weights.copy())
             if applied:
                 sample_mask[start_out:stop_out] = True
             if store_reconstruction_matrices:
@@ -710,9 +835,45 @@ def _process_asr_riemannian_windowed(
         "covariance_geometry": "riemannian_windowed",
         "riemannian_solver": "nonlinear_eigenspace",
     }
+    if component_weight_function is not None or return_component_weights:
+        diagnostics["component_weights"] = np.asarray(
+            component_weights, dtype=np.float64
+        )
     if store_reconstruction_matrices:
         diagnostics["reconstruction_matrices"] = np.asarray(reconstruction_matrices)
     return X_clean, diagnostics
+
+
+def _process_asr_riemannian_windowed(
+    data_stream: np.ndarray,
+    X_stats: np.ndarray,
+    state: ASRState,
+    *,
+    n_times: int,
+    n_stream_input: int,
+    lookahead_samples: int,
+    update_at: np.ndarray,
+    max_bad: int,
+    stepsize: int,
+    win_len: int,
+    store_reconstruction_matrices: bool,
+    use_rolling_covariance: bool,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Run standard cutoff-sensitive per-window Riemannian ASR."""
+    return _process_asr_windowed(
+        data_stream,
+        X_stats,
+        state,
+        n_times=n_times,
+        n_stream_input=n_stream_input,
+        lookahead_samples=lookahead_samples,
+        update_at=update_at,
+        max_bad=max_bad,
+        stepsize=stepsize,
+        win_len=win_len,
+        store_reconstruction_matrices=store_reconstruction_matrices,
+        use_rolling_covariance=use_rolling_covariance,
+    )
 
 
 def _process_adaptive_chunk(

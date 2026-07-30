@@ -36,6 +36,16 @@ def test_extract_data_from_mne_epochs():
     assert mne_type == "epochs"
     assert orig is epochs
 
+    continuous, _, mne_type, _, _, _ = extract_data_from_mne(
+        epochs, concatenate_epochs=True
+    )
+    assert continuous.shape == (2, 500)
+    assert mne_type == "epochs"
+    np.testing.assert_array_equal(
+        continuous,
+        data_3d.transpose(1, 0, 2).reshape(2, -1),
+    )
+
 
 def test_extract_data_from_mne_evoked():
     info = mne.create_info(ch_names=["C1", "C2"], sfreq=100.0, ch_types="eeg")
@@ -53,6 +63,13 @@ def test_extract_data_from_mne_ndarray():
     assert sfreq is None
     assert mne_type == "array"
     assert orig is None
+
+    epochs = np.arange(30).reshape(3, 2, 5)
+    continuous, *_ = extract_data_from_mne(epochs, concatenate_epochs=True)
+    np.testing.assert_array_equal(
+        continuous,
+        epochs.transpose(1, 0, 2).reshape(2, -1),
+    )
 
 
 def test_extract_data_from_mne_list_input():

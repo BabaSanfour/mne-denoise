@@ -295,7 +295,10 @@ class ZapLine(DSS):
                 "Use fit_transform() instead."
             )
 
-        data, extracted_sfreq, _, _, _, ch_names = extract_data_from_mne(X)
+        data, extracted_sfreq, _, _, _, ch_names = extract_data_from_mne(
+            X,
+            concatenate_epochs=True,
+        )
         self._mne_ch_names_ = ch_names
 
         # Validate sfreq consistency
@@ -310,15 +313,8 @@ class ZapLine(DSS):
         if self.line_freq is None:
             raise ValueError("line_freq required for standard fit().")
 
-        # Handle 3D
-        if data.ndim == 3:
-            n_ep, n_ch, n_t = data.shape
-            data_cont = np.transpose(data, (1, 0, 2)).reshape(n_ch, -1)
-        else:
-            data_cont = data
-
         # Run core fitting logic
-        self._fit_dss(data_cont)
+        self._fit_dss(data)
 
         return self
 

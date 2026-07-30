@@ -314,18 +314,13 @@ def iterative_dss(
     ----------
     .. [1] Särelä & Valpola (2005). Denoising Source Separation. JMLR, 6, 233-272.
     """
-    # Use helper for validation/extraction
-    data, _, mne_type, _, picks, ch_names = extract_data_from_mne(data)
-
-    # Flatten if 3D (assume n_epochs, n_channels, n_times)
-    if data.ndim == 3:
-        n_epochs, n_channels, n_times = data.shape
-        data_2d = data.transpose(1, 0, 2).reshape(n_channels, -1)
-    else:
-        data_2d = data
+    data_2d, _, _, _, _, _ = extract_data_from_mne(
+        data,
+        concatenate_epochs=True,
+    )
 
     if data_2d.ndim != 2:
-        raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
+        raise ValueError(f"Data must be 2D or 3D, got {data_2d.ndim}D")
 
     n_channels, n_samples = data_2d.shape
 
@@ -779,7 +774,10 @@ class IterativeDSS:
         """
         set_log_level_from_verbose(self.verbose)
         # Validate and extract data using shared helper
-        data, _, mne_type, mne_info, picks, ch_names = extract_data_from_mne(X)
+        data, _, mne_type, mne_info, picks, ch_names = extract_data_from_mne(
+            X,
+            concatenate_epochs=True,
+        )
         self._mne_ch_names_ = ch_names
 
         # Store MNE info for later use if available
@@ -791,22 +789,11 @@ class IterativeDSS:
             self._mne_info = mne_info.info
 
         if self.normalize_input:
-            # Flatten for std calculation: (n_ch, n_times * n_epochs)
-            d_flat = (
-                data.transpose(1, 0, 2).reshape(data.shape[1], -1)
-                if data.ndim == 3
-                else data
-            )
-            self.channel_norms_ = np.std(d_flat, axis=1)
+            self.channel_norms_ = np.std(data, axis=1)
             self.channel_norms_ = np.where(
                 self.channel_norms_ > 0, self.channel_norms_, 1.0
             )
-
-            # Apply to data
-            if data.ndim == 3:
-                data = data / self.channel_norms_[np.newaxis, :, np.newaxis]
-            else:
-                data = data / self.channel_norms_[:, np.newaxis]
+            data = data / self.channel_norms_[:, np.newaxis]
 
         filters, sources, patterns, conv_info = iterative_dss(
             data,

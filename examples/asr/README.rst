@@ -44,7 +44,7 @@ I/O, QC, and pipelines
 Experimental research prototypes
 --------------------------------
 
-- ``plot_14_guided_asr.py``: DSS-guided soft ASR (``GuidedASR``), demonstrated
+- ``plot_15_guided_asr.py``: DSS-guided soft ASR (``GuidedASR``), demonstrated
   on synthetic data only.
 
   .. warning::
