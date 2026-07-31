@@ -58,6 +58,6 @@ def zapline_data():
 def fitted_zapline(zapline_data):
     """Return a fitted ZapLine estimator."""
     data, sfreq = zapline_data
-    zapline = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=2)
+    zapline = ZapLine(sfreq=sfreq, line_freq=50.0, n_select=2)
     zapline.fit(data)
     return zapline

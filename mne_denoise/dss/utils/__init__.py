@@ -2,6 +2,7 @@
 
 from .convergence import Gamma179, GammaPredictive
 from .covariance import compute_covariance
+from .segmentation import CovarianceSegmenter, FixedWindowSegmenter
 from .selection import (
     auto_select_components,
     auto_select_components_robust,
@@ -23,4 +24,6 @@ __all__ = [
     "detect_eigenvalue_knee",
     "Gamma179",
     "GammaPredictive",
+    "CovarianceSegmenter",
+    "FixedWindowSegmenter",
 ]

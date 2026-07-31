@@ -19,7 +19,7 @@ import logging
 from collections.abc import Callable
 
 import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.base import BaseEstimator, TransformerMixin, clone
 
 # Optional MNE support
 try:
@@ -31,9 +31,13 @@ except ImportError:
     mne = None
 
 from .._logging import set_log_level_from_verbose
+from ..blending import overlap_add_combine
 from ..utils import extract_data_from_mne, reconstruct_mne_object
 from .denoisers import LinearDenoiser
+from .denoisers.temporal import SmoothingBias
 from .utils import compute_covariance
+from .utils.segmentation import CovarianceSegmenter, FixedWindowSegmenter
+from .utils.selection import auto_select_components_robust
 from .utils.whitening import (
     apply_covariance_transform,
     apply_spatial_transform,
@@ -101,8 +105,6 @@ def compute_dss(
     dss_patterns : ndarray, shape (n_channels, n_components)
         DSS spatial patterns (mixing matrix).
         Corresponds to the projection matrix **P**.
-        Note: These are returned in original sensor units (not normalized),
-        satisfying the identity :math:`X_{rec} = Patterns \times Sources`.
     eigenvalues : ndarray, shape (n_components,)
         DSS eigenvalues (ratio of biased power to baseline power).
 
@@ -183,13 +185,10 @@ def compute_dss(
     unmixing_matrix = whitener.T @ eigenvectors_biased
 
     # =========================================================================
-    # STEP 5: Normalize so components have unit variance on baseline
+    # STEP 5: Normalize so components have unit variance
     # =========================================================================
     norm_factor = np.diag(unmixing_matrix.T @ covariance_baseline @ unmixing_matrix)
-    # Use a relative threshold for robustness across physical units (MEG/EEG)
-    max_norm = np.max(norm_factor)
-    threshold = 1e-18 * max_norm if max_norm > 0 else 1e-30
-    norm_factor = np.where(norm_factor > threshold, norm_factor, 1.0)
+    norm_factor = np.where(norm_factor > 1e-15, norm_factor, 1.0)
     unmixing_matrix = unmixing_matrix @ np.diag(1.0 / np.sqrt(norm_factor))
 
     # =========================================================================
@@ -221,6 +220,36 @@ def compute_dss(
 # -----------------------------------------------------------------------------
 
 
+def _as_smoother(smooth: LinearDenoiser | int | None) -> LinearDenoiser | None:
+    """Coerce a ``smooth`` parameter value into a denoiser.
+
+    Parameters
+    ----------
+    smooth : LinearDenoiser | int | None
+        ``None`` for no smoothing, an ``int`` window length in samples, or any
+        denoiser exposing ``apply()``.
+
+    Returns
+    -------
+    smoother : LinearDenoiser | None
+        ``None`` when ``smooth`` is unset, otherwise a denoiser whose
+        ``apply()`` yields the smooth branch of the decomposition.
+
+    Raises
+    ------
+    TypeError
+        If ``smooth`` is neither ``None``, an ``int``, nor ``apply()``-able.
+    """
+    if smooth is None:
+        return None
+    if isinstance(smooth, int | np.integer):
+        return SmoothingBias(window=int(smooth), iterations=1)
+    if hasattr(smooth, "apply"):
+        # Covers SmoothingBias and any other LinearDenoiser
+        return smooth
+    raise TypeError(f"smooth must be SmoothingBias, int, or None, got {type(smooth)}")
+
+
 class DSS(BaseEstimator, TransformerMixin):
     """Denoising Source Separation (DSS) Transformer.
 
@@ -235,6 +264,27 @@ class DSS(BaseEstimator, TransformerMixin):
         Bias function to define the signal of interest. Must be an instance of
         `mne_denoise.dss.LinearDenoiser` (e.g. `BandpassBias`, `TrialAverageBias`)
         or a callable that takes data and returns biased data.
+    n_select : int | 'auto' | None, default=None
+        Number of significant components to auto-select after fitting.
+        If ``'auto'``, :meth:`auto_select` determines the count via
+        :func:`~mne_denoise.dss.utils.selection.auto_select_components_robust`
+        and stores it in :attr:`n_selected_`.
+        If ``int``, uses that exact number.
+        If ``None`` (default), no automatic selection is performed — except
+        when ``adaptive=True``, where it defaults to ``'auto'`` because
+        per-segment adaptation is the whole point of that mode.
+    selection_threshold : float, default=3.0
+        Sigma threshold for the outlier arm of automatic selection:
+        components with ``eigenvalue > mean + sigma * std`` are significant.
+        Same meaning as ``ZapLine(threshold=...)``.
+    knee_rel_floor : float, default=0.01
+        Relative floor for the knee arm of automatic selection. Eigenvalues
+        below this fraction of the largest are not considered valid knee
+        anchors. Same meaning as ``ZapLine(knee_rel_floor=...)``.
+    knee_min_ratio : float, default=3.0
+        Minimum drop ratio required to qualify as a knee, so that smoothly
+        decaying (artifact-free) spectra select nothing. Same meaning as
+        ``ZapLine(knee_min_ratio=...)``.
     rank : int or dict, optional
         Rank of the data for whitening. If None, rank is estimated automatically.
     reg : float
@@ -252,6 +302,54 @@ class DSS(BaseEstimator, TransformerMixin):
         Additional keywords options for covariance estimation.
         For MNE objects, passed to `mne.compute_covariance` (e.g. `{'tstep': 0.1, 'rank': 'info'}`).
         For NumPy arrays, passed to `mne_denoise.utils.compute_covariance` (e.g. `{'shrinkage': 0.1}`).
+    smooth : SmoothingBias | int | None, default=None
+        Optional smoothing decomposition before DSS, inspired by ZapLine.
+        When set, data is decomposed into ``smooth + residual`` and DSS
+        is fitted/applied on the **residual** only.  This dramatically
+        increases eigenvalue contrast for narrowband artifacts because
+        DSS no longer competes against broadband EEG variance.
+
+        - If ``SmoothingBias`` instance: used directly.
+        - If ``int``: interpreted as the smoothing window in samples
+          (e.g., ``int(sfreq / line_freq)`` for line noise).
+        - If ``None`` (default): no smoothing, DSS is applied to the
+          full data (original behavior).
+    adaptive : bool, default=False
+        If ``True``, data is split into segments and DSS is fitted
+        independently per segment.  This handles **non-stationary**
+        artifacts whose spatial or spectral profile changes over
+        time.  The per-segment pathway runs in :meth:`fit_transform`;
+        :meth:`fit` still produces a single global fit.
+
+        This is the same switch :class:`~mne_denoise.zapline.ZapLine`
+        exposes as ``adaptive``, which inherits this parameter directly.
+    segmenter : CovarianceSegmenter | FixedWindowSegmenter | None, default=None
+        Segmentation strategy.  If ``None`` and ``adaptive=True``,
+        a :class:`CovarianceSegmenter` is created automatically
+        (requires ``sfreq`` to be determinable from the input or
+        from the bias function).
+    crossfade : float, default=0.0
+        Duration (in seconds) of the cross-fade at segment boundaries
+        when ``adaptive=True``.  Adjacent segments are extended by
+        this amount on each side, cleaned independently, then blended
+        using a raised-cosine (Hann) overlap-add window.  This
+        eliminates discontinuities at segment boundaries.
+        If ``0.0`` (default), segments are hard-concatenated, matching
+        ZapLine-plus, which concatenates cleaned chunks directly
+        (Klug & Kloosterman, 2022); the cross-fade is an ``mne-denoise``
+        addition for smoother boundaries.  Typical values: ``0.5`` – ``2.0`` s.
+    max_prop_remove : float | None, default=None
+        Maximum proportion of channels that can be removed per segment.
+        E.g. ``0.2`` caps ``n_selected`` at ``int(n_channels × 0.2)``.
+        Safety valve to prevent over-cleaning; mirrors ZapLine-plus, which
+        caps the automatic component count at one-fifth of the channels
+        (Klug & Kloosterman, 2022, §2.4).
+    min_select : int, default=0
+        Minimum components to select when ``n_select='auto'`` and
+        the artifact is present.  Guarantees a floor on cleaning
+        strength.  Only effective when ``adaptive=True``.  Mirrors
+        ZapLine-plus's fixed-removal floor (``fixedNremove``; Klug &
+        Kloosterman, 2022).
     return_type : {'sources', 'epochs', 'raw'}
         Type of object to return from `transform`. 'sources' returns a numpy array
         of DSS components. 'epochs'/'raw' returns the denoised input object.
@@ -276,6 +374,14 @@ class DSS(BaseEstimator, TransformerMixin):
         The spatial patterns (mixing matrix).
     eigenvalues_ : array, shape (n_components,)
         The power of each component in the biased data (bias score).
+    n_selected_ : int | None
+        Number of significant components detected by automatic selection.
+        Only set when ``n_select`` is not ``None``. Use this to determine
+        how many components to remove/keep in downstream processing.
+    segment_results_ : list of dict | None
+        Per-segment metadata when ``adaptive=True``.  Each dict
+        contains ``'start'``, ``'end'``, ``'n_selected'``,
+        ``'eigenvalues'``, and ``'patterns'``.
 
     Examples
     --------
@@ -302,11 +408,21 @@ class DSS(BaseEstimator, TransformerMixin):
         self,
         bias: LinearDenoiser | Callable,
         n_components: int | None = None,
+        n_select: int | str | None = None,
+        selection_threshold: float = 3.0,
+        knee_rel_floor: float = 0.01,
+        knee_min_ratio: float = 3.0,
         rank: int | dict | None = None,
         reg: float = 1e-9,
         normalize_input: bool = True,
         cov_method: str = "empirical",
         cov_kws: dict | None = None,
+        smooth: LinearDenoiser | int | None = None,
+        adaptive: bool = False,
+        segmenter: CovarianceSegmenter | FixedWindowSegmenter | None = None,
+        crossfade: float = 0.0,
+        max_prop_remove: float | None = None,
+        min_select: int = 0,
         return_type: str = "sources",
         whiten: bool = False,
         noise_cov=None,
@@ -314,11 +430,21 @@ class DSS(BaseEstimator, TransformerMixin):
     ) -> None:
         self.n_components = n_components
         self.bias = bias
+        self.n_select = n_select
+        self.selection_threshold = selection_threshold
+        self.knee_rel_floor = knee_rel_floor
+        self.knee_min_ratio = knee_min_ratio
         self.rank = rank
         self.reg = reg
         self.normalize_input = normalize_input
         self.cov_method = cov_method
         self.cov_kws = cov_kws
+        self.smooth = smooth
+        self.adaptive = adaptive
+        self.segmenter = segmenter
+        self.crossfade = crossfade
+        self.max_prop_remove = max_prop_remove
+        self.min_select = min_select
         self.return_type = return_type
         self.whiten = whiten
         self.noise_cov = noise_cov
@@ -332,8 +458,11 @@ class DSS(BaseEstimator, TransformerMixin):
         self.eigenvalues_: np.ndarray | None = None
         self.explained_variance_: np.ndarray | None = None
         self.channel_norms_: np.ndarray | None = None
+        self.n_selected_: np.ndarray | None = None
+        self.segment_results_: list | None = None
         self._whitener_: np.ndarray | None = None
         self._dewhitener_: np.ndarray | None = None
+        self._smoother = None  # Resolved SmoothingBias instance
         self._mne_info = None
 
     def fit(
@@ -365,6 +494,12 @@ class DSS(BaseEstimator, TransformerMixin):
             The fitted transformer.
         """
         set_log_level_from_verbose(self.verbose)
+        if self.adaptive:
+            logger.info(
+                "DSS(adaptive=True).fit() computes a single global fit. "
+                "Call fit_transform() for the per-segment adaptive pathway."
+            )
+
         if self.whiten:
             # Joint multi-sensor decomposition: the whitener replaces the
             # channel-wise normalization and the homogeneous-type isolation.
@@ -377,7 +512,18 @@ class DSS(BaseEstimator, TransformerMixin):
         else:
             X_norm = X
 
-        if mne is not None and isinstance(X_norm, BaseRaw | BaseEpochs | Evoked):
+        # Resolve smoothing (if configured)
+        self._smoother = _as_smoother(self.smooth)
+
+        # If smoothing is enabled, decompose and fit on the residual only
+        if self._smoother is not None:
+            data, _, _, _, _, _ = extract_data_from_mne(
+                X_norm, channel_first_epochs=True
+            )
+            data_residual = data - self._smoother.apply(data)
+            # Fit DSS on residual (always numpy path)
+            self._fit_numpy(data_residual, weights=weights)
+        elif mne is not None and isinstance(X_norm, BaseRaw | BaseEpochs | Evoked):
             self._fit_mne(X_norm, weights=weights)
         elif isinstance(X_norm, np.ndarray):
             self._fit_numpy(X_norm, weights=weights)
@@ -388,7 +534,102 @@ class DSS(BaseEstimator, TransformerMixin):
         # self.patterns_ from compute_dss already satisfy X = P @ S
         self.mixing_ = self.patterns_
 
+        # Automatic component selection
+        if self._effective_n_select() is not None and self.eigenvalues_ is not None:
+            self.n_selected_ = self.auto_select()
+
         return self
+
+    def _effective_n_select(self) -> int | str | None:
+        """Resolve ``n_select``, defaulting to ``'auto'`` in adaptive mode.
+
+        Adaptive mode exists to adapt the number of removed components to
+        each segment, so ``n_select=None`` there would silently clean nothing
+        and return the input unchanged. ZapLine's adaptive path makes the same
+        choice by hardcoding ``n_select='auto'``.
+
+        Returns
+        -------
+        n_select : int | 'auto' | None
+        """
+        if self.n_select is None and self.adaptive:
+            return "auto"
+        if not (
+            self.n_select is None
+            or self.n_select == "auto"
+            or isinstance(self.n_select, int | np.integer)
+        ):
+            raise ValueError(
+                f"n_select must be an int, 'auto', or None, got {self.n_select!r}. "
+                "Selection behaviour is tuned via selection_threshold, "
+                "knee_rel_floor, and knee_min_ratio."
+            )
+        return self.n_select
+
+    def auto_select(self, threshold: float | None = None) -> int:
+        """Automatically determine how many DSS components are significant.
+
+        Delegates to :func:`~mne_denoise.dss.utils.selection.auto_select_components_robust`,
+        which layers two complementary detectors and takes the larger count:
+
+        - :func:`~mne_denoise.dss.utils.selection.iterative_outlier_removal`
+          catches the case where a few components stand out as statistical
+          outliers (typical EEG, and any spectrum with high contrast such as
+          DSS after ``smooth``).
+        - :func:`~mne_denoise.dss.utils.selection.detect_eigenvalue_knee`
+          catches the case where many co-equal strong components sit above a
+          noise floor, where the outlier test returns 0 (typical
+          high-channel-count MEG with coherent line noise; see Issue #34).
+
+        On a smoothly-decaying spectrum both return 0, so clean data is left
+        untouched. This is the same selector :class:`~mne_denoise.zapline.ZapLine`
+        uses for ``n_select='auto'``.
+
+        Called automatically during :meth:`fit` when ``n_select`` is set; can
+        also be called manually after fitting to explore a different threshold.
+
+        Parameters
+        ----------
+        threshold : float | None
+            Override the sigma threshold for the outlier detector. If ``None``,
+            uses ``self.selection_threshold``.
+
+        Returns
+        -------
+        n_selected : int
+            Number of significant components detected. When ``n_select`` is an
+            ``int``, that value is returned instead (clipped to the number of
+            available components).
+
+        Raises
+        ------
+        RuntimeError
+            If the estimator has not been fitted yet.
+
+        Examples
+        --------
+        >>> dss = DSS(bias=my_bias, n_components=30, n_select="auto")
+        >>> dss.fit(raw)
+        >>> print(f"{dss.n_selected_} significant components")
+        >>> dss.auto_select(threshold=2.5)  # explore a looser threshold
+        """
+        if self.eigenvalues_ is None:
+            raise RuntimeError("DSS not fitted. Call fit() first.")
+
+        n_select = self._effective_n_select()
+        if isinstance(n_select, int):
+            return min(n_select, len(self.eigenvalues_))
+
+        threshold = threshold if threshold is not None else self.selection_threshold
+
+        return int(
+            auto_select_components_robust(
+                self.eigenvalues_,
+                sigma=threshold,
+                knee_rel_floor=self.knee_rel_floor,
+                knee_min_ratio=self.knee_min_ratio,
+            )
+        )
 
     def _normalize(
         self, X: BaseRaw | BaseEpochs | Evoked | np.ndarray, fit: bool = False
@@ -425,8 +666,8 @@ class DSS(BaseEstimator, TransformerMixin):
             data_2d = data
 
         if fit:
-            # unique std per channel
-            self.channel_norms_ = np.std(data_2d, axis=1)
+            # unique norms per channel
+            self.channel_norms_ = np.linalg.norm(data_2d, axis=1)
             # Avoid division by zero
             self.channel_norms_ = np.where(
                 self.channel_norms_ > 0, self.channel_norms_, 1.0
@@ -501,16 +742,14 @@ class DSS(BaseEstimator, TransformerMixin):
         kws.setdefault("rank", self.rank)
         kws.setdefault("verbose", False)
 
-        data, _, mne_type, _, picks, ch_names = extract_data_from_mne(inst)
+        data, _, _, _, picks, ch_names = extract_data_from_mne(
+            inst, channel_first_epochs=True
+        )
         self._mne_ch_names_ = ch_names
 
         # MNE covariance computation requires the inst object to match the array
         if picks is not None:
             inst = inst.copy().pick(picks)
-
-        if mne_type == "epochs":
-            # DSS transpose preference
-            data = np.transpose(data, (1, 2, 0))
 
         biased_data = self._apply_bias(data)
 
@@ -675,21 +914,28 @@ class DSS(BaseEstimator, TransformerMixin):
             X_in = X
 
         # Helper to extract data
+        # DSS internal convention for Epochs: (n_channels, n_times, n_epochs)
         data, _, mne_type, orig_inst, picks, _ = extract_data_from_mne(
-            X_in, ch_names=getattr(self, "_mne_ch_names_", None)
+            X_in,
+            ch_names=getattr(self, "_mne_ch_names_", None),
+            channel_first_epochs=True,
         )
 
-        # DSS internal convention for Epochs: (n_channels, n_times, n_epochs)
-        if mne_type == "epochs":
-            data = np.transpose(data, (1, 2, 0))
+        # If smoothing is enabled, project the residual (not full data)
+        if self._smoother is not None:
+            data_smooth = self._smoother.apply(data)
+            data_for_dss = data - data_smooth
+        else:
+            data_smooth = None
+            data_for_dss = data
 
         orig_shape = data.shape
-        if data.ndim == 3:
-            n_ch, n_times, n_epochs = data.shape
-            data_2d = data.reshape(n_ch, -1)
+        if data_for_dss.ndim == 3:
+            n_ch, n_times, n_epochs = data_for_dss.shape
+            data_2d = data_for_dss.reshape(n_ch, -1)
         else:
-            n_ch, n_times = data.shape
-            data_2d = data
+            n_ch, n_times = data_for_dss.shape
+            data_2d = data_for_dss
 
         # Center using mean on data_2d
         # DSS implies zero-mean assumption for correct projection
@@ -713,6 +959,15 @@ class DSS(BaseEstimator, TransformerMixin):
         # mixing shape: (n_channels, n_components)
         rec = self.mixing_[:, :n_keep] @ sources[:n_keep]
         rec += mean_
+
+        # Add back smooth component if it was separated
+        if data_smooth is not None:
+            smooth_2d = (
+                data_smooth.reshape(data_smooth.shape[0], -1)
+                if data_smooth.ndim == 3
+                else data_smooth
+            )
+            rec = rec + smooth_2d
 
         # Reshape to original
         if len(orig_shape) == 3:
@@ -828,3 +1083,371 @@ class DSS(BaseEstimator, TransformerMixin):
         threshold = 1e-15 * max_norm if max_norm > 0 else 1e-30
         norms = np.where(norms > threshold, norms, 1.0)
         return self.patterns_ / norms
+
+    # -----------------------------------------------------------------
+    # Segmented mode
+    # -----------------------------------------------------------------
+
+    def fit_transform(self, X, y=None, **fit_params):
+        """Fit and transform data in one step.
+
+        In **adaptive mode** (``adaptive=True``), the data is split into
+        segments and each segment gets its own independent DSS fit +
+        cleaning pass.  This is the only entry-point for adaptive
+        processing because ``fit()`` alone is not meaningful when
+        filters differ per segment.
+
+        In standard mode, this is equivalent to
+        ``self.fit(X).transform(X)``.
+
+        Parameters
+        ----------
+        X : Raw | Epochs | Evoked | ndarray
+            The data to process.
+        y : None
+            Ignored.
+        **fit_params
+            Additional keyword arguments forwarded to :meth:`fit`.
+
+        Returns
+        -------
+        X_out : ndarray | Raw | Epochs | Evoked
+            In adaptive mode, returns cleaned data (same type as input).
+            In standard mode with ``return_type='sources'``, returns DSS
+            source time-series.  With any other ``return_type``, returns
+            cleaned (denoised) data produced by subtracting the artifact
+            captured by the first ``n_selected_`` components.
+        """
+        if not self.adaptive:
+            self.fit(X, **fit_params)
+
+            if self.return_type == "sources":
+                return self.transform(X)
+
+            # ── Denoise via artifact subtraction ──
+            data, _, mne_type, orig_inst, _, _ = extract_data_from_mne(X)
+
+            n_remove = self.n_selected_ if self.n_selected_ is not None else 0
+            if n_remove > 0:
+                # Temporarily switch to get source time-series
+                saved_rt = self.return_type
+                self.return_type = "sources"
+                try:
+                    sources = self.transform(X)
+                finally:
+                    self.return_type = saved_rt
+
+                artifact = self.inverse_transform(
+                    sources, component_indices=np.arange(n_remove)
+                )
+                cleaned = data - artifact
+            else:
+                cleaned = data
+
+            return reconstruct_mne_object(cleaned, orig_inst, mne_type, verbose=False)
+
+        # --- adaptive (per-segment) mode ---
+        data, extracted_sfreq, mne_type, orig_inst, _, _ = extract_data_from_mne(X)
+
+        # Determine sfreq
+        sfreq = extracted_sfreq
+        if sfreq is None and hasattr(self.bias, "sfreq"):
+            sfreq = self.bias.sfreq
+        if sfreq is None:
+            raise ValueError(
+                "Cannot determine sfreq for adaptive mode. "
+                "Pass an MNE object or use a bias with a .sfreq attribute."
+            )
+
+        # Handle epochs: concatenate into continuous
+        is_epochs = False
+        if data.ndim == 3:
+            is_epochs = True
+            n_ep, n_ch, n_t = data.shape
+            data_cont = np.transpose(data, (1, 0, 2)).reshape(n_ch, -1)
+        else:
+            data_cont = data
+
+        # Resolve smoother once
+        self._smoother = _as_smoother(self.smooth)
+
+        # A global fit over the whole recording populates the estimator-level
+        # attributes (filters_, patterns_, eigenvalues_) with something that
+        # describes all of the data. Per-segment results are kept separately in
+        # segment_results_.
+        global_est = self._make_segment_estimator()
+        global_est.fit(data_cont)
+        self.filters_ = global_est.filters_
+        self.patterns_ = global_est.patterns_
+        self.mixing_ = global_est.patterns_
+        self.eigenvalues_ = global_est.eigenvalues_
+        self.explained_variance_ = global_est.explained_variance_
+        self.channel_norms_ = global_est.channel_norms_
+
+        # Run segmented processing
+        cleaned = self._run_segmented(data_cont, sfreq)
+
+        # Reshape back if epochs
+        if is_epochs:
+            cleaned = cleaned.reshape(n_ch, n_ep, n_t).transpose(1, 0, 2)
+
+        return reconstruct_mne_object(cleaned, orig_inst, mne_type, verbose=False)
+
+    def _resolve_segmenter(self, sfreq: float):
+        """Resolve the segmenter parameter.
+
+        If ``self.segmenter`` is ``None``, creates a default
+        :class:`CovarianceSegmenter` with optional bandpass from the
+        bias function.
+
+        Parameters
+        ----------
+        sfreq : float
+            Sampling frequency in Hz.
+
+        Returns
+        -------
+        segmenter : CovarianceSegmenter | FixedWindowSegmenter
+        """
+        if self.segmenter is not None:
+            return self.segmenter
+
+        # Build a default CovarianceSegmenter
+        bandpass = None
+        # If the bias has a target frequency, focus segmentation around it
+        if hasattr(self.bias, "freq") and self.bias.freq is not None:
+            f = float(self.bias.freq)
+            bandpass = (max(1.0, f - 3), min(sfreq / 2 - 1, f + 3))
+
+        return CovarianceSegmenter(
+            sfreq=sfreq,
+            min_chunk_len=30.0,
+            bandpass=bandpass,
+        )
+
+    def _run_segmented(
+        self,
+        data: np.ndarray,
+        sfreq: float,
+        segmenter: CovarianceSegmenter | FixedWindowSegmenter | None = None,
+    ) -> np.ndarray:
+        """Run segmented fit-transform on continuous data.
+
+        This is the shared engine for every adaptive denoiser in the package.
+        It owns segmentation, the per-segment loop, the cap/floor policy, the
+        cross-fade, and the bookkeeping in :attr:`segment_results_`. Subclasses
+        customise *what happens inside a segment* by overriding
+        :meth:`_process_segment` — see :class:`~mne_denoise.zapline.ZapLine`,
+        which adds spectral QA there without reimplementing any of this.
+
+        When :attr:`crossfade` is positive and there are multiple segments,
+        adjacent segments are extended by ``crossfade`` seconds on each side
+        and combined by raised-cosine overlap-add, eliminating the boundary
+        discontinuities that hard concatenation produces.
+
+        Parameters
+        ----------
+        data : ndarray, shape (n_channels, n_times)
+            Continuous data.
+        sfreq : float
+            Sampling frequency.
+        segmenter : CovarianceSegmenter | FixedWindowSegmenter | None
+            Explicit segmenter, overriding :attr:`segmenter` for this call.
+            ZapLine uses this to re-segment around each target frequency.
+
+        Returns
+        -------
+        cleaned : ndarray, shape (n_channels, n_times)
+            Cleaned data (segments blended via cross-fade or concatenated).
+        """
+        if segmenter is None:
+            segmenter = self._resolve_segmenter(sfreq)
+        segments = segmenter.segment(data)
+
+        if not segments:
+            raise ValueError(
+                "Segmenter returned no segments. Check segmenter settings "
+                "and data length."
+            )
+
+        logger.info(
+            f"Segmented DSS: {len(segments)} segment(s) "
+            f"over {data.shape[1] / sfreq:.1f}s"
+        )
+
+        # ------ cross-fade setup ------
+        n_overlap = int(self.crossfade * sfreq) if self.crossfade > 0 else 0
+        _n_ch, n_times = data.shape
+        use_crossfade = n_overlap > 0 and len(segments) > 1
+
+        if use_crossfade:
+            min_seg_len = min(end - start for start, end in segments)
+            if n_overlap > min_seg_len // 2:
+                n_overlap = max(1, min_seg_len // 2)
+                logger.warning(
+                    f"Crossfade overlap clamped to {n_overlap} samples "
+                    f"({n_overlap / sfreq:.2f}s) — half the smallest "
+                    f"segment."
+                )
+
+        # ------ per-segment processing ------
+        self.segment_results_ = []
+        cleaned_chunks: list[dict] = []
+        per_segment_n_removed: list[int] = []
+
+        for seg_idx, (start, end) in enumerate(segments):
+            # Optionally extend boundaries for cross-fade context
+            if use_crossfade:
+                is_first = seg_idx == 0
+                is_last = seg_idx == len(segments) - 1
+                ext_start = start if is_first else max(0, start - n_overlap)
+                ext_end = end if is_last else min(n_times, end + n_overlap)
+            else:
+                ext_start, ext_end = start, end
+
+            chunk = data[:, ext_start:ext_end]
+            result = self._process_segment(chunk)
+
+            cleaned_chunks.append(
+                {
+                    "data": result["cleaned"],
+                    "ext_start": ext_start,
+                    "ext_end": ext_end,
+                    "start": start,
+                    "end": end,
+                }
+            )
+            per_segment_n_removed.append(result["n_selected"])
+
+            # Store per-segment metadata. Any extra keys a subclass adds to
+            # the result (e.g. ZapLine's fine_freq / artifact_present) are
+            # carried through untouched.
+            meta = {k: v for k, v in result.items() if k != "cleaned"}
+            self.segment_results_.append({"start": start, "end": end, **meta})
+
+        # Per-segment filters live in ``segment_results_``. The estimator-level
+        # ``filters_``/``patterns_``/``eigenvalues_`` come from a single global
+        # fit performed by the caller, so they always describe the whole
+        # recording rather than whichever segment happened to run last.
+        self.n_selected_ = max(per_segment_n_removed) if per_segment_n_removed else 0
+
+        # ------ combine segments ------
+        if use_crossfade:
+            return overlap_add_combine(data.shape, cleaned_chunks)
+        return np.concatenate([c["data"] for c in cleaned_chunks], axis=1)
+
+    def _make_segment_estimator(self) -> DSS:
+        """Build the per-segment estimator used by adaptive mode.
+
+        Uses :func:`sklearn.base.clone` so every constructor parameter is
+        carried over automatically — including ones added later — and then
+        overrides only what must differ for a single segment. Hand-copying
+        the parameters here is how ``whiten`` and ``noise_cov`` previously
+        went missing without any error.
+
+        Returns
+        -------
+        estimator : DSS
+            An unfitted clone configured for one segment.
+        """
+        est = clone(self)
+        est.set_params(
+            adaptive=False,  # do NOT recurse
+            # Resolve 'auto' here: the clone is no longer adaptive, so it
+            # would otherwise fall back to n_select=None and select nothing.
+            n_select=self._effective_n_select(),
+            segmenter=None,
+            crossfade=0.0,
+            return_type="sources",
+            # Per-segment caps are applied by the caller, not the clone.
+            max_prop_remove=None,
+            min_select=0,
+            # A dict rank is an MNE-object concept; segments are plain arrays.
+            rank=self.rank if isinstance(self.rank, int | type(None)) else None,
+        )
+        return est
+
+    def _process_segment(self, chunk: np.ndarray) -> dict:
+        """Fit, select, and clean one segment (subclass extension point).
+
+        :meth:`_run_segmented` calls this once per segment and owns everything
+        around it — segmentation, cross-fade, and bookkeeping. Override this
+        (and only this) to change what happens *within* a segment;
+        :class:`~mne_denoise.zapline.ZapLine` does exactly that to add its
+        spectral-QA retry loop.
+
+        Overrides must return at least the keys documented below. Any
+        additional keys are stored verbatim in :attr:`segment_results_`, which
+        is how ZapLine surfaces its per-chunk ``fine_freq`` and
+        ``artifact_present`` diagnostics.
+
+        Parameters
+        ----------
+        chunk : ndarray, shape (n_channels, n_times)
+            Data segment (already extended for cross-fade, if enabled).
+
+        Returns
+        -------
+        result : dict
+            ``'cleaned'`` (ndarray, same shape as ``chunk``), ``'n_selected'``
+            (int), ``'eigenvalues'``, ``'patterns'``, and ``'filters'``.
+        """
+        n_channels = chunk.shape[0]
+        seg_dss = self._make_segment_estimator()
+        seg_dss.fit(chunk)
+        n_sel = seg_dss.n_selected_ if seg_dss.n_selected_ is not None else 0
+
+        # Apply caps
+        if self.max_prop_remove is not None:
+            n_sel = min(n_sel, int(n_channels * self.max_prop_remove))
+        n_sel = max(n_sel, self.min_select)
+
+        # Clean the segment
+        cleaned = self._clean_segment(chunk, seg_dss, n_sel)
+
+        return {
+            "cleaned": cleaned,
+            "n_selected": n_sel,
+            "eigenvalues": seg_dss.eigenvalues_,
+            "patterns": seg_dss.patterns_,
+            "filters": seg_dss.filters_,
+        }
+
+    def _clean_segment(
+        self, data: np.ndarray, fitted_dss: DSS, n_remove: int
+    ) -> np.ndarray:
+        """Clean a segment by projecting out *n_remove* DSS components.
+
+        Parameters
+        ----------
+        data : ndarray, shape (n_channels, n_times)
+            Segment data.
+        fitted_dss : DSS
+            A fitted DSS instance (with ``filters_``, ``mixing_``, etc.).
+        n_remove : int
+            Number of components to remove.
+
+        Returns
+        -------
+        cleaned : ndarray, shape (n_channels, n_times)
+        """
+        if n_remove <= 0 or fitted_dss.filters_ is None:
+            return data.copy()
+
+        # Smoothing decomposition (if configured)
+        if fitted_dss._smoother is not None:
+            data_smooth = fitted_dss._smoother.apply(data)
+            data_residual = data - data_smooth
+        else:
+            data_smooth = np.zeros_like(data)
+            data_residual = data
+
+        # Center residual before projection (DSS assumes zero-mean)
+        mean_ = data_residual.mean(axis=1, keepdims=True)
+        residual_centered = data_residual - mean_
+
+        # Project residual through the top n_remove DSS filters
+        sources = fitted_dss.filters_[:n_remove] @ residual_centered
+        artifact = fitted_dss.mixing_[:, :n_remove] @ sources
+
+        return data_smooth + (data_residual - artifact)

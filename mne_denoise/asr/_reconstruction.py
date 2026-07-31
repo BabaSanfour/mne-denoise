@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from ..blending import raised_cosine_ramp
 from ._covariance import (
     _ChunkedMovingCovariances,
     _covariance_chunk_blocks,
@@ -390,7 +391,7 @@ def process_asr(
         if applied and n > last_n:
             subrange = slice(last_n, n)
             width = n - last_n
-            blend = (1.0 - np.cos(np.pi * np.arange(1, width + 1) / width)) / 2.0
+            blend = raised_cosine_ramp(width)
             segment = data_stream[:, subrange]
             data_stream[:, subrange] = (R @ segment) * blend[np.newaxis, :] + (
                 last_R @ segment
@@ -581,7 +582,7 @@ def _process_asr_riemannian(
         if applied and n > last_n:
             subrange = slice(last_n, n)
             width = n - last_n
-            blend = (1.0 - np.cos(np.pi * np.arange(1, width + 1) / width)) / 2.0
+            blend = raised_cosine_ramp(width)
             segment = data_stream[:, subrange]
             data_stream[:, subrange] = (R @ segment) * blend[np.newaxis, :] + (
                 last_R @ segment
@@ -789,7 +790,7 @@ def _process_asr_windowed(
         if applied and n > last_n:
             subrange = slice(last_n, n)
             width = n - last_n
-            blend = (1.0 - np.cos(np.pi * np.arange(1, width + 1) / width)) / 2.0
+            blend = raised_cosine_ramp(width)
             segment = data_stream[:, subrange]
             data_stream[:, subrange] = (R @ segment) * blend[np.newaxis, :] + (
                 last_R @ segment
@@ -1065,7 +1066,7 @@ def _process_adaptive_chunk(
         if applied and n > last_n:
             subrange = slice(last_n, n)
             width = n - last_n
-            blend = (1.0 - np.cos(np.pi * np.arange(1, width + 1) / width)) / 2.0
+            blend = raised_cosine_ramp(width)
             segment = data_stream[:, subrange]
             data_stream[:, subrange] = (R @ segment) * blend[np.newaxis, :] + (
                 last_R @ segment

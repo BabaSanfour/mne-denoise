@@ -117,7 +117,7 @@ data_concat = epochs_data.reshape(n_channels, -1)  # (channels, epochs*times)
 print(f"Concatenated shape: {data_concat.shape}")
 
 # Apply ZapLine
-est = ZapLine(line_freq=50, sfreq=sfreq, n_remove=1)
+est = ZapLine(line_freq=50, sfreq=sfreq, n_select=1)
 est.fit(data_concat)
 cleaned = est.transform(data_concat)
 
@@ -187,7 +187,7 @@ print(f"Sampling rate: {sfreq_meg} Hz")
 est_meg = ZapLine(
     line_freq=50,
     sfreq=sfreq_meg,
-    n_remove=2,  # As in MATLAB example
+    n_select=2,  # As in MATLAB example
 )
 est_meg.fit(meg_concat)
 cleaned_meg = est_meg.transform(meg_concat)
@@ -245,7 +245,7 @@ print(f"Sampling rate: {sfreq_high} Hz")
 est_high = ZapLine(
     line_freq=50,
     sfreq=sfreq_high,
-    n_remove=6,  # As in MATLAB example
+    n_select=6,  # As in MATLAB example
     nkeep=50,  # Reduce dimensionality
 )
 est_high.fit(meg_high)
