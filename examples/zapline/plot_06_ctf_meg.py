@@ -66,7 +66,7 @@ data = background + line
 # Fit ZapLine in auto mode
 # ------------------------
 
-zap = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove="auto", n_harmonics=3)
+zap = ZapLine(sfreq=sfreq, line_freq=50.0, n_select="auto", n_harmonics=3)
 zap.fit(data)
 cleaned = zap.transform(data)
 

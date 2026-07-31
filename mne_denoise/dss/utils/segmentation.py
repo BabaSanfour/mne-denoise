@@ -27,7 +27,6 @@ from scipy.signal import find_peaks
 
 from .covariance import compute_covariance
 
-
 # ---------------------------------------------------------------------------
 # Covariance-based segmenter (generalised from ZapLine-plus)
 # ---------------------------------------------------------------------------
@@ -52,6 +51,16 @@ class CovarianceSegmenter:
         Bandpass filter range ``(f_low, f_high)`` in Hz to focus the
         stationarity analysis on a specific frequency band.  Useful for
         frequency-specific artifacts.  If ``None``, uses unfiltered data.
+    prominence : float, default=0.5
+        Sensitivity of boundary detection, expressed as a multiple of the
+        standard deviation of the successive covariance distances: a
+        distance peak must stand out by ``prominence * std(distances)`` to
+        be accepted as a boundary.  Lower values split more eagerly; higher
+        values require a more decisive change in covariance structure.
+        Because the threshold is relative to the spread of the distances,
+        stationary data still produces peaks, so raise this (or use
+        :class:`FixedWindowSegmenter`) if you are getting spurious splits.
+        Default 0.5 reproduces ZapLine-plus.
 
     References
     ----------
@@ -64,11 +73,13 @@ class CovarianceSegmenter:
         min_chunk_len: float = 30.0,
         cov_win_len: float = 1.0,
         bandpass: tuple[float, float] | None = None,
+        prominence: float = 0.5,
     ) -> None:
         self.sfreq = float(sfreq)
         self.min_chunk_len = min_chunk_len
         self.cov_win_len = cov_win_len
         self.bandpass = bandpass
+        self.prominence = float(prominence)
 
     def segment(self, data: np.ndarray) -> list[tuple[int, int]]:
         """Segment data into stationary chunks.
@@ -129,7 +140,7 @@ class CovarianceSegmenter:
         # Detect peaks (boundary candidates)
         min_distance = max(1, int(self.min_chunk_len * self.sfreq / n_win))
         peak_indices, _ = find_peaks(
-            dists, prominence=np.std(dists) * 0.5, distance=min_distance
+            dists, prominence=np.std(dists) * self.prominence, distance=min_distance
         )
         boundary_indices = (peak_indices + 1) * n_win
 

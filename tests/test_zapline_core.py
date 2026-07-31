@@ -85,7 +85,7 @@ def test_zapline_class_init(minimal_data):
         line_freq=minimal_data["line_freq"],
         sfreq=minimal_data["sfreq"],
     )
-    assert est.n_remove == "auto"
+    assert est.n_select == "auto"
 
 
 def test_zapline_class_fit_transform(minimal_data):
@@ -108,7 +108,7 @@ def test_zapline_whiten_processes_mixed_sensor_types(mixed_sensor_raw):
     est = ZapLine(
         line_freq=50.0,
         sfreq=raw.info["sfreq"],
-        n_remove=1,
+        n_select=1,
         whiten=True,
     )
 
@@ -145,8 +145,8 @@ def test_dss_zapline_reduces_line_noise(line_noise_data):
     sfreq = line_noise_data["sfreq"]
     line_freq = line_noise_data["line_freq"]
 
-    # Use fixed n_remove=1 to ensure we actually remove something
-    est = ZapLine(line_freq=line_freq, sfreq=sfreq, n_remove=1)
+    # Use fixed n_select=1 to ensure we actually remove something
+    est = ZapLine(line_freq=line_freq, sfreq=sfreq, n_select=1)
     est.fit(data)
     cleaned = est.transform(data)
 
@@ -168,8 +168,8 @@ def test_dss_zapline_preserves_brain_signal(line_noise_data):
     data = line_noise_data["data"]
     sfreq = line_noise_data["sfreq"]
 
-    # Use n_remove=1 to ensure testing with actual removal
-    est = ZapLine(line_freq=50.0, sfreq=sfreq, n_remove=1)
+    # Use n_select=1 to ensure testing with actual removal
+    est = ZapLine(line_freq=50.0, sfreq=sfreq, n_select=1)
     est.fit(data)
     cleaned = est.transform(data)
 
@@ -202,9 +202,9 @@ def test_dss_zapline_closed_sum_property(minimal_data):
 
 
 def test_zapline_n_remove_fixed(minimal_data):
-    """ZapLine should remove exactly n_remove components when specified."""
+    """ZapLine should remove exactly n_select components when specified."""
     data = minimal_data["data"]
-    est = ZapLine(line_freq=50.0, sfreq=minimal_data["sfreq"], n_remove=2)
+    est = ZapLine(line_freq=50.0, sfreq=minimal_data["sfreq"], n_select=2)
     est.fit(data)
 
     assert est.n_removed_ == 2
@@ -213,7 +213,7 @@ def test_zapline_n_remove_fixed(minimal_data):
 def test_zapline_n_remove_auto(minimal_data):
     """ZapLine auto should work (may remove 0 or more components)."""
     data = minimal_data["data"]
-    est = ZapLine(line_freq=50.0, sfreq=minimal_data["sfreq"], n_remove="auto")
+    est = ZapLine(line_freq=50.0, sfreq=minimal_data["sfreq"], n_select="auto")
     est.fit(data)
     cleaned = est.transform(data)
 
@@ -226,7 +226,7 @@ def test_zapline_with_harmonics(line_noise_data):
     data = line_noise_data["data"]
     sfreq = line_noise_data["sfreq"]
 
-    est = ZapLine(line_freq=50.0, sfreq=sfreq, n_harmonics=2, n_remove=1)
+    est = ZapLine(line_freq=50.0, sfreq=sfreq, n_harmonics=2, n_select=1)
     est.fit(data)
 
     assert est.n_harmonics_ == 2
@@ -266,7 +266,7 @@ def test_zapline_60hz(minimal_data):
     data = rng.normal(0, 1, (4, n_times))
     data += np.sin(2 * np.pi * 60 * times) * 5.0
 
-    est = ZapLine(line_freq=60.0, sfreq=sfreq, n_remove=1)
+    est = ZapLine(line_freq=60.0, sfreq=sfreq, n_select=1)
     est.fit(data)
     cleaned = est.transform(data)
 
@@ -288,13 +288,13 @@ def test_zapline_threshold_parameter(minimal_data):
 
     # Low threshold should remove more components
     est_low = ZapLine(
-        line_freq=50.0, sfreq=minimal_data["sfreq"], n_remove="auto", threshold=1.0
+        line_freq=50.0, sfreq=minimal_data["sfreq"], n_select="auto", threshold=1.0
     )
     est_low.fit(data)
 
     # High threshold should remove fewer
     est_high = ZapLine(
-        line_freq=50.0, sfreq=minimal_data["sfreq"], n_remove="auto", threshold=5.0
+        line_freq=50.0, sfreq=minimal_data["sfreq"], n_select="auto", threshold=5.0
     )
     est_high.fit(data)
 
@@ -450,7 +450,7 @@ def test_zapline_mne_eeg_raw_reduces_line_noise():
         return float(np.mean(psd[:, idx]))
 
     before = line_power(eeg_data)
-    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_select=1, n_harmonics=1, nfft=400)
     cleaned = est.fit_transform(raw)
 
     assert 10 * np.log10(before / line_power(cleaned.get_data())) > 10
@@ -487,7 +487,7 @@ def test_zapline_mne_mixed_channels_cleans_magnetometers_only():
         return float(np.mean(psd[:, idx]))
 
     before = line_power(mag_data)
-    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=2, n_harmonics=1, nfft=400)
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_select=2, n_harmonics=1, nfft=400)
     cleaned = est.fit_transform(raw)
 
     cleaned_mag = cleaned.get_data(picks="mag")
@@ -520,7 +520,7 @@ def test_zapline_mne_mixed_channels_prefers_gradiometers_when_no_mags():
     )
     raw = mne.io.RawArray(np.vstack([grad_data, misc_data]), info, verbose=False)
 
-    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_select=1, n_harmonics=1, nfft=400)
     cleaned = est.fit_transform(raw)
 
     assert est._mne_ch_names_ == [f"MEG{i:03d}" for i in range(n_grad)]
@@ -558,7 +558,7 @@ def test_zapline_mne_mixed_epochs_preserves_misc_channels():
     )
     epochs = mne.EpochsArray(data, info, events=events, tmin=0, verbose=False)
 
-    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_select=1, n_harmonics=1, nfft=400)
     cleaned = est.fit_transform(epochs)
 
     assert cleaned.get_data().shape == data.shape
@@ -587,7 +587,7 @@ def test_zapline_mne_mixed_evoked_transform_preserves_misc_channels():
     )
     evoked = mne.EvokedArray(np.vstack([eeg_data, misc_data]), info, tmin=0)
 
-    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_select=1, n_harmonics=1, nfft=400)
     est.fit(evoked)
     cleaned = est.transform(evoked)
 
@@ -614,7 +614,7 @@ def test_zapline_mne_transform_requires_fitted_channels():
     )
     raw = mne.io.RawArray(np.vstack([eeg_data, misc_data]), info, verbose=False)
 
-    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_select=1, n_harmonics=1, nfft=400)
     est.fit(raw)
 
     with pytest.raises(
@@ -653,7 +653,7 @@ def test_zapline_3d_data_fit_transform():
     # Add line noise
     data += np.sin(2 * np.pi * 50 * times) * 2.0
 
-    est = ZapLine(line_freq=50.0, sfreq=sfreq, n_remove=1)
+    est = ZapLine(line_freq=50.0, sfreq=sfreq, n_select=1)
     est.fit(data)
     cleaned = est.transform(data)
 
@@ -851,7 +851,7 @@ def test_zapline_auto_meg_like_many_coequal_components():
     background = rng.normal(0, 1, (n_channels, n_times))
     data = background + line
 
-    est = ZapLine(line_freq=50.0, sfreq=sfreq, n_remove="auto", n_harmonics=3)
+    est = ZapLine(line_freq=50.0, sfreq=sfreq, n_select="auto", n_harmonics=3)
     est.fit(data)
     cleaned = est.transform(data)
 
@@ -896,10 +896,135 @@ def test_zapline_no_supported_channel_types_falls_back():
     )
     raw = mne.io.RawArray(data, info, verbose=False)
 
-    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1, n_harmonics=1, nfft=400)
+    est = ZapLine(sfreq=sfreq, line_freq=50.0, n_select=1, n_harmonics=1, nfft=400)
     est.fit(raw)
 
     # No mag/grad/eeg -> no picking; estimator processes the misc channels.
     # We now properly track the names of whatever channels we process
     assert est._mne_ch_names_ == ["MISC001", "MISC002", "MISC003"]
     assert est.n_removed_ == 1
+
+
+# =========================================================================
+# ZapLine reuses DSS's selection policy rather than duplicating it
+# =========================================================================
+
+
+def _line_noise_data(sfreq=500.0, duration=30.0, n_ch=16, freq=60.0):
+    rng = np.random.default_rng(0)
+    n_times = int(duration * sfreq)
+    times = np.arange(n_times) / sfreq
+    return (
+        rng.standard_normal((n_ch, n_times)) * 0.5
+        + np.sin(2 * np.pi * freq * times) * 3.0
+    )
+
+
+def test_zapline_has_only_n_select():
+    """ZapLine exposes only the inherited n_select, never a second name."""
+    assert not hasattr(ZapLine(sfreq=500.0), "n_remove")
+    assert "n_select" in ZapLine(sfreq=500.0).get_params()
+    for value in ("auto", 3):
+        assert ZapLine(sfreq=500.0, line_freq=60.0, n_select=value).n_select == value
+
+
+def test_auto_matches_shared_robust_selector():
+    """n_select='auto' produces exactly auto_select_components_robust's count."""
+    from mne_denoise.dss.utils.selection import auto_select_components_robust
+
+    data = _line_noise_data()
+    zap = ZapLine(sfreq=500.0, line_freq=60.0, n_select="auto").fit(data)
+
+    assert zap.n_removed_ == auto_select_components_robust(
+        zap.eigenvalues_,
+        sigma=zap.threshold,
+        knee_rel_floor=zap.knee_rel_floor,
+        knee_min_ratio=zap.knee_min_ratio,
+    )
+
+
+def test_auto_agrees_with_dss_auto_select():
+    """ZapLine.n_removed_ is exactly what the inherited auto_select returns."""
+    data = _line_noise_data()
+    zap = ZapLine(sfreq=500.0, line_freq=60.0, n_select="auto").fit(data)
+    assert zap.n_removed_ == zap.auto_select()
+
+
+def test_int_n_remove_is_clipped_to_available_components():
+    data = _line_noise_data()
+    zap = ZapLine(sfreq=500.0, line_freq=60.0, n_select=50).fit(data)
+    assert zap.n_removed_ == len(zap.eigenvalues_)
+
+
+def test_adaptive_is_inherited_from_dss():
+    """ZapLine does not redefine adaptive; it is DSS's single switch."""
+    from mne_denoise.dss.linear import DSS
+
+    assert "adaptive" in DSS(bias=lambda x: x).get_params()
+    assert "segmented" not in ZapLine(sfreq=500.0).get_params()
+    assert ZapLine(sfreq=500.0, adaptive=True).adaptive is True
+
+
+def test_adaptive_is_settable_through_sklearn_api():
+    """adaptive/segmenter/min_select are real params, so clone() works."""
+    from sklearn.base import clone
+
+    zap = ZapLine(sfreq=500.0, line_freq=60.0, adaptive=True, min_select=2)
+    params = zap.get_params()
+    assert {"adaptive", "segmenter", "min_select", "max_prop_remove"} <= set(params)
+    assert clone(zap).min_select == 2
+
+    zap.set_params(adaptive=False)
+    assert zap.adaptive is False
+
+
+def test_process_segment_without_target_frequency_raises():
+    """A segment cannot be cleaned without knowing which frequency to target."""
+    zap = ZapLine(sfreq=500.0, line_freq=None, adaptive=True)
+    assert zap._target_freq_ is None
+    with pytest.raises(RuntimeError, match="target frequency"):
+        zap._process_segment(np.random.default_rng(0).standard_normal((4, 500)))
+
+
+def test_process_segment_falls_back_to_line_freq():
+    """Reached outside _run_adaptive, the segment hook uses line_freq."""
+    zap = ZapLine(sfreq=500.0, line_freq=60.0, adaptive=True)
+    result = zap._process_segment(_line_noise_data(duration=10.0))
+    assert set(result) >= {"cleaned", "n_selected", "fine_freq", "artifact_present"}
+
+
+def test_per_chunk_estimator_inherits_all_params():
+    """The per-chunk ZapLine is derived from get_params, not hand-copied."""
+    zap = ZapLine(
+        sfreq=500.0,
+        line_freq=60.0,
+        adaptive=True,
+        rank=7,
+        reg=1e-7,
+        nfft=512,
+        whiten=False,
+    )
+    params = {
+        **zap.get_params(),
+        "line_freq": 59.9,
+        "n_select": "auto",
+        "threshold": 2.5,
+        "adaptive": False,
+        "crossfade": 0.0,
+    }
+    est = type(zap)(**params)
+    assert est.rank == 7
+    assert est.reg == 1e-7
+    assert est.nfft == 512
+    assert est.line_freq == 59.9
+    assert est.adaptive is False
+
+
+def test_zapline_usable_in_sklearn_pipeline():
+    """The estimator survives clone/get_params inside a Pipeline."""
+    from sklearn.pipeline import Pipeline
+
+    data = _line_noise_data(duration=20.0)
+    pipe = Pipeline([("zap", ZapLine(sfreq=500.0, line_freq=60.0, adaptive=True))])
+    out = pipe.fit_transform(data)
+    assert out.shape == data.shape

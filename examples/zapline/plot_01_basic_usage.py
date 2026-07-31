@@ -114,7 +114,7 @@ print("\nApplying ZapLine...")
 est = ZapLine(
     line_freq=50,
     sfreq=sfreq,
-    n_remove="auto",  # Automatically detect number of components
+    n_select="auto",  # Automatically detect number of components
     threshold=2.5,  # Z-score threshold for auto-detection
 )
 est.fit(data)
@@ -206,7 +206,7 @@ for i in range(n_channels):
 est_harmonics = ZapLine(
     line_freq=50,
     sfreq=sfreq,
-    n_remove=1,
+    n_select=1,
     n_harmonics=3,  # Explicitly request 3 harmonics
 )
 est_harmonics.fit(data_harmonics)
@@ -242,6 +242,6 @@ plt.show()
 # components automatically when that is more practical than fixing the value in
 # advance.
 #
-# The main parameters are ``line_freq`` for the mains frequency, ``n_remove``
+# The main parameters are ``line_freq`` for the mains frequency, ``n_select``
 # for manual or automatic component selection, ``n_harmonics`` for harmonic
 # coverage, and ``nkeep`` for optional PCA reduction on high-channel data.

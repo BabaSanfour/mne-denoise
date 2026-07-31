@@ -194,7 +194,10 @@ def test_comb_filter_adaptive_q():
 
     # Proportional Q
     bias_prop = CombFilterBias(
-        fundamental_freq=f0, sfreq=sfreq, n_harmonics=3, q_factor=30.0,
+        fundamental_freq=f0,
+        sfreq=sfreq,
+        n_harmonics=3,
+        q_factor=30.0,
         q_mode="proportional",
     )
     biased_prop = bias_prop.apply(data)

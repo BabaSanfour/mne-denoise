@@ -43,9 +43,9 @@ from .utils import convergence, whitening
 from .utils.segmentation import CovarianceSegmenter, FixedWindowSegmenter
 from .utils.selection import (
     auto_select_components,
-    eigenvalue_ratio_selection,
+    auto_select_components_robust,
+    detect_eigenvalue_knee,
     iterative_outlier_removal,
-    max_gap_selection,
 )
 
 # Variants (Modules)

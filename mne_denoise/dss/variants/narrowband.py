@@ -115,10 +115,16 @@ def narrowband_scan(
     """
     data = np.asarray(data)
 
-    if dss_kws.get("segmented", False):
+    if dss_kws.get("adaptive", False):
         raise ValueError(
-            "narrowband_scan does not support segmented=True. "
-            "Run narrowband_scan per segment manually if needed."
+            "narrowband_scan does not support adaptive=True. The scan ranks "
+            "candidate frequencies by a single global eigenvalue, so it would "
+            "silently ignore the segmentation. Scan first to locate the "
+            "frequency, then clean with adaptive=True at that frequency:\n"
+            "    best, freqs, eigs = narrowband_scan(data, sfreq=sfreq)\n"
+            "    peak = freqs[np.argmax(eigs)]\n"
+            "    dss = narrowband_dss(sfreq=sfreq, freq=peak, adaptive=True)\n"
+            "    cleaned = dss.fit_transform(data)"
         )
 
     nyquist = sfreq / 2

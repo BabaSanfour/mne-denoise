@@ -45,8 +45,6 @@ import numpy as np
 from scipy import signal
 from scipy.signal import find_peaks, welch
 
-from ..dss.utils.segmentation import CovarianceSegmenter
-
 logger = logging.getLogger(__name__)
 
 
@@ -269,54 +267,6 @@ def find_noise_freqs(
             detected_freqs.append(freqs[idx_full])
 
     return detected_freqs
-
-
-def segment_data(
-    data: np.ndarray,
-    sfreq: float,
-    target_freq: float,
-    min_chunk_len: float = 30.0,
-    cov_win_len: float = 1.0,
-) -> list[tuple[int, int]]:
-    """Segment data into chunks based on covariance stationarity.
-
-    Identifies boundaries where the noise characteristics change significantly
-    by tracking changes in the spatial covariance matrix over time.
-
-    .. deprecated::
-        Use :class:`~mne_denoise.dss.utils.segmentation.CovarianceSegmenter`
-        directly for new code.  This wrapper is kept for backward compatibility.
-
-    Parameters
-    ----------
-    data : ndarray, shape (n_channels, n_times)
-        Input data to segment.
-    sfreq : float
-        Sampling frequency in Hz.
-    target_freq : float
-        Target noise frequency for bandpass filtering before analysis.
-    min_chunk_len : float, default=30.0
-        Minimum segment length in seconds.
-    cov_win_len : float, default=1.0
-        Window length for covariance computation in seconds.
-
-    Returns
-    -------
-    segments : list of tuple
-        List of ``(start_sample, end_sample)`` tuples defining segment boundaries.
-
-    See Also
-    --------
-    mne_denoise.dss.utils.segmentation.CovarianceSegmenter :
-        The shared implementation used internally.
-    """
-    segmenter = CovarianceSegmenter(
-        sfreq=sfreq,
-        min_chunk_len=min_chunk_len,
-        cov_win_len=cov_win_len,
-        bandpass=(target_freq - 3, target_freq + 3),
-    )
-    return segmenter.segment(data)
 
 
 def find_fine_peak(

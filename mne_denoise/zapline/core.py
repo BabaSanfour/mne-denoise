@@ -46,9 +46,8 @@ from .._logging import set_log_level_from_verbose
 # Inherit from DSS
 from ..dss.denoisers.spectral import LineNoiseBias
 from ..dss.denoisers.temporal import SmoothingBias
-from ..dss.linear import DSS
+from ..dss.linear import DSS, _as_smoother
 from ..dss.utils.segmentation import CovarianceSegmenter
-from ..dss.utils.selection import auto_select_components_robust
 from ..dss.utils.whitening import (
     apply_spatial_transform,
     map_spatial_matrices_to_sensor_space,
@@ -97,10 +96,11 @@ class ZapLine(DSS):
         Line noise frequency in Hz (typically 50 or 60 Hz).
         If ``None`` and ``adaptive=True``, the frequency is auto-detected.
         If ``None`` and ``adaptive=False``, raises an error.
-    n_remove : int | 'auto', default='auto'
-        Number of noise components to remove.
-        If ``'auto'``, uses iterative outlier removal on DSS eigenvalues [1]_.
-        If ``int``, removes exactly that many components.
+    n_select : int | 'auto', default='auto'
+        Number of noise components to remove. Inherited from :class:`DSS`;
+        ``'auto'`` defers to :meth:`DSS.auto_select`, an ``int`` removes
+        exactly that many. The resolved count is stored in
+        :attr:`n_removed_`.
     n_harmonics : int | None, default=None
         Number of harmonics to include in the bias function.
         If ``None``, auto-determined based on Nyquist frequency.
@@ -114,10 +114,10 @@ class ZapLine(DSS):
     reg : float, default=1e-9
         Regularization parameter for DSS covariance inversion.
     threshold : float, default=3.0
-        Sigma threshold for iterative outlier removal when ``n_remove='auto'``.
+        Sigma threshold for iterative outlier removal when ``n_select='auto'``.
     knee_rel_floor : float, default=0.01
         Relative-to-max anchor for the knee-detection fallback used when
-        ``n_remove='auto'``. Eigenvalues below this fraction of the largest
+        ``n_select='auto'``. Eigenvalues below this fraction of the largest
         are excluded from knee selection. See
         :func:`mne_denoise.dss.utils.detect_eigenvalue_knee`.
     knee_min_ratio : float, default=3.0
@@ -125,12 +125,21 @@ class ZapLine(DSS):
         qualify as a knee. Defaults to a factor-of-3 drop. Lower values make
         knee detection more permissive; higher values make it stricter.
     adaptive : bool, default=False
-        If ``True``, use adaptive ZapLine-plus mode [2]_ with:
+        Inherited from :class:`DSS`. If ``True``, use adaptive ZapLine-plus
+        mode [2]_ with:
         - Automatic frequency detection
         - Data segmentation based on covariance stationarity
         - Per-segment parameter adaptation
     adaptive_params : dict | None, default=None
         Parameters for adaptive mode. See Notes for available options.
+    crossfade : float, default=0.0
+        Duration in seconds of the raised-cosine cross-fade applied at segment
+        boundaries in adaptive mode. Each segment is cleaned with its own
+        filters, so hard concatenation (the default, matching ZapLine-plus)
+        leaves a step discontinuity at every boundary — broadband in frequency,
+        and therefore smeared across the very spectrum being cleaned. Set to
+        ``0.5``–``2.0`` s to blend the boundaries instead. Ignored when
+        ``adaptive=False``.
     whiten : bool, default=False
         If ``True``, jointly process all supported data channel types after
         MNE-style pre-whitening. The default keeps the existing homogeneous
@@ -187,7 +196,7 @@ class ZapLine(DSS):
 
     Using automatic component selection:
 
-    >>> zapline = ZapLine(sfreq=1000, line_freq=60.0, n_remove="auto")
+    >>> zapline = ZapLine(sfreq=1000, line_freq=60.0, n_select="auto")
     >>> zapline.fit(data)
     >>> print(f"Removed {zapline.n_removed_} components")
     >>> cleaned = zapline.transform(data)
@@ -210,7 +219,7 @@ class ZapLine(DSS):
         self,
         sfreq: float,
         line_freq: float | None = 60.0,
-        n_remove: int | str = "auto",
+        n_select: int | str = "auto",
         n_harmonics: int | None = None,
         nfft: int = 1024,
         nkeep: int | None = None,
@@ -221,20 +230,22 @@ class ZapLine(DSS):
         knee_min_ratio: float = 3.0,
         adaptive: bool = False,
         adaptive_params: dict | None = None,
+        segmenter=None,
+        crossfade: float = 0.0,
+        max_prop_remove: float | None = 0.2,
+        min_select: int = 1,
         whiten: bool = False,
         noise_cov=None,
         verbose: bool | str | int | None = None,
     ):
         self.sfreq = float(sfreq)
         self.line_freq = float(line_freq) if line_freq is not None else None
-        self.n_remove = n_remove
         self.n_harmonics = n_harmonics
         self.nfft = nfft
         self.nkeep = nkeep
         self.threshold = threshold
         self.knee_rel_floor = knee_rel_floor
         self.knee_min_ratio = knee_min_ratio
-        self.adaptive = adaptive
         self.adaptive_params = adaptive_params if adaptive_params is not None else {}
         self.verbose = verbose
         set_log_level_from_verbose(self.verbose)
@@ -261,12 +272,22 @@ class ZapLine(DSS):
             rank=rank,
             reg=reg,
             normalize_input=False,
+            adaptive=adaptive,
+            segmenter=segmenter,
+            crossfade=crossfade,
+            max_prop_remove=max_prop_remove,
+            min_select=min_select,
+            n_select=n_select,
+            selection_threshold=threshold,
+            knee_rel_floor=knee_rel_floor,
+            knee_min_ratio=knee_min_ratio,
             whiten=whiten,
             noise_cov=noise_cov,
             verbose=self.verbose,
         )
 
         self.n_removed_ = None
+        self._target_freq_ = None
         self.adaptive_results_ = None
         self._artifact_mixing_ = None
         self._mne_ch_names_ = None
@@ -551,14 +572,10 @@ class ZapLine(DSS):
             )
         self.mixing_ = full_mixing
 
-        # 4. Determine n_remove
-        if self.n_remove == "auto":
-            self.n_removed_ = auto_select_components_robust(
-                self.eigenvalues_,
-                sigma=self.threshold,
-                knee_rel_floor=self.knee_rel_floor,
-                knee_min_ratio=self.knee_min_ratio,
-            )
+        # 4. Resolve the component count. DSS.auto_select handles both the 'auto' and
+        # the explicit-int cases, so the policy lives in exactly one place.
+        self.n_removed_ = self.auto_select()
+        if self.n_select == "auto":
             logger.info(
                 "ZapLine auto-selected %d/%d components "
                 "(eigenvalues: max=%.3g, min=%.3g)",
@@ -567,8 +584,6 @@ class ZapLine(DSS):
                 float(self.eigenvalues_[0]),
                 float(self.eigenvalues_[-1]),
             )
-        else:
-            self.n_removed_ = min(int(self.n_remove), len(self.eigenvalues_))
 
         # 5. Truncate to line-dominated DSS components.
         # Use DSS mixing from the full decomposition to reconstruct artifacts.
@@ -756,16 +771,9 @@ class ZapLine(DSS):
         # Extract params with defaults
         fmin = params.get("fmin", 17.0)
         fmax = params.get("fmax", 99.0)
-        n_remove_params = params.get("n_remove_params", {})
-        qa_params = params.get("qa_params", {})
         process_harmonics = params.get("process_harmonics", False)
         max_harmonics = params.get("max_harmonics", None)
-        hybrid_fallback = params.get("hybrid_fallback", False)
         min_chunk_len = params.get("min_chunk_len", 30.0)
-
-        sigma_init = n_remove_params.get("sigma", 3.0)
-        min_remove = n_remove_params.get("min_remove", 1)
-        max_prop_remove = n_remove_params.get("max_prop", 0.2)
 
         # 1. Automatic frequency detection
         line_freqs = self.line_freq
@@ -799,50 +807,38 @@ class ZapLine(DSS):
                 )
                 all_freqs_to_process.extend(harmonics)
 
-        # Process each frequency sequentially
-        for target_freq in all_freqs_to_process:
-            segmenter = CovarianceSegmenter(
-                sfreq=self.sfreq,
-                min_chunk_len=min_chunk_len,
-                bandpass=(target_freq - 3, target_freq + 3),
-            )
-            segments = segmenter.segment(current_data)
+        self._smoother = _as_smoother(self.smooth)
 
-            # Process each segment
-            cleaned_chunks = []
-            for _seg_idx, (start, end) in enumerate(segments):
-                chunk = current_data[:, start:end]
-
-                res = self._process_chunk(
-                    chunk,
-                    target_freq,
-                    sigma_init,
-                    min_remove,
-                    max_prop_remove,
-                    qa_params,
-                    hybrid_fallback,
+        try:
+            for target_freq in all_freqs_to_process:
+                self._target_freq_ = target_freq
+                segmenter = CovarianceSegmenter(
+                    sfreq=self.sfreq,
+                    min_chunk_len=min_chunk_len,
+                    bandpass=(target_freq - 3, target_freq + 3),
+                )
+                current_data = self._run_segmented(
+                    current_data, self.sfreq, segmenter=segmenter
                 )
 
-                # Store representative attributes for plotting
-                if res.get("eigenvalues") is not None:
-                    self.eigenvalues_ = res["eigenvalues"]
-                if res.get("patterns") is not None:
-                    self.patterns_ = res["patterns"]
-
-                cleaned_chunks.append(res["cleaned"])
-                all_chunk_metadata.append(
-                    {
-                        "frequency": target_freq,
-                        "fine_freq": res["fine_freq"],
-                        "start": start,
-                        "end": end,
-                        "n_removed": res["n_removed"],
-                        "artifact_present": res["present"],
-                    }
-                )
-
-            if cleaned_chunks:
-                current_data = np.concatenate(cleaned_chunks, axis=1)
+                for seg in self.segment_results_ or []:
+                    all_chunk_metadata.append(
+                        {
+                            "frequency": target_freq,
+                            "fine_freq": seg.get("fine_freq"),
+                            "start": seg["start"],
+                            "end": seg["end"],
+                            "n_removed": seg["n_selected"],
+                            "artifact_present": seg.get("artifact_present"),
+                        }
+                    )
+                    # Representative attributes for plotting
+                    if seg.get("eigenvalues") is not None:
+                        self.eigenvalues_ = seg["eigenvalues"]
+                    if seg.get("patterns") is not None:
+                        self.patterns_ = seg["patterns"]
+        finally:
+            self._target_freq_ = None
 
         return {
             "cleaned": current_data,
@@ -852,40 +848,48 @@ class ZapLine(DSS):
             "chunk_info": all_chunk_metadata,
         }
 
-    def _process_chunk(
-        self,
-        chunk: np.ndarray,
-        target_freq: float,
-        sigma_init: float,
-        min_remove: int,
-        max_prop_remove: float,
-        qa_params: dict,
-        hybrid_fallback: bool,
-    ) -> dict:
-        """Process a single chunk with QA loop.
+    def _process_segment(self, chunk: np.ndarray) -> dict:
+        """Clean one segment with ZapLine's spectral-QA retry loop.
+
+        Overrides :meth:`DSS._process_segment`. Everything around this — the
+        segmentation, the cross-fade, the per-segment bookkeeping — is handled
+        by :meth:`DSS._run_segmented`; only the ZapLine-specific behaviour
+        lives here:
+
+        1. refine the coarse target frequency to a fine peak,
+        2. check whether the artifact is actually present in this segment,
+        3. loop, adjusting sigma and the removal floor until
+           :func:`check_spectral_qa` reports neither over- nor under-cleaning,
+        4. optionally fall back to a notch filter if cleaning stays weak.
 
         Parameters
         ----------
-        chunk : ndarray (n_channels, n_times)
-            Data chunk.
-        target_freq : float
-            Coarse target frequency.
-        sigma_init : float
-            Initial threshold for outlier detection.
-        min_remove : int
-            Minimum components to remove.
-        max_prop_remove : float
-            Maximum proportion of channels to remove.
-        qa_params : dict
-            QA parameters (max_sigma, min_sigma).
-        hybrid_fallback : bool
-            Whether to use notch fallback for weak cleaning.
+        chunk : ndarray, shape (n_channels, n_times)
+            Data segment supplied by the segmented engine.
 
         Returns
         -------
         result : dict
-            Contains 'cleaned', 'n_removed', 'fine_freq', 'present'.
+            The keys :meth:`DSS._process_segment` promises, plus ZapLine's
+            ``'fine_freq'`` and ``'artifact_present'`` diagnostics, which the
+            engine stores verbatim in :attr:`segment_results_`.
         """
+        params = self.adaptive_params
+        n_remove_params = params.get("n_remove_params", {})
+        qa_params = params.get("qa_params", {})
+        hybrid_fallback = params.get("hybrid_fallback", False)
+
+        sigma_init = n_remove_params.get("sigma", self.selection_threshold)
+        min_remove = n_remove_params.get("min_remove", self.min_select)
+        max_prop_remove = n_remove_params.get("max_prop", self.max_prop_remove)
+
+        target_freq = self._target_freq_ or self.line_freq
+        if target_freq is None:
+            raise RuntimeError(
+                "ZapLine needs a target frequency to clean a segment. Pass "
+                "line_freq=..., or use adaptive=True to detect it."
+            )
+
         max_sigma = qa_params.get("max_sigma", 4.0)
         min_sigma = qa_params.get("min_sigma", 2.5)
         # New QA parameters
@@ -909,15 +913,18 @@ class ZapLine(DSS):
         res_cleaned = chunk.copy()
 
         for _retry in range(max_retries):
-            # Create fresh ZapLine for this chunk
-            est = ZapLine(
-                sfreq=self.sfreq,
-                line_freq=fine_freq,
-                n_remove="auto",
-                threshold=current_sigma,
-                knee_rel_floor=self.knee_rel_floor,
-                knee_min_ratio=self.knee_min_ratio,
-                adaptive=False,
+            # Fresh ZapLine for this chunk. Deriving it from get_params()
+            # carries every setting (rank, reg, whiten, nfft, ...) rather than
+            # silently dropping whatever this call site forgot to list.
+            est = type(self)(
+                **{
+                    **self.get_params(),
+                    "line_freq": fine_freq,
+                    "n_select": "auto",
+                    "threshold": current_sigma,
+                    "adaptive": False,
+                    "crossfade": 0.0,
+                }
             )
 
             est.fit(chunk)
@@ -934,7 +941,7 @@ class ZapLine(DSS):
                 est = ZapLine(
                     sfreq=self.sfreq,
                     line_freq=fine_freq,
-                    n_remove=int(n_rem),
+                    n_select=int(n_rem),
                     knee_rel_floor=self.knee_rel_floor,
                     knee_min_ratio=self.knee_min_ratio,
                     adaptive=False,
@@ -977,9 +984,11 @@ class ZapLine(DSS):
 
         return {
             "cleaned": best_chunk_clean,
-            "n_removed": res_n_removed,
+            "n_selected": res_n_removed,
+            "eigenvalues": getattr(est, "eigenvalues_", None),
+            "patterns": getattr(est, "patterns_", None),
+            "filters": getattr(est, "filters_", None),
+            # ZapLine-specific diagnostics, carried into segment_results_
             "fine_freq": fine_freq,
-            "present": present,
-            "eigenvalues": est.eigenvalues_ if hasattr(est, "eigenvalues_") else None,
-            "patterns": est.patterns_ if hasattr(est, "patterns_") else None,
+            "artifact_present": present,
         }

@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from mne_denoise.dss.utils.segmentation import (
     CovarianceSegmenter,
     FixedWindowSegmenter,
 )
-
 
 # ============================================================================
 # FixedWindowSegmenter
@@ -155,3 +153,48 @@ class TestCovarianceSegmenter:
         )
         segments = segmenter.segment(data)
         assert len(segments) >= 1
+
+
+def test_covariance_segmenter_single_window_returns_whole_recording():
+    """With one covariance window there are no successive distances to compare."""
+    sfreq = 100.0
+    # Exactly one 1-second covariance window fits in the data
+    data = np.random.default_rng(0).standard_normal((4, int(1.5 * sfreq)))
+
+    seg = CovarianceSegmenter(sfreq=sfreq, cov_win_len=1.0, min_chunk_len=0.5)
+    assert seg.segment(data) == [(0, data.shape[1])]
+
+
+def test_covariance_segmenter_handles_zero_variance_windows():
+    """All-zero stretches give a zero-trace covariance that must not divide."""
+    sfreq = 100.0
+    rng = np.random.default_rng(0)
+    data = rng.standard_normal((4, int(20 * sfreq)))
+    # Flatline the middle third: trace(cov) == 0 for those windows
+    data[:, int(6 * sfreq) : int(13 * sfreq)] = 0.0
+
+    seg = CovarianceSegmenter(sfreq=sfreq, cov_win_len=1.0, min_chunk_len=2.0)
+    segments = seg.segment(data)
+
+    assert len(segments) >= 1
+    assert segments[0][0] == 0
+    assert segments[-1][1] == data.shape[1]
+    for a, b in zip(segments[:-1], segments[1:], strict=True):
+        assert a[1] == b[0]
+
+
+def test_covariance_segmenter_prominence_controls_split_count():
+    """Higher prominence demands a more decisive covariance change."""
+    sfreq = 250.0
+    rng = np.random.default_rng(1)
+    half = int(60 * sfreq)
+    scale = np.array([5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])[:, None]
+    data = np.concatenate(
+        [rng.standard_normal((8, half)), rng.standard_normal((8, half)) * scale],
+        axis=1,
+    )
+
+    lenient = CovarianceSegmenter(sfreq=sfreq, min_chunk_len=10.0, prominence=0.25)
+    strict = CovarianceSegmenter(sfreq=sfreq, min_chunk_len=10.0, prominence=3.0)
+
+    assert len(lenient.segment(data)) > len(strict.segment(data))

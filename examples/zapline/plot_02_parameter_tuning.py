@@ -123,7 +123,7 @@ for idx, n_remove in enumerate(n_remove_values):
     row, col = idx // 3, idx % 3
     ax = axes[row, col]
 
-    est = ZapLine(line_freq=50, sfreq=sfreq, n_remove=n_remove)
+    est = ZapLine(line_freq=50, sfreq=sfreq, n_select=n_remove)
     est.fit(data)
     cleaned = est.transform(data)
 
@@ -134,7 +134,7 @@ for idx, n_remove in enumerate(n_remove_values):
     ax.semilogy(freqs, np.mean(psd_clean, axis=0), "g-", label="Cleaned")
     ax.axvline(50, color="r", linestyle="--", alpha=0.5)
     ax.set_xlim(0, 100)
-    ax.set_title(f"n_remove={n_remove} (actual: {est.n_removed_})")
+    ax.set_title(f"n_select={n_remove} (actual: {est.n_removed_})")
     ax.set_xlabel("Frequency (Hz)")
 
     if col == 0:
@@ -188,7 +188,7 @@ nkeep_values = [None, 64, 32, 16]
 for idx, nkeep in enumerate(nkeep_values):
     ax = axes[idx]
 
-    est_high = ZapLine(line_freq=50, sfreq=sfreq, n_remove=2, nkeep=nkeep)
+    est_high = ZapLine(line_freq=50, sfreq=sfreq, n_select=2, nkeep=nkeep)
     est_high.fit(data_high)
     cleaned_high = est_high.transform(data_high)
 
@@ -221,7 +221,7 @@ plt.show()
 print("\nPart 3: Understanding component scores")
 
 # Use a fixed removal count to guarantee selected components for pattern plots.
-est_scores = ZapLine(line_freq=50, sfreq=sfreq, n_remove=3)
+est_scores = ZapLine(line_freq=50, sfreq=sfreq, n_select=3)
 est_scores.fit(data)
 plot_montage = mne.channels.make_standard_montage("standard_1020")
 plot_info = mne.create_info(plot_montage.ch_names[:n_channels], sfreq, "eeg")
@@ -270,7 +270,7 @@ print("MEG data with large near-DC fluctuations")
 est_meg = ZapLine(
     line_freq=60,
     sfreq=sfreq_meg,
-    n_remove=2,  # As in MATLAB example
+    n_select=2,  # As in MATLAB example
 )
 est_meg.fit(meg_data)
 cleaned_meg = est_meg.transform(meg_data)
@@ -327,7 +327,7 @@ print(f"Components removed: {est_meg.n_removed_}")
 # %%
 # Conclusion
 # ----------
-# A practical starting point is to use ``n_remove="auto"`` or a small manual
+# A practical starting point is to use ``n_select="auto"`` or a small manual
 # value such as 1 to 3, then increase it only if clear line-noise structure
 # remains. ``nkeep`` becomes useful for high-channel recordings, ``threshold``
 # controls how aggressive automatic removal is, and ``n_harmonics`` matters

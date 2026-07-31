@@ -136,7 +136,7 @@ def run_all_parity_tests():
         data[:8] += line_noise
 
         # Python
-        py_result = dss_zapline(data, line_freq=50, sfreq=sfreq, n_remove=2)
+        py_result = dss_zapline(data, line_freq=50, sfreq=sfreq, n_select=2)
         py_metrics = compute_psd_reduction(data, py_result.cleaned, sfreq, 50)
 
         # MATLAB

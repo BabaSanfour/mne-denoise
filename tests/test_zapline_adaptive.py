@@ -3,10 +3,12 @@ from unittest.mock import patch
 import mne
 import numpy as np
 import pytest
+from numpy.testing import assert_allclose
 from scipy import signal
 
-from mne_denoise.zapline import ZapLine
+from mne_denoise.dss.linear import DSS
 from mne_denoise.dss.utils.segmentation import CovarianceSegmenter
+from mne_denoise.zapline import ZapLine
 from mne_denoise.zapline.adaptive import (
     apply_cleanline_notch,
     apply_hybrid_cleanup,
@@ -15,7 +17,6 @@ from mne_denoise.zapline.adaptive import (
     detect_harmonics,
     find_fine_peak,
     find_noise_freqs,
-    segment_data,
 )
 
 
@@ -446,24 +447,26 @@ def test_find_noise_freqs_small_window():
     assert isinstance(result, list)
 
 
-def test_segment_data_short():
-    """segment_data returns single segment for short data."""
+def test_covariance_segmenter_short():
+    """CovarianceSegmenter returns at least one segment for short data."""
     rng = np.random.default_rng(42)
     data = rng.normal(0, 1, (4, 2000))
     sfreq = 250
 
-    result = segment_data(data, sfreq, target_freq=50.0, min_chunk_len=10.0)
+    seg = CovarianceSegmenter(sfreq=sfreq, min_chunk_len=10.0, bandpass=(47.0, 53.0))
+    result = seg.segment(data)
     assert len(result) >= 1
 
 
-def test_segment_data_window_too_large():
-    """segment_data handles window larger than data."""
+def test_covariance_segmenter_window_too_large():
+    """CovarianceSegmenter handles a cov window longer than the data."""
     rng = np.random.default_rng(42)
     # Large cov_win_len relative to data
     data = rng.normal(0, 1, (4, 2000))
     sfreq = 250
 
-    result = segment_data(data, sfreq, target_freq=50.0, cov_win_len=20.0)
+    seg = CovarianceSegmenter(sfreq=sfreq, cov_win_len=20.0, bandpass=(47.0, 53.0))
+    result = seg.segment(data)
     assert result == [(0, 2000)]
 
 
@@ -560,7 +563,7 @@ def test_zapline_adaptive_sfreq_mismatch():
     raw = mne.io.RawArray(data, info)
 
     # 1. Test basic ZapLine execution
-    zap = ZapLine(sfreq=sfreq, line_freq=line_freq, n_remove=1)
+    zap = ZapLine(sfreq=sfreq, line_freq=line_freq, n_select=1)
     raw_clean = zap.fit_transform(raw)
 
     # Check that noise variance is reduced
@@ -579,7 +582,7 @@ def test_zapline_adaptive_sfreq_mismatch():
         data_tricky, mne.create_info(n_ch, sfreq_tricky, "eeg")
     )
 
-    zap_tricky = ZapLine(sfreq=sfreq_tricky, line_freq=line_freq, n_remove=1)
+    zap_tricky = ZapLine(sfreq=sfreq_tricky, line_freq=line_freq, n_select=1)
     raw_clean_tricky = zap_tricky.fit_transform(raw_tricky)
 
     clean_var_tricky = np.var(raw_clean_tricky.get_data(), axis=1).mean()
@@ -602,9 +605,13 @@ def test_adaptive_explicit_line_freq():
 
 
 def test_adaptive_qa_branches():
-    """Test weak/strong branches in _process_chunk."""
+    """Test weak/strong branches in the _process_segment QA loop."""
     zap = ZapLine(sfreq=1000, line_freq=None, adaptive=True)
     chunk = np.random.randn(1, 1000)
+    # _process_segment reads QA settings from self; _run_adaptive supplies only
+    # the frequency currently being cleaned.
+    zap._target_freq_ = 50.0
+    zap.adaptive_params = {"n_remove_params": {"max_prop": 0.5}}
 
     with (
         patch("mne_denoise.zapline.core.find_fine_peak", return_value=50.0),
@@ -615,15 +622,7 @@ def test_adaptive_qa_branches():
         with patch(
             "mne_denoise.zapline.core.check_spectral_qa", side_effect=["weak", "ok"]
         ) as mock_qa:
-            zap._process_chunk(
-                chunk,
-                50.0,
-                sigma_init=3.0,
-                min_remove=1,
-                max_prop_remove=0.5,
-                qa_params={},
-                hybrid_fallback=False,
-            )
+            zap._process_segment(chunk)
             assert mock_qa.call_count == 2
 
         # Scenario 2: Returns "strong" once, then "ok"
@@ -631,15 +630,7 @@ def test_adaptive_qa_branches():
         with patch(
             "mne_denoise.zapline.core.check_spectral_qa", side_effect=["strong", "ok"]
         ) as mock_qa:
-            zap._process_chunk(
-                chunk,
-                50.0,
-                sigma_init=3.0,
-                min_remove=1,
-                max_prop_remove=0.5,
-                qa_params={},
-                hybrid_fallback=False,
-            )
+            zap._process_segment(chunk)
             assert mock_qa.call_count == 2
 
         # Scenario 3: Hybrid fallback
@@ -654,15 +645,11 @@ def test_adaptive_qa_branches():
                 return_value=chunk,
             ) as mock_hybrid,
         ):
-            zap._process_chunk(
-                chunk,
-                50.0,
-                sigma_init=3.0,
-                min_remove=1,
-                max_prop_remove=0.5,
-                qa_params={},
-                hybrid_fallback=True,
-            )
+            zap.adaptive_params = {
+                "n_remove_params": {"max_prop": 0.5},
+                "hybrid_fallback": True,
+            }
+            zap._process_segment(chunk)
             mock_hybrid.assert_called_once()
 
 
@@ -685,33 +672,8 @@ def test_hybrid_cleanup_protection():
 
 
 # =========================================================================
-# CovarianceSegmenter / segment_data unification tests
+# CovarianceSegmenter integration tests
 # =========================================================================
-
-
-def test_segment_data_wraps_covariance_segmenter():
-    """segment_data wrapper produces identical results to CovarianceSegmenter."""
-    rng = np.random.default_rng(42)
-    sfreq = 250
-    n_times = int(120 * sfreq)  # 2 minutes
-    data = rng.standard_normal((4, n_times))
-    target_freq = 50.0
-
-    # Via the wrapper
-    wrapper_result = segment_data(
-        data, sfreq, target_freq=target_freq, min_chunk_len=30.0, cov_win_len=1.0
-    )
-
-    # Via CovarianceSegmenter directly
-    seg = CovarianceSegmenter(
-        sfreq=sfreq,
-        min_chunk_len=30.0,
-        cov_win_len=1.0,
-        bandpass=(target_freq - 3, target_freq + 3),
-    )
-    direct_result = seg.segment(data)
-
-    assert wrapper_result == direct_result
 
 
 def test_covariance_segmenter_in_zapline_adaptive():
@@ -737,13 +699,14 @@ def test_covariance_segmenter_in_zapline_adaptive():
     assert cleaned.shape == data.shape
 
 
-def test_segment_data_deprecated_wrapper_still_works():
-    """segment_data backward-compatible wrapper still returns valid segments."""
+def test_covariance_segmenter_returns_contiguous_segments():
+    """CovarianceSegmenter tiles the full recording without gaps."""
     rng = np.random.default_rng(42)
     data = rng.standard_normal((4, 5000))
     sfreq = 250
 
-    segments = segment_data(data, sfreq, target_freq=50.0, min_chunk_len=5.0)
+    seg = CovarianceSegmenter(sfreq=sfreq, min_chunk_len=5.0, bandpass=(47.0, 53.0))
+    segments = seg.segment(data)
 
     # Basic validity checks
     assert len(segments) >= 1
@@ -752,3 +715,202 @@ def test_segment_data_deprecated_wrapper_still_works():
     # Segments should be contiguous
     for i in range(len(segments) - 1):
         assert segments[i][1] == segments[i + 1][0]
+
+
+# =========================================================================
+# ZapLine delegates its segment loop to DSS's adaptive engine
+# =========================================================================
+
+
+def _nonstationary_line_data(sfreq=250.0, duration=180.0, n_ch=8):
+    rng = np.random.default_rng(0)
+    n_times = int(duration * sfreq)
+    times = np.arange(n_times) / sfreq
+    data = rng.standard_normal((n_ch, n_times)) * 0.1
+    amp = np.concatenate(
+        [np.full(n_times // 2, 5.0), np.full(n_times - n_times // 2, 1.0)]
+    )
+    data += np.sin(2 * np.pi * 50.0 * times) * amp
+    return data, sfreq
+
+
+def test_adaptive_uses_dss_adaptive_engine():
+    """_run_adaptive drives DSS._run_segmented rather than its own loop."""
+    data, sfreq = _nonstationary_line_data()
+    zap = ZapLine(
+        sfreq=sfreq,
+        line_freq=50.0,
+        adaptive=True,
+        adaptive_params={"min_chunk_len": 20.0},
+    )
+    with patch.object(
+        DSS, "_run_segmented", side_effect=DSS._run_segmented, autospec=True
+    ) as spy:
+        zap.fit_transform(data)
+    assert spy.call_count >= 1
+
+
+def test_adaptive_populates_segment_results_with_zapline_keys():
+    """ZapLine's per-segment diagnostics ride along in segment_results_."""
+    data, sfreq = _nonstationary_line_data()
+    zap = ZapLine(
+        sfreq=sfreq,
+        line_freq=50.0,
+        adaptive=True,
+        adaptive_params={"min_chunk_len": 20.0},
+    )
+    zap.fit_transform(data)
+
+    assert zap.segment_results_
+    for seg in zap.segment_results_:
+        # keys the shared engine guarantees
+        assert {"start", "end", "n_selected", "eigenvalues", "patterns"} <= set(seg)
+        # keys only ZapLine's _process_segment override adds
+        assert "fine_freq" in seg
+        assert "artifact_present" in seg
+
+
+def test_adaptive_crossfade_smooths_segment_boundaries():
+    """crossfade is inherited from DSS and reduces boundary discontinuity."""
+    data, sfreq = _nonstationary_line_data()
+    params = {"min_chunk_len": 20.0}
+
+    hard = ZapLine(
+        sfreq=sfreq, line_freq=50.0, adaptive=True, adaptive_params=params
+    ).fit_transform(data)
+    faded = ZapLine(
+        sfreq=sfreq,
+        line_freq=50.0,
+        adaptive=True,
+        crossfade=1.0,
+        adaptive_params=params,
+    ).fit_transform(data)
+
+    assert faded.shape == data.shape
+    assert np.max(np.abs(np.diff(faded, axis=1))) <= np.max(
+        np.abs(np.diff(hard, axis=1))
+    )
+
+
+def test_target_frequency_cleared_after_run():
+    """The per-frequency marker must not leak past _run_adaptive."""
+    data, sfreq = _nonstationary_line_data(duration=90.0)
+    zap = ZapLine(
+        sfreq=sfreq,
+        line_freq=50.0,
+        adaptive=True,
+        adaptive_params={"min_chunk_len": 20.0},
+    )
+    zap.fit_transform(data)
+    assert zap._target_freq_ is None
+
+
+def test_adaptive_warns_on_sfreq_mismatch():
+    """An MNE input whose sfreq disagrees with init must not pass silently."""
+    sfreq_init, sfreq_data = 500.0, 250.0
+    n_times = int(20 * sfreq_data)
+    times = np.arange(n_times) / sfreq_data
+    data = np.random.default_rng(0).standard_normal((4, n_times)) * 0.3
+    data += np.sin(2 * np.pi * 50.0 * times) * 3.0
+    raw = mne.io.RawArray(data, mne.create_info(4, sfreq_data, "eeg"), verbose=False)
+
+    zap = ZapLine(
+        sfreq=sfreq_init,
+        line_freq=50.0,
+        adaptive=True,
+        adaptive_params={"min_chunk_len": 5.0},
+    )
+    with pytest.warns(UserWarning, match="differs from init sfreq"):
+        zap.fit_transform(raw)
+
+
+def test_adaptive_no_detected_frequencies_is_passthrough():
+    """When nothing is detected there is nothing to clean."""
+    data = np.random.default_rng(0).standard_normal((4, 5000)) * 0.1
+    zap = ZapLine(sfreq=250.0, line_freq=None, adaptive=True)
+
+    with patch("mne_denoise.zapline.core.find_noise_freqs", return_value=[]):
+        cleaned = zap.fit_transform(data)
+
+    assert_allclose(cleaned, data)
+    assert zap.n_removed_ == 0
+
+
+def test_adaptive_accepts_scalar_line_freq():
+    """A scalar line_freq is normalised to a one-element list."""
+    sfreq = 250.0
+    n_times = int(40 * sfreq)
+    times = np.arange(n_times) / sfreq
+    data = np.random.default_rng(0).standard_normal((6, n_times)) * 0.3
+    data += np.sin(2 * np.pi * 50.0 * times) * 3.0
+
+    zap = ZapLine(
+        sfreq=sfreq,
+        line_freq=50.0,
+        adaptive=True,
+        adaptive_params={"min_chunk_len": 10.0},
+    )
+    cleaned = zap.fit_transform(data)
+
+    assert cleaned.shape == data.shape
+    assert zap.adaptive_results_["line_freq"] == 50.0
+
+
+def test_adaptive_records_representative_patterns():
+    """Per-segment eigenvalues/patterns surface on the estimator for plotting."""
+    sfreq = 250.0
+    n_times = int(60 * sfreq)
+    times = np.arange(n_times) / sfreq
+    data = np.random.default_rng(0).standard_normal((8, n_times)) * 0.3
+    data += np.sin(2 * np.pi * 50.0 * times) * 3.0
+
+    zap = ZapLine(
+        sfreq=sfreq,
+        line_freq=50.0,
+        adaptive=True,
+        adaptive_params={"min_chunk_len": 10.0},
+    )
+    zap.fit_transform(data)
+
+    assert zap.eigenvalues_ is not None
+    assert zap.patterns_ is not None
+    assert zap.patterns_.shape[0] == data.shape[0]
+
+
+def _mixed_sensor_line_raw(sfreq=250.0, duration=60.0, seed=0):
+    """Raw with mag/grad/eeg at very different scales, plus 50 Hz line noise."""
+    rng = np.random.default_rng(seed)
+    n_times = int(duration * sfreq)
+    times = np.arange(n_times) / sfreq
+    ch_types = ["mag"] * 4 + ["grad"] * 4 + ["eeg"] * 4
+    scales = np.array([1e-12] * 4 + [1e-11] * 4 + [1e-5] * 4)
+    n_ch = len(ch_types)
+
+    line = np.sin(2 * np.pi * 50.0 * times)
+    mixing = rng.standard_normal(n_ch)
+    data = (
+        np.outer(mixing, line) * 3.0 + rng.standard_normal((n_ch, n_times))
+    ) * scales[:, None]
+    info = mne.create_info([f"C{i}" for i in range(n_ch)], sfreq, ch_types)
+    return mne.io.RawArray(data, info, verbose=False)
+
+
+def test_adaptive_with_whitening_returns_sensor_space():
+    """adaptive + whiten cleans all channel types jointly and un-whitens."""
+    raw = _mixed_sensor_line_raw()
+    zap = ZapLine(
+        sfreq=raw.info["sfreq"],
+        line_freq=50.0,
+        adaptive=True,
+        whiten=True,
+        adaptive_params={"min_chunk_len": 10.0},
+    )
+    cleaned = zap.fit_transform(raw)
+
+    data = raw.get_data()
+    assert cleaned.get_data().shape == data.shape
+    # Output is back in sensor units, not whitened units
+    for picks in (slice(0, 4), slice(4, 8), slice(8, 12)):
+        ratio = np.std(cleaned.get_data()[picks]) / np.std(data[picks])
+        assert 0.1 < ratio < 10.0
+    assert zap.adaptive_results_["removed"].shape == data.shape

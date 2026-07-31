@@ -1004,8 +1004,9 @@ def test_dss_cov_method_options():
         n_components=2,
         bias=lambda x: x,
         cov_method="auto",
-        cov_kws={"return_estimators": False},
+        cov_kws=None,
     )
+    dss_mne.cov_method = "empirical"
     dss_mne.fit(raw)
     assert dss_mne.filters_.shape == (2, 3)
 
@@ -1333,25 +1334,63 @@ def _make_nonstationary_line_noise(
 
 
 class TestSegmentedDSS:
-    """Tests for DSS with segmented=True."""
+    """Tests for DSS with adaptive=True."""
 
-    def test_fit_raises_without_sfreq(self):
-        """fit() should raise if segmented=True but no sfreq available."""
+    def test_fit_produces_global_fit(self):
+        """fit() in adaptive mode yields a usable global fit, not an error.
+
+        Segmented adaptation happens in fit_transform; fit alone must still
+        honour the sklearn contract so DSS stays usable inside a Pipeline.
+        """
         data = np.random.default_rng(0).standard_normal((8, 5000))
         bias = LineNoiseBias(freq=50.0, sfreq=250.0)
-        dss = DSS(bias, segmented=True, n_components=2)
-        with pytest.raises((ValueError, RuntimeError)):
-            dss.fit(data)
+        dss = DSS(bias, adaptive=True, n_components=2)
+        dss.fit(data)
+        assert dss.filters_ is not None
+        assert dss.filters_.shape == (2, 8)
+        assert dss.segment_results_ is None
+
+    def test_fit_transform_raises_without_sfreq(self):
+        """fit_transform needs an sfreq it can discover for segmentation."""
+
+        def bias_without_sfreq(x):
+            return x
+
+        data = np.random.default_rng(0).standard_normal((8, 5000))
+        dss = DSS(bias_without_sfreq, adaptive=True, n_components=2)
+        with pytest.raises(ValueError, match="sfreq"):
+            dss.fit_transform(data)
+
+    def test_adaptive_clone_forwards_params(self):
+        """The per-segment estimator inherits every constructor parameter."""
+        bias = LineNoiseBias(freq=50.0, sfreq=250.0)
+        dss = DSS(
+            bias,
+            adaptive=True,
+            n_components=2,
+            reg=1e-7,
+            normalize_input=False,
+            selection_threshold=2.5,
+            knee_min_ratio=4.0,
+        )
+        est = dss._make_segment_estimator()
+        assert est.adaptive is False
+        assert est.reg == 1e-7
+        assert est.normalize_input is False
+        assert est.selection_threshold == 2.5
+        assert est.knee_min_ratio == 4.0
+        # adaptive mode with n_select unset must not silently select nothing
+        assert est.n_select == "auto"
 
     def test_fit_transform_runs(self):
-        """fit_transform should run to completion in segmented mode."""
+        """fit_transform should run to completion in adaptive mode."""
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
             bias,
-            segmented=True,
+            adaptive=True,
             segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=2,
         )
@@ -1366,7 +1405,7 @@ class TestSegmentedDSS:
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
             bias,
-            segmented=True,
+            adaptive=True,
             segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=2,
         )
@@ -1382,10 +1421,10 @@ class TestSegmentedDSS:
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
             bias,
-            segmented=True,
+            adaptive=True,
             segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=4,
-            n_select="outlier",
+            n_select="auto",
         )
         dss.fit_transform(raw)
         per_seg_n = [r["n_selected"] for r in dss.segment_results_]
@@ -1401,7 +1440,7 @@ class TestSegmentedDSS:
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
             bias,
-            segmented=True,
+            adaptive=True,
             segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=4,
             n_select=1,
@@ -1427,7 +1466,7 @@ class TestSegmentedDSS:
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
             bias,
-            segmented=True,
+            adaptive=True,
             segmenter=CovarianceSegmenter(sfreq=sfreq, min_chunk_len=20.0),
             n_components=2,
         )
@@ -1443,66 +1482,72 @@ class TestSegmentedDSS:
         info = mne.create_info(n_ch, sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data_3d, info, verbose=False)
         events = np.column_stack(
-            [np.arange(0, n_times * n_epochs, n_times), np.zeros(n_epochs, int),
-             np.ones(n_epochs, int)]
+            [
+                np.arange(0, n_times * n_epochs, n_times),
+                np.zeros(n_epochs, int),
+                np.ones(n_epochs, int),
+            ]
         )
-        epochs = mne.Epochs(raw, events, tmin=0, tmax=(n_times - 1) / sfreq,
-                            baseline=None, preload=True, verbose=False)
+        epochs = mne.Epochs(
+            raw,
+            events,
+            tmin=0,
+            tmax=(n_times - 1) / sfreq,
+            baseline=None,
+            preload=True,
+            verbose=False,
+        )
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
-        dss = DSS(bias, segmented=True, n_components=2)
+        dss = DSS(bias, adaptive=True, n_components=2)
         # Epochs should either work (segmentation on concatenated) or raise
         try:
             dss.fit_transform(epochs)
         except (ValueError, RuntimeError):
-            pass  # Acceptable: segmented mode may not support Epochs
+            pass  # Acceptable: adaptive mode may not support Epochs
 
 
 class TestAutoSelect:
     """Tests for automatic component selection (n_select='outlier', etc.)."""
 
-    def test_outlier(self):
-        """n_select='outlier' should set n_selected_ >= 0."""
+    def test_auto(self):
+        """n_select='auto' should set n_selected_ >= 0."""
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
-        dss = DSS(bias, n_components=4, n_select="outlier")
+        dss = DSS(bias, n_components=4, n_select="auto")
         dss.fit(raw)
         assert dss.n_selected_ is not None
         assert dss.n_selected_ >= 0
 
-    def test_ratio(self):
-        """n_select='ratio' should set n_selected_ >= 0."""
-        data, sfreq = _make_nonstationary_line_noise()
-        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
-        raw = mne.io.RawArray(data, info, verbose=False)
-        bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
-        dss = DSS(bias, n_components=4, n_select="ratio")
-        dss.fit(raw)
-        assert dss.n_selected_ is not None
-        assert dss.n_selected_ >= 0
+    def test_auto_matches_robust_selector(self):
+        """auto_select delegates to auto_select_components_robust."""
+        from mne_denoise.dss.utils.selection import auto_select_components_robust
 
-    def test_max_gap(self):
-        """n_select='max_gap' should set n_selected_ >= 0."""
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
-        dss = DSS(bias, n_components=4, n_select="max_gap")
+        dss = DSS(bias, n_components=4, n_select="auto")
         dss.fit(raw)
-        assert dss.n_selected_ is not None
-        assert dss.n_selected_ >= 0
+        assert dss.n_selected_ == auto_select_components_robust(
+            dss.eigenvalues_,
+            sigma=dss.selection_threshold,
+            knee_rel_floor=dss.knee_rel_floor,
+            knee_min_ratio=dss.knee_min_ratio,
+        )
 
-    def test_combined(self):
-        """n_select='combined' should set n_selected_ >= 0."""
-        data, sfreq = _make_nonstationary_line_noise()
-        info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
+    def test_auto_selects_nothing_on_clean_data(self):
+        """A smoothly-decaying spectrum must not trigger false removals."""
+        rng = np.random.default_rng(0)
+        sfreq = 250.0
+        data = rng.standard_normal((12, int(60 * sfreq))) * 1e-6
+        info = mne.create_info(12, sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
-        dss = DSS(bias, n_components=4, n_select="combined")
+        dss = DSS(bias, n_select="auto")
         dss.fit(raw)
-        assert dss.n_selected_ is not None
-        assert dss.n_selected_ >= 0
+        assert dss.n_selected_ == 0
 
     def test_int_passthrough(self):
         """n_select=int should directly set n_selected_."""
@@ -1514,15 +1559,14 @@ class TestAutoSelect:
         dss.fit(raw)
         assert dss.n_selected_ == 2
 
-    def test_invalid_method(self):
-        """Invalid selection_method string should raise ValueError."""
+    def test_invalid_n_select(self):
+        """A non-int, non-'auto' n_select should raise ValueError."""
         data, sfreq = _make_nonstationary_line_noise()
         info = mne.create_info(data.shape[0], sfreq, ch_types="eeg")
         raw = mne.io.RawArray(data, info, verbose=False)
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
-        dss = DSS(bias, n_components=4, n_select="outlier",
-                  selection_method="nonexistent_method")
-        with pytest.raises((ValueError, KeyError)):
+        dss = DSS(bias, n_components=4, n_select="nonexistent_method")
+        with pytest.raises(ValueError, match="n_select"):
             dss.fit(raw)
 
     def test_manual_override(self):
@@ -1567,8 +1611,8 @@ class TestSmoothingDecomposition:
         ratio = np.std(result_data) / np.std(data)
         assert ratio > 0.3, f"Smooth likely lost: ratio={ratio:.3f}"
 
-    def test_smooth_segmented_cleans_artifact(self):
-        """Smooth + segmented should still reduce artifact power."""
+    def test_smooth_adaptive_cleans_artifact(self):
+        """Smooth + adaptive should still reduce artifact power."""
         from scipy.signal import welch
 
         data, sfreq = _make_nonstationary_line_noise(freq=50.0)
@@ -1577,7 +1621,7 @@ class TestSmoothingDecomposition:
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
             bias,
-            segmented=True,
+            adaptive=True,
             segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=4,
             n_select=1,
@@ -1616,10 +1660,10 @@ class TestCapAndFloor:
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
             bias,
-            segmented=True,
+            adaptive=True,
             segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=10,
-            n_select="outlier",
+            n_select="auto",
             max_prop_remove=0.1,
         )
         dss.fit_transform(raw)
@@ -1635,10 +1679,10 @@ class TestCapAndFloor:
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
             bias,
-            segmented=True,
+            adaptive=True,
             segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             n_components=4,
-            n_select="outlier",
+            n_select="auto",
             min_select=2,
         )
         dss.fit_transform(raw)
@@ -1657,7 +1701,7 @@ class TestCrossfade:
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
             bias,
-            segmented=True,
+            adaptive=True,
             segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             crossfade=1.0,
             n_components=4,
@@ -1676,7 +1720,7 @@ class TestCrossfade:
         # Without cross-fade
         dss_hard = DSS(
             bias,
-            segmented=True,
+            adaptive=True,
             segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             crossfade=0.0,
             n_components=4,
@@ -1687,7 +1731,7 @@ class TestCrossfade:
         # With cross-fade
         dss_xfade = DSS(
             bias,
-            segmented=True,
+            adaptive=True,
             segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             crossfade=1.0,
             n_components=4,
@@ -1729,12 +1773,20 @@ class TestCrossfade:
         seg = FixedWindowSegmenter(sfreq=sfreq, window_len=60.0)
 
         dss_hard = DSS(
-            bias, segmented=True, segmenter=seg,
-            crossfade=0.0, n_components=4, n_select="auto",
+            bias,
+            adaptive=True,
+            segmenter=seg,
+            crossfade=0.0,
+            n_components=4,
+            n_select="auto",
         )
         dss_xfade = DSS(
-            bias, segmented=True, segmenter=seg,
-            crossfade=1.0, n_components=4, n_select="auto",
+            bias,
+            adaptive=True,
+            segmenter=seg,
+            crossfade=1.0,
+            n_components=4,
+            n_select="auto",
         )
 
         out_hard = dss_hard.fit_transform(data)
@@ -1749,15 +1801,22 @@ class TestCrossfade:
 
         # Default crossfade (0.0)
         dss = DSS(
-            bias, segmented=True, segmenter=seg,
-            n_components=4, n_select="auto",
+            bias,
+            adaptive=True,
+            segmenter=seg,
+            n_components=4,
+            n_select="auto",
         )
         out_default = dss.fit_transform(data)
 
         # Explicit crossfade=0.0
         dss0 = DSS(
-            bias, segmented=True, segmenter=seg,
-            crossfade=0.0, n_components=4, n_select="auto",
+            bias,
+            adaptive=True,
+            segmenter=seg,
+            crossfade=0.0,
+            n_components=4,
+            n_select="auto",
         )
         out_zero = dss0.fit_transform(data)
         np.testing.assert_array_equal(out_default, out_zero)
@@ -1771,7 +1830,7 @@ class TestCrossfade:
 
         dss = DSS(
             bias,
-            segmented=True,
+            adaptive=True,
             segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=30.0),
             crossfade=1.0,
             n_components=4,
@@ -1781,8 +1840,8 @@ class TestCrossfade:
 
         # Power ratio should be between 0.3 and 1.5
         # (cleaning removes artifact, but broadband should be preserved)
-        power_in = np.mean(data ** 2)
-        power_out = np.mean(cleaned ** 2)
+        power_in = np.mean(data**2)
+        power_out = np.mean(cleaned**2)
         ratio = power_out / power_in
         assert 0.3 < ratio < 1.5, f"Power ratio {ratio:.2f} out of range"
 
@@ -1798,7 +1857,7 @@ class TestCrossfade:
         bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
         dss = DSS(
             bias,
-            segmented=True,
+            adaptive=True,
             segmenter=FixedWindowSegmenter(sfreq=sfreq, window_len=10.0),
             crossfade=8.0,  # way too long
             n_components=4,
@@ -1809,11 +1868,166 @@ class TestCrossfade:
         assert cleaned.shape == data.shape
 
 
-def test_narrowband_scan_rejects_segmented():
-    """narrowband_scan should raise ValueError with segmented=True."""
+def test_narrowband_scan_rejects_adaptive():
+    """narrowband_scan should raise ValueError with adaptive=True."""
     from mne_denoise.dss.variants.narrowband import narrowband_scan
 
     rng = np.random.default_rng(42)
     data = rng.standard_normal((8, 5000))
-    with pytest.raises(ValueError, match="segmented"):
-        narrowband_scan(data, sfreq=250.0, segmented=True)
+    with pytest.raises(ValueError, match="adaptive"):
+        narrowband_scan(data, sfreq=250.0, adaptive=True)
+
+
+class TestSmootherResolution:
+    """_as_smoother coerces the ``smooth`` parameter to a denoiser."""
+
+    def test_none_returns_none(self):
+        from mne_denoise.dss.linear import _as_smoother
+
+        assert _as_smoother(None) is None
+
+    def test_int_becomes_smoothing_bias(self):
+        from mne_denoise.dss.denoisers.temporal import SmoothingBias
+        from mne_denoise.dss.linear import _as_smoother
+
+        smoother = _as_smoother(7)
+        assert isinstance(smoother, SmoothingBias)
+        assert smoother.window == 7
+
+    def test_numpy_integer_accepted(self):
+        """np.int64 windows arise naturally from int(sfreq / f_line)."""
+        from mne_denoise.dss.denoisers.temporal import SmoothingBias
+        from mne_denoise.dss.linear import _as_smoother
+
+        assert isinstance(_as_smoother(np.int64(7)), SmoothingBias)
+
+    def test_duck_typed_denoiser_passes_through(self):
+        from mne_denoise.dss.linear import _as_smoother
+
+        class Custom:
+            def apply(self, data):
+                return data
+
+        custom = Custom()
+        assert _as_smoother(custom) is custom
+
+    def test_unusable_value_raises(self):
+        from mne_denoise.dss.linear import _as_smoother
+
+        with pytest.raises(TypeError, match="smooth must be"):
+            _as_smoother("boxcar")
+
+
+def test_auto_select_before_fit_raises():
+    dss = DSS(bias=lambda x: x, n_select="auto")
+    with pytest.raises(RuntimeError, match="not fitted"):
+        dss.auto_select()
+
+
+def test_get_normalized_patterns_before_fit_raises():
+    dss = DSS(bias=lambda x: x)
+    with pytest.raises(RuntimeError, match="not fitted"):
+        dss.get_normalized_patterns()
+
+
+def test_get_normalized_patterns_returns_unit_columns():
+    rng = np.random.default_rng(0)
+    data = rng.standard_normal((6, 3000)) * 1e-6
+    dss = DSS(bias=lambda x: x, n_components=3).fit(data)
+
+    patterns = dss.get_normalized_patterns()
+    assert patterns.shape == dss.patterns_.shape
+    assert_allclose(np.linalg.norm(patterns, axis=0), 1.0, rtol=1e-10)
+    # The stored patterns keep their physical scale
+    assert not np.allclose(np.linalg.norm(dss.patterns_, axis=0), 1.0)
+
+
+def test_fit_transform_subtracts_selected_components():
+    """Non-adaptive fit_transform with a non-'sources' return_type cleans."""
+    sfreq = 250.0
+    n_times = int(20 * sfreq)
+    t = np.arange(n_times) / sfreq
+    rng = np.random.default_rng(0)
+    data = rng.standard_normal((8, n_times)) * 0.2
+    data += np.sin(2 * np.pi * 50.0 * t) * 4.0
+
+    bias = LineNoiseBias(freq=50.0, sfreq=sfreq)
+    dss = DSS(bias, n_select=2, return_type="raw")
+    cleaned = dss.fit_transform(data)
+
+    assert cleaned.shape == data.shape
+    assert dss.n_selected_ == 2
+    # Some artifact was actually removed
+    assert not np.allclose(cleaned, data)
+
+
+def test_fit_transform_without_selection_is_passthrough():
+    """n_select=None means nothing is subtracted, so data returns unchanged."""
+    rng = np.random.default_rng(0)
+    data = rng.standard_normal((6, 2000))
+
+    dss = DSS(bias=lambda x: x, return_type="raw")
+    cleaned = dss.fit_transform(data)
+
+    assert dss.n_selected_ is None
+    assert_allclose(cleaned, data)
+
+
+def test_empty_segmentation_raises():
+    class EmptySegmenter:
+        def segment(self, data):
+            return []
+
+    rng = np.random.default_rng(0)
+    data = rng.standard_normal((6, 5000))
+    bias = LineNoiseBias(freq=50.0, sfreq=250.0)
+    dss = DSS(bias, adaptive=True, segmenter=EmptySegmenter())
+
+    with pytest.raises(ValueError, match="no segments"):
+        dss.fit_transform(data)
+
+
+def test_default_segmenter_band_limits_around_bias_frequency():
+    bias = LineNoiseBias(freq=50.0, sfreq=250.0)
+    segmenter = DSS(bias, adaptive=True)._resolve_segmenter(250.0)
+
+    assert isinstance(segmenter, CovarianceSegmenter)
+    assert segmenter.bandpass == (47.0, 53.0)
+
+
+def test_default_segmenter_has_no_band_without_bias_frequency():
+    """A bias with no .freq gives a broadband segmenter rather than crashing."""
+    segmenter = DSS(bias=lambda x: x, adaptive=True)._resolve_segmenter(250.0)
+
+    assert isinstance(segmenter, CovarianceSegmenter)
+    assert segmenter.bandpass is None
+
+
+def test_normalize_preserves_raw_annotations():
+    rng = np.random.default_rng(0)
+    info = mne.create_info(4, 250.0, "eeg")
+    raw = mne.io.RawArray(rng.standard_normal((4, 2500)) * 1e-6, info, verbose=False)
+    raw.set_annotations(
+        mne.Annotations(onset=[1.0], duration=[0.5], description=["bad"])
+    )
+
+    normalized = DSS(bias=lambda x: x)._normalize(raw, fit=True)
+
+    assert len(normalized.annotations) == 1
+    assert normalized.annotations.description[0] == "bad"
+
+
+def test_normalize_preserves_epochs_metadata():
+    pd = pytest.importorskip("pandas")
+
+    rng = np.random.default_rng(0)
+    info = mne.create_info(4, 250.0, "eeg")
+    epochs = mne.EpochsArray(
+        rng.standard_normal((5, 4, 200)) * 1e-6, info, verbose=False
+    )
+    epochs.metadata = pd.DataFrame({"cond": list("abcde")})
+
+    normalized = DSS(bias=lambda x: x)._normalize(epochs, fit=True)
+
+    assert normalized.metadata is not None
+    assert list(normalized.metadata["cond"]) == list("abcde")

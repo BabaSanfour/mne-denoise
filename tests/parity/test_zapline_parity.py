@@ -83,7 +83,7 @@ class TestZapLineParity:
         sfreq = test_data["sfreq"]
 
         # Python: ZapLine Class
-        est = ZapLine(line_freq=50, sfreq=sfreq, n_remove="auto")
+        est = ZapLine(line_freq=50, sfreq=sfreq, n_select="auto")
         est.fit(data)
         py_cleaned = est.transform(data)
 
@@ -124,7 +124,7 @@ class TestZapLineParity:
         sfreq = test_data["sfreq"]
 
         # Python
-        est = ZapLine(line_freq=50, sfreq=sfreq, n_remove=2)
+        est = ZapLine(line_freq=50, sfreq=sfreq, n_select=2)
         est.fit(data)
         py_cleaned = est.transform(data)
 
@@ -166,7 +166,7 @@ class TestZapLineParity:
 
         # Python with harmonics
         # Python with harmonics
-        est = ZapLine(line_freq=50, sfreq=sfreq, n_remove="auto", n_harmonics=2)
+        est = ZapLine(line_freq=50, sfreq=sfreq, n_select="auto", n_harmonics=2)
         est.fit(data)
         py_cleaned = est.transform(data)
 
@@ -187,7 +187,7 @@ class TestZapLineParity:
         sfreq = test_data["sfreq"]
 
         # Python
-        est = ZapLine(line_freq=50, sfreq=sfreq, n_remove=2)
+        est = ZapLine(line_freq=50, sfreq=sfreq, n_select=2)
         est.fit(data)
         py_cleaned = est.transform(data)
 
@@ -217,7 +217,7 @@ class TestZapLineEdgeCases:
         rng = np.random.default_rng(42)
         data = rng.standard_normal((8, 5000))  # Pure noise
 
-        est = ZapLine(line_freq=50, sfreq=500, n_remove="auto")
+        est = ZapLine(line_freq=50, sfreq=500, n_select="auto")
         est.fit(data)
         cleaned = est.transform(data)
 
@@ -240,7 +240,7 @@ class TestZapLineEdgeCases:
         line = np.sin(2 * np.pi * 60 * t)
         data[:4] += line * 2
 
-        est = ZapLine(line_freq=60, sfreq=500, n_remove=2)
+        est = ZapLine(line_freq=60, sfreq=500, n_select=2)
         est.fit(data)
         cleaned = est.transform(data)
 

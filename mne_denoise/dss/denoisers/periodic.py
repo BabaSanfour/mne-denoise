@@ -198,9 +198,7 @@ class CombFilterBias(LinearDenoiser):
         # Validate q_mode
         allowed_q_modes = ("fixed", "proportional")
         if q_mode not in allowed_q_modes:
-            raise ValueError(
-                f"q_mode must be one of {allowed_q_modes}, got {q_mode!r}"
-            )
+            raise ValueError(f"q_mode must be one of {allowed_q_modes}, got {q_mode!r}")
         self.q_mode = q_mode
 
         # Set up weights

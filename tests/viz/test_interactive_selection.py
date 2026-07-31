@@ -222,7 +222,7 @@ def test_selector_builds_for_zapline(fitted_zapline, zapline_data):
     """For ZapLine, every removed component starts excluded."""
     data, _ = zapline_data
     sel = plot_component_selector(fitted_zapline, data, show=False)
-    assert sel.excluded == [0, 1]  # n_remove=2
+    assert sel.excluded == [0, 1]  # n_select=2
 
 
 def test_selector_click_toggles_zapline(fitted_zapline, zapline_data):
@@ -249,7 +249,7 @@ def test_selector_zapline_epochs_shapes():
     data = rng.standard_normal((n_ep, n_ch, n_t)) * 0.5
     data += 2.0 * np.sin(2 * np.pi * 50 * t)[None, None, :]
 
-    zap = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1).fit(data)
+    zap = ZapLine(sfreq=sfreq, line_freq=50.0, n_select=1).fit(data)
     sel = plot_component_selector(zap, data, show=False)
     cleaned = sel.apply(data)
     assert cleaned.shape == (n_ep, n_ch, n_t)
@@ -275,7 +275,7 @@ def test_selector_zapline_preserves_raw_and_unfitted_channels():
     raw = mne.io.RawArray(np.vstack([eeg, stim]), info, verbose=False)
     raw.set_annotations(mne.Annotations([0.1], [0.2], ["test"]))
 
-    zap = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1).fit(raw)
+    zap = ZapLine(sfreq=sfreq, line_freq=50.0, n_select=1).fit(raw)
     selector = plot_component_selector(zap, raw, show=False)
     cleaned = selector.apply()
 
@@ -296,7 +296,7 @@ def test_selector_zapline_preserves_evoked():
     info = mne.create_info(4, sfreq, "eeg")
     evoked = mne.EvokedArray(data, info, tmin=-0.2, nave=7, comment="average")
 
-    zap = ZapLine(sfreq=sfreq, line_freq=50.0, n_remove=1).fit(evoked)
+    zap = ZapLine(sfreq=sfreq, line_freq=50.0, n_select=1).fit(evoked)
     cleaned = plot_component_selector(zap, evoked, show=False).apply()
     assert isinstance(cleaned, mne.Evoked)
     assert cleaned.nave == evoked.nave
