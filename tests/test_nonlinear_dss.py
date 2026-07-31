@@ -952,7 +952,7 @@ def test_iterative_dss_degenerate_orthogonalization():
     # Initialize BOTH components to the SAME vector to force collapse after orthogonalization
     w_init_force = np.array([[1.0, 0.0], [1.0, 0.0]])
 
-    with patch("mne_denoise.dss.nonlinear.whiten_data") as mock_whiten:
+    with patch("mne_denoise.dss.nonlinear.whiten_from_data_covariance") as mock_whiten:
         mock_whiten.return_value = (
             X_white_mock,
             np.eye(2, 3),  # Fake whitener

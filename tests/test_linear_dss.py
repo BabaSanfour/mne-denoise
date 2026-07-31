@@ -1178,6 +1178,11 @@ def test_dss_whiten_with_noise_cov():
     assert sources.shape == (18, raw.n_times)
     assert np.abs(np.corrcoef(sources[0], signal)[0, 1]) > 0.9
 
+    ranked_sources = DSS(
+        bias=bias, whiten=True, noise_cov=noise_cov, rank=10
+    ).fit_transform(raw)
+    assert ranked_sources.shape == (10, raw.n_times)
+
 
 def test_dss_whiten_epochs():
     """whiten=True works on epoched (3D) data."""
@@ -1221,7 +1226,7 @@ def test_dss_whiten_false_still_isolates_single_type():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         DSS(bias=bias).fit(raw)
-    assert any("whiten=True" in str(w.message) for w in caught)
+    assert any("multiple data channel types" in str(w.message) for w in caught)
 
 
 def test_dss_whiten_noise_cov_missing_channels_raises():
@@ -1256,6 +1261,16 @@ def test_dss_whiten_noise_cov_requires_mne_input():
     bias = BandpassBias(freq_band=(8, 12), sfreq=200.0)
     with pytest.raises(ValueError, match="named channels"):
         DSS(bias=bias, whiten=True, noise_cov=noise_cov).fit(data)
+
+
+def test_dss_whiten_rejects_non_mne_noise_covariance():
+    """noise_cov should use MNE's covariance type and semantics."""
+    from mne_denoise.dss.denoisers import BandpassBias
+
+    raw, _, _ = _mixed_sensor_raw()
+    bias = BandpassBias(freq_band=(8, 12), sfreq=raw.info["sfreq"])
+    with pytest.raises(TypeError, match="mne.Covariance"):
+        DSS(bias=bias, whiten=True, noise_cov=np.eye(18)).fit(raw)
 
 
 def test_dss_whiten_no_data_channels_raises():

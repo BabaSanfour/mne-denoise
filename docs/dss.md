@@ -169,22 +169,28 @@ Following NoiseTools `nt_dss0.m`:
 
 1. Compute baseline covariance: `C0 = X @ X.T / n`
 2. Compute biased covariance: `C1 = f(X) @ f(X).T / n`
-3. PCA whitening from C0: `W = V @ diag(1/sqrt(λ))`
-4. Apply whitening to C1: `C2 = W' @ C1 @ W`
+3. Compute the baseline-covariance whitener: `W = diag(1/sqrt(λ)) @ V.T`
+4. Apply the same transform to both axes of C1: `C2 = W @ C1 @ W.T`
 5. Eigendecomposition of C2: `[V2, Λ2] = eig(C2)`
-6. DSS filters: `todss = V @ W @ V2`
+6. DSS filters: `todss = V2.T @ W`
 7. Normalize for unit variance
+
+This baseline-covariance whitening is an intrinsic part of the DSS generalized
+eigenvalue solution. It is separate from the optional `whiten=True` sensor
+pre-whitening, which balances mixed MNE channel types or applies a supplied
+noise covariance before DSS computes its own baseline and biased covariances.
 
 ### Iterative DSS Algorithm
 
 Following Särelä & Valpola (2005):
 
-1. Initialize weight vector `w`
-2. Compute source: `s = w' @ X`
-3. Apply nonlinear function: `s' = f(s)`
-4. Update: `w_new = X @ s' / n`
-5. Normalize: `w = w_new / ||w_new||`
-6. Repeat until convergence
+1. Center the data and whiten it from its empirical covariance
+2. Initialize weight vector `w`
+3. Compute source: `s = w' @ X_white`
+4. Apply nonlinear function: `s' = f(s)`
+5. Update: `w_new = X_white @ s' / n`
+6. Normalize: `w = w_new / ||w_new||`
+7. Repeat until convergence
 
 ## References
 

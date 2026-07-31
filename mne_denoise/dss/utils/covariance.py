@@ -18,6 +18,7 @@ def compute_covariance(
     method: str = "empirical",
     shrinkage: float | None = None,
     weights: np.ndarray | None = None,
+    assume_centered: bool = False,
 ) -> np.ndarray:
     """Compute covariance matrix.
 
@@ -42,6 +43,8 @@ def compute_covariance(
     weights : ndarray, shape (n_times,), optional
         Sample weights for covariance computation. High weights emphasize time points,
         zero weights ignore them. Currently only supported for `method='empirical'`.
+    assume_centered : bool, default=False
+        If True, treat ``data`` as already centered and skip mean subtraction.
 
     Returns
     -------
@@ -78,13 +81,11 @@ def compute_covariance(
         weights = np.ones(n_times)
         total_weight = n_times
 
-    # mean
-    #   if weights are None, it will be equal to the mean.
-    #   if weights are not None, it will be equal to the weighted mean.
-    mean = np.sum(data * weights, axis=1, keepdims=True) / total_weight
-
-    # Center data
-    data_centered = data - mean
+    if assume_centered:
+        data_centered = data
+    else:
+        mean = np.sum(data * weights, axis=1, keepdims=True) / total_weight
+        data_centered = data - mean
 
     if method == "empirical":
         # Weighted covariance: (X * w) @ X.T / sum(w)
@@ -106,14 +107,14 @@ def compute_covariance(
         # Oracle Approximating Shrinkage
         from sklearn.covariance import OAS
 
-        oas = OAS().fit(data_centered.T)
+        oas = OAS(assume_centered=assume_centered).fit(data_centered.T)
         cov = oas.covariance_
 
     elif method == "mcd":
         # Minimum Covariance Determinant (robust)
         from sklearn.covariance import MinCovDet
 
-        mcd = MinCovDet().fit(data_centered.T)
+        mcd = MinCovDet(assume_centered=assume_centered).fit(data_centered.T)
         cov = mcd.covariance_
     else:
         raise ValueError(f"Unknown covariance method: {method}")

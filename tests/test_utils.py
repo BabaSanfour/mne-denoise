@@ -46,6 +46,35 @@ def test_extract_data_from_mne_epochs():
         data_3d.transpose(1, 0, 2).reshape(2, -1),
     )
 
+    channel_first, *_ = extract_data_from_mne(epochs, channel_first_epochs=True)
+    np.testing.assert_array_equal(channel_first, data_3d.transpose(1, 2, 0))
+
+
+def test_extract_data_from_mne_all_data_channels():
+    """The data policy should jointly pick data channels and omit stim channels."""
+    info = mne.create_info(
+        ["MAG", "GRAD", "EEG", "STIM"],
+        100.0,
+        ["mag", "grad", "eeg", "stim"],
+    )
+    raw = mne.io.RawArray(np.ones((4, 100)), info, verbose=False)
+
+    data, _, _, _, picks, ch_names = extract_data_from_mne(raw, auto_pick="data")
+
+    assert data.shape == (3, 100)
+    np.testing.assert_array_equal(picks, [0, 1, 2])
+    assert ch_names == ["MAG", "GRAD", "EEG"]
+
+
+def test_extract_data_from_mne_epoch_layout_options_are_exclusive():
+    """Epoch concatenation and channel-first 3D output cannot be requested together."""
+    with pytest.raises(ValueError, match="cannot both be True"):
+        extract_data_from_mne(
+            np.ones((2, 3, 4)),
+            concatenate_epochs=True,
+            channel_first_epochs=True,
+        )
+
 
 def test_extract_data_from_mne_evoked():
     info = mne.create_info(ch_names=["C1", "C2"], sfreq=100.0, ch_types="eeg")
