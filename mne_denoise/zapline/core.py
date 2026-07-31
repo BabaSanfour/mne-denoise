@@ -48,6 +48,10 @@ from ..dss.denoisers.spectral import LineNoiseBias
 from ..dss.denoisers.temporal import SmoothingBias
 from ..dss.linear import DSS
 from ..dss.utils.selection import auto_select_components_robust
+from ..dss.utils.whitening import (
+    apply_spatial_transform,
+    map_spatial_matrices_to_sensor_space,
+)
 from ..utils import (
     extract_data_from_mne,
     reconstruct_mne_object,
@@ -127,6 +131,16 @@ class ZapLine(DSS):
         - Per-segment parameter adaptation
     adaptive_params : dict | None, default=None
         Parameters for adaptive mode. See Notes for available options.
+    whiten : bool, default=False
+        If ``True``, jointly process all supported data channel types after
+        MNE-style pre-whitening. The default keeps the existing homogeneous
+        channel-type selection.
+    noise_cov : mne.Covariance | None, default=None
+        Noise covariance used when ``whiten=True``. It requires an MNE input.
+        If ``None``, MNE inputs are standardized by channel type and NumPy
+        arrays are standardized per channel.
+    verbose : bool | str | int | None, default=None
+        Control logging verbosity.
 
     Attributes
     ----------
@@ -207,6 +221,8 @@ class ZapLine(DSS):
         knee_min_ratio: float = 3.0,
         adaptive: bool = False,
         adaptive_params: dict | None = None,
+        whiten: bool = False,
+        noise_cov=None,
         verbose: bool | str | int | None = None,
     ):
         self.sfreq = float(sfreq)
@@ -245,6 +261,8 @@ class ZapLine(DSS):
             rank=rank,
             reg=reg,
             normalize_input=False,
+            whiten=whiten,
+            noise_cov=noise_cov,
             verbose=self.verbose,
         )
 
@@ -252,6 +270,7 @@ class ZapLine(DSS):
         self.adaptive_results_ = None
         self._artifact_mixing_ = None
         self._mne_ch_names_ = None
+        self._whitening_info_ = None
 
     def fit(self, X, y=None):
         """Fit ZapLine spatial filters to data.
@@ -295,11 +314,13 @@ class ZapLine(DSS):
                 "Use fit_transform() instead."
             )
 
-        data, extracted_sfreq, _, _, _, ch_names = extract_data_from_mne(
+        data, extracted_sfreq, _, orig_inst, _, ch_names = extract_data_from_mne(
             X,
+            auto_pick="data" if self.whiten else True,
             concatenate_epochs=True,
         )
         self._mne_ch_names_ = ch_names
+        self._whitening_info_ = orig_inst.info if orig_inst is not None else None
 
         # Validate sfreq consistency
         if extracted_sfreq is not None and not np.isclose(extracted_sfreq, self.sfreq):
@@ -359,7 +380,9 @@ class ZapLine(DSS):
             raise RuntimeError("Not fitted")
 
         data, extracted_sfreq, mne_type, orig_inst, picks, _ = extract_data_from_mne(
-            X, ch_names=getattr(self, "_mne_ch_names_", None)
+            X,
+            ch_names=getattr(self, "_mne_ch_names_", None),
+            auto_pick=not self.whiten,
         )
 
         # Validate sfreq consistency
@@ -418,10 +441,17 @@ class ZapLine(DSS):
         - ``chunk_info``: List of per-chunk processing information
         """
         set_log_level_from_verbose(self.verbose)
+        if not self.adaptive:
+            return super().fit_transform(X, y=y, **fit_params)
+
         data, extracted_sfreq, mne_type, orig_inst, picks, ch_names = (
-            extract_data_from_mne(X)
+            extract_data_from_mne(
+                X,
+                auto_pick="data" if self.whiten else True,
+            )
         )
         self._mne_ch_names_ = ch_names
+        self._whitening_info_ = orig_inst.info if orig_inst is not None else None
 
         if extracted_sfreq is not None and not np.isclose(extracted_sfreq, self.sfreq):
             warnings.warn(
@@ -430,29 +460,42 @@ class ZapLine(DSS):
                 stacklevel=2,
             )
 
-        if self.adaptive:
-            # Adaptive logic (ZapLine-plus)
-            if data.ndim == 3:
-                n_ep, n_ch, n_t = data.shape
-                data_cont = np.transpose(data, (1, 0, 2)).reshape(n_ch, -1)
-            else:
-                n_ch, n_t = data.shape
-                data_cont = data
-
-            # Run adaptive orchestration as instance method
-            res = self._run_adaptive(data_cont)
-
-            self.adaptive_results_ = res
-            self.n_removed_ = res["n_removed"]
-            cleaned = res["cleaned"]
-
-            if data.ndim == 3:
-                cleaned = cleaned.reshape(n_ch, n_ep, n_t).transpose(1, 0, 2)
-
-            return reconstruct_mne_object(cleaned, orig_inst, mne_type, picks=picks)
+        # Adaptive logic (ZapLine-plus)
+        if data.ndim == 3:
+            n_ep, n_ch, n_t = data.shape
+            data_cont = np.transpose(data, (1, 0, 2)).reshape(n_ch, -1)
         else:
-            # Standard logic
-            return super().fit_transform(X, y=y, **fit_params)
+            n_ch, n_t = data.shape
+            data_cont = data
+
+        if self.whiten:
+            data_work = self._prewhiten_sensor_data(
+                data_cont,
+                info=self._whitening_info_,
+                ch_names=ch_names,
+            )
+        else:
+            data_work = data_cont
+
+        res = self._run_adaptive(data_work)
+        self.n_removed_ = res["n_removed"]
+        if self.whiten:
+            removed = apply_spatial_transform(self._dewhitener_, res["removed"])
+            cleaned = data_cont - removed
+            if self.patterns_ is not None:
+                self.patterns_ = apply_spatial_transform(
+                    self._dewhitener_, self.patterns_
+                )
+            res["cleaned"] = cleaned
+            res["removed"] = removed
+        else:
+            cleaned = res["cleaned"]
+        self.adaptive_results_ = res
+
+        if data.ndim == 3:
+            cleaned = cleaned.reshape(n_ch, n_ep, n_t).transpose(1, 0, 2)
+
+        return reconstruct_mne_object(cleaned, orig_inst, mne_type, picks=picks)
 
     def _fit_dss(self, data: np.ndarray):
         """Fit DSS spatial filters to residual data.
@@ -468,8 +511,17 @@ class ZapLine(DSS):
         data : ndarray, shape (n_channels, n_times)
             Continuous data to fit.
         """
+        if self.whiten:
+            data_work = self._prewhiten_sensor_data(
+                data,
+                info=self._whitening_info_,
+                ch_names=self._mne_ch_names_,
+            )
+        else:
+            data_work = data
+
         # 1. Smooth data
-        data_smooth, data_residual = self._get_smooth_residual(data, warn=True)
+        _, data_residual = self._get_smooth_residual(data_work, warn=True)
 
         # 2. Setup (Rank)
         dss_rank = self.nkeep if self.nkeep is not None else self.rank
@@ -484,11 +536,20 @@ class ZapLine(DSS):
             self.n_removed_ = 0
             return
 
-        super().fit(data_residual)
+        super()._fit_numpy(data_residual)
+        self.mixing_ = self.patterns_
 
         # Keep full DSS solution before truncating to removed components.
         full_filters = self.filters_.copy()
         full_mixing = self.mixing_.copy()
+        if self.whiten:
+            full_filters, full_mixing = map_spatial_matrices_to_sensor_space(
+                full_filters,
+                full_mixing,
+                whitener=self._whitener_,
+                dewhitener=self._dewhitener_,
+            )
+        self.mixing_ = full_mixing
 
         # 4. Determine n_remove
         if self.n_remove == "auto":

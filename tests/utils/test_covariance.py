@@ -35,6 +35,15 @@ def test_empirical_covariance_value():
     assert_allclose(cov, expected)
 
 
+def test_empirical_covariance_assume_centered():
+    """Already-centered data should not be centered a second time."""
+    data = np.array([[2.0, 3.0, 4.0], [-1.0, 0.0, 1.0]])
+
+    cov = compute_covariance(data, assume_centered=True)
+
+    assert_allclose(cov, data @ data.T / data.shape[1])
+
+
 def test_shrinkage_covariance_identity():
     """Shrinkage should return identity for identity input (mostly)."""
     # Ideally if data is uncorrelated, shrinkage target (diagonal) matches empirical (diagonal)

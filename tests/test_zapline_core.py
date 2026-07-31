@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import mne
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose
@@ -60,6 +61,24 @@ def minimal_data():
     return {"data": data, "sfreq": sfreq, "line_freq": 50.0, "times": times}
 
 
+@pytest.fixture
+def mixed_sensor_raw():
+    """Create mixed-unit MNE data with one non-data channel."""
+    rng = np.random.default_rng(37)
+    sfreq = 250.0
+    n_times = 2000
+    times = np.arange(n_times) / sfreq
+    ch_types = ["mag", "mag", "grad", "grad", "eeg", "eeg", "stim"]
+    scales = np.array([1e-12, 1e-12, 1e-11, 1e-11, 1e-5, 1e-5, 1.0])
+    data = rng.standard_normal((len(ch_types), n_times)) * scales[:, None]
+    data[:6] += np.sin(2 * np.pi * 50.0 * times) * scales[:6, None] * 5.0
+    data[-1, 500:510] = 1.0
+    info = mne.create_info(
+        [f"CH{idx}" for idx in range(len(ch_types))], sfreq, ch_types
+    )
+    return mne.io.RawArray(data, info, verbose=False)
+
+
 def test_zapline_class_init(minimal_data):
     """ZapLine should initialize correctly."""
     est = ZapLine(
@@ -80,6 +99,27 @@ def test_zapline_class_fit_transform(minimal_data):
     cleaned = est.transform(data)
     assert est.filters_ is not None
     assert cleaned.shape == data.shape
+
+
+def test_zapline_whiten_processes_mixed_sensor_types(mixed_sensor_raw):
+    """Whitening should jointly clean data channels and preserve other channels."""
+    raw = mixed_sensor_raw
+    stim_before = raw.get_data(picks="stim")
+    est = ZapLine(
+        line_freq=50.0,
+        sfreq=raw.info["sfreq"],
+        n_remove=1,
+        whiten=True,
+    )
+
+    cleaned = est.fit_transform(raw)
+
+    assert isinstance(cleaned, mne.io.BaseRaw)
+    assert est.filters_.shape[1] == 6
+    assert cleaned.ch_names == raw.ch_names
+    np.testing.assert_array_equal(cleaned.get_data(picks="stim"), stim_before)
+    with pytest.raises(ValueError, match="missing required channels"):
+        est.transform(raw.copy().drop_channels(["CH0"]))
 
 
 def test_zapline_class_output_shapes(minimal_data):

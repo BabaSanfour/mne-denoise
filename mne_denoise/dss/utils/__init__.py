@@ -8,11 +8,14 @@ from .selection import (
     detect_eigenvalue_knee,
     iterative_outlier_removal,
 )
-from .whitening import compute_whitener, whiten_data
+from .whitening import (
+    compute_data_covariance_whitener,
+    whiten_from_data_covariance,
+)
 
 __all__ = [
-    "whiten_data",
-    "compute_whitener",
+    "whiten_from_data_covariance",
+    "compute_data_covariance_whitener",
     "compute_covariance",
     "iterative_outlier_removal",
     "auto_select_components",

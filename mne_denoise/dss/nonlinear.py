@@ -20,7 +20,7 @@ import numpy as np
 
 from .._logging import set_log_level_from_verbose
 from ..utils import extract_data_from_mne
-from .utils.whitening import whiten_data
+from .utils.whitening import whiten_from_data_covariance
 
 
 def _resolve_callable(param, x, default=None):
@@ -328,7 +328,9 @@ def iterative_dss(
     data_centered = data_2d - data_2d.mean(axis=1, keepdims=True)
 
     # Whiten data
-    X_whitened, whitener, dewhitener = whiten_data(data_centered, rank=rank, reg=reg)
+    X_whitened, whitener, dewhitener = whiten_from_data_covariance(
+        data_centered, rank=rank, reg=reg
+    )
     n_whitened = X_whitened.shape[0]
 
     # Limit components to whitened dimension

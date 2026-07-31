@@ -118,8 +118,9 @@ def _get_homogeneous_picks(
 def extract_data_from_mne(
     X: Any,
     ch_names: list[str] | None = None,
-    auto_pick: bool = True,
+    auto_pick: bool | str = True,
     concatenate_epochs: bool = False,
+    channel_first_epochs: bool = False,
 ) -> tuple[np.ndarray, float | None, str, Any, np.ndarray | None, list[str] | None]:
     """
     Extract data and metadata from an MNE object or NumPy-compatible array.
@@ -135,19 +136,25 @@ def extract_data_from_mne(
     ch_names : list of str | None, default=None
         Explicit list of channel names to extract. If None and X is an MNE object,
         the function auto-picks a single homogeneous channel type (if auto_pick=True).
-    auto_pick : bool, default=True
-        Whether to automatically pick a homogeneous channel type if ch_names is None.
+    auto_pick : bool | 'data', default=True
+        Channel selection when ``ch_names`` is None. If True, automatically pick
+        one homogeneous channel type. If ``'data'``, pick all supported data
+        channels jointly. If False, retain every channel.
     concatenate_epochs : bool, default=False
         If True, convert three-dimensional ``(n_epochs, n_channels, n_times)``
         data to ``(n_channels, n_epochs * n_times)``. The returned ``mne_type``
         remains ``'epochs'`` for MNE Epochs input.
+    channel_first_epochs : bool, default=False
+        If True, return MNE Epochs as
+        ``(n_channels, n_times, n_epochs)``. Cannot be combined with
+        ``concatenate_epochs=True``.
 
     Returns
     -------
     data : array
         Extracted data. MNE Epochs are returned as
         ``(n_epochs, n_channels, n_times)`` unless
-        ``concatenate_epochs=True``.
+        ``concatenate_epochs=True`` or ``channel_first_epochs=True``.
     sfreq : float | None
         Sampling frequency.
     mne_type : str
@@ -179,6 +186,11 @@ def extract_data_from_mne(
     picks = None
     extracted_ch_names = None
 
+    if concatenate_epochs and channel_first_epochs:
+        raise ValueError(
+            "concatenate_epochs and channel_first_epochs cannot both be True"
+        )
+
     if _HAS_MNE and isinstance(X, BaseRaw | BaseEpochs | Evoked):
         orig_inst = X
         sfreq = X.info["sfreq"]
@@ -193,7 +205,22 @@ def extract_data_from_mne(
             data = X.get_data(picks=picks)
             extracted_ch_names = [X.ch_names[p] for p in picks]
         else:
-            if auto_pick is not False:
+            if auto_pick == "data":
+                picks = mne.pick_types(
+                    X.info,
+                    meg=True,
+                    ref_meg=False,
+                    eeg=True,
+                    seeg=True,
+                    ecog=True,
+                    dbs=True,
+                    fnirs=True,
+                    csd=True,
+                    exclude=(),
+                )
+                if picks.size == 0:
+                    raise ValueError("No data channels found for joint decomposition")
+            elif auto_pick is not False:
                 picks = _get_homogeneous_picks(X, auto_pick=auto_pick)
             else:
                 picks = None
@@ -215,8 +242,14 @@ def extract_data_from_mne(
         # Assume array
         data = np.asarray(X)
 
+    if data.ndim not in (2, 3):
+        if isinstance(X, np.ndarray):
+            raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
+        raise TypeError(f"Unsupported input type: {type(X)}")
     if concatenate_epochs and data.ndim == 3:
         data = np.transpose(data, (1, 0, 2)).reshape(data.shape[1], -1)
+    elif channel_first_epochs and mne_type == "epochs":
+        data = np.transpose(data, (1, 2, 0))
 
     return data, sfreq, mne_type, orig_inst, picks, extracted_ch_names
 
