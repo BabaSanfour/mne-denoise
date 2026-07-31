@@ -15,7 +15,7 @@ from .components import (
     plot_component_time_series,
     plot_window_score_traces,
 )
-from .interactive import ComponentSelector, plot_component_selector
+from .interactive_selection import ComponentSelector, plot_component_selector
 from .signals import (
     plot_channel_time_course_comparison,
     plot_evoked_gfp_comparison,

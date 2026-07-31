@@ -76,6 +76,8 @@ _SEMANTIC_COLORS = {
     "text": _BASE_COLORS["dark"],
     "before": _BASE_COLORS["dark"],  # PSD / signal before cleaning
     "after": _BASE_COLORS["green"],  # PSD / signal after cleaning
+    "excluded": _BASE_COLORS["red"],  # component excluded from the clean output
+    "kept": _BASE_COLORS["dark"],  # component kept in the clean output
     "line_marker": _BASE_COLORS["red"],
     "no_artifact": _BASE_COLORS["gray"],
     "edge": _BASE_COLORS["dark"],  # bar / scatter edge color

@@ -135,7 +135,6 @@ Visualization
    mne_denoise.viz.plot_guided_asr_weights
    mne_denoise.viz.plot_component_summary
    mne_denoise.viz.plot_component_selector
-   mne_denoise.viz.ComponentSelector
    mne_denoise.viz.plot_component_time_series
    mne_denoise.viz.plot_component_spectrogram
    mne_denoise.viz.plot_component_score_curve
@@ -169,3 +168,9 @@ Visualization
    mne_denoise.viz.plot_condition_interaction_summary
    mne_denoise.viz.plot_group_condition_interaction_summary
    mne_denoise.viz.plot_endpoint_metrics_summary
+
+``plot_component_selector`` return object
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. autoclass:: mne_denoise.viz.ComponentSelector
+   :members: apply, excluded
+   :exclude-members: __init__
