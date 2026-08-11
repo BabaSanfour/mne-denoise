@@ -13,6 +13,7 @@ to extract reproducible or rhythmic components while preserving data rank.
    getting-started
    dss
    asr
+   bss_cca
    sns
    auto_examples/index
 

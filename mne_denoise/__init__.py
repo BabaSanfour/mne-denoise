@@ -31,18 +31,24 @@ spectrum_interpolation : Spectrum Interpolation
     Removes power-line noise and its harmonics by interpolating spectral amplitudes
     while preserving phase.
 
+bss_cca : Reference-Free BSS-CCA
+    Blind source separation by canonical correlation between the data and a
+    lagged copy of itself, for broadband muscle-artifact attenuation.
+
 sns : Sensor Noise Suppression
     Removes channel-specific noise by reconstructing each sensor from correlated
     neighboring sensors.
+
 """
 
-from . import asr, dss, icanclean, sns, spectrum_interpolation, zapline
+from . import asr, bss_cca, dss, icanclean, sns, spectrum_interpolation, zapline
 from ._covariance import compute_covariance
 
 __version__ = "0.0.1"
 
 __all__ = [
     "asr",
+    "bss_cca",
     "compute_covariance",
     "dss",
     "icanclean",

@@ -63,6 +63,15 @@ iCanClean
    mne_denoise.icanclean.ICanClean
    mne_denoise.icanclean.compute_icanclean
 
+BSS-CCA
+-------
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   mne_denoise.bss_cca.BSSCCA
+   mne_denoise.bss_cca.compute_bss_cca
+
 SNS
 ---
 .. autosummary::
