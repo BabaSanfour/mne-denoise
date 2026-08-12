@@ -15,6 +15,7 @@ to extract reproducible or rhythmic components while preserving data rank.
    asr
    bss_cca
    sns
+   ssa
    auto_examples/index
 
 .. toctree::

@@ -82,6 +82,21 @@ SNS
    mne_denoise.sns.compute_sns
    mne_denoise.sns.compute_sns_weights
 
+SSA
+---
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   mne_denoise.ssa.SingularSpectrumAnalysis
+   mne_denoise.ssa.LocalSingularSpectrumAnalysis
+   mne_denoise.ssa.ssa_decompose
+   mne_denoise.ssa.ssa_w_correlation
+   mne_denoise.ssa.compute_basic_ssa
+   mne_denoise.ssa.ssa_clean_channel
+   mne_denoise.ssa.compute_local_ssa
+   mne_denoise.ssa.local_ssa_clean_channel
+
 Denoisers
 ---------
 .. autosummary::
