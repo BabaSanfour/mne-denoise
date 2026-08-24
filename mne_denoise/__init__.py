@@ -42,10 +42,35 @@ sns : Sensor Noise Suppression
     Removes channel-specific noise by reconstructing each sensor from correlated
     neighboring sensors.
 
+sound : SOUND Automatic Noise Suppression
+    Forward-model-based Wiener estimation that suppresses per-channel noise by
+    reconstructing each sensor from all others (Mutanen et al., 2018).
+
+sspsir : SSP-SIR Muscle Artifact Suppression
+    Signal-space projection with source-informed reconstruction, targeting
+    TMS-evoked muscle artifacts (Mutanen et al., 2016).
+
+overcorrection : Forward-Model Overcorrection Metrics
+    Quantifies how much a linear spatial filter attenuates or distorts
+    hypothetical cortical sources through a forward model (Mutanen et al., 2022).
+
 """
 
-from . import asr, bss_cca, dss, icanclean, sns, spectrum_interpolation, ssa, zapline
+from . import (
+    asr,
+    bss_cca,
+    dss,
+    icanclean,
+    overcorrection,
+    sns,
+    sound,
+    spectrum_interpolation,
+    ssa,
+    sspsir,
+    zapline,
+)
 from ._covariance import compute_covariance
+from .overcorrection import quantify_overcorrection
 
 __version__ = "0.0.1"
 
@@ -55,8 +80,12 @@ __all__ = [
     "compute_covariance",
     "dss",
     "icanclean",
+    "overcorrection",
+    "quantify_overcorrection",
+    "sound",
     "spectrum_interpolation",
     "ssa",
     "sns",
+    "sspsir",
     "zapline",
 ]

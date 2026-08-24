@@ -65,6 +65,8 @@ sphinx_gallery_conf = {
             "../examples/zapline",
             "../examples/asr",
             "../examples/spectrum_interpolation",
+            "../examples/sound",
+            "../examples/sspsir",
             # Keep new example sections buildable until they receive an
             # intentional position above this fallback.
             "*",
