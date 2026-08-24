@@ -517,14 +517,129 @@ def test_icanclean_validation_removed_workflows():
         ICanClean(sfreq=250.0, ref_channels=[0], primary_prefix="EEG")
     with pytest.raises(TypeError):
         ICanClean(sfreq=250.0, ref_channels=[0], exclude_pattern="EXG")
-    with pytest.raises(TypeError):
-        ICanClean(sfreq=250.0, ref_channels=[0], pseudo_ref=True)
-    with pytest.raises(TypeError):
+
+
+# ---------------------------------------------------------------------------
+# Pseudo-reference mode (Downey & Ferris 2023, Sensors 23(19):8214)
+# ---------------------------------------------------------------------------
+
+
+def test_filter_ref_validation():
+    """A malformed filter_ref spec is rejected before any data is touched."""
+    for bad in [
+        ("bogus", 10.0),
+        ("bandstop", 10.0),
+        ("bandstop", (45.0, 5.0)),
+        ("highpass", (1, 2)),
+    ]:
+        with pytest.raises(ValueError):
+            ICanClean(sfreq=250.0, ref_channels=[0], filter_ref=bad)
+
+
+def test_pseudo_ref_requires_filter_ref():
+    """Without a filter the reference equals the primary block: r=1 everywhere."""
+    with pytest.raises(ValueError, match="requires filter_ref"):
+        ICanClean(sfreq=250.0, primary_channels=[0, 1], pseudo_ref=True)
+
+
+def test_pseudo_ref_needs_no_ref_channels():
+    """pseudo_ref supplies its own reference, so ref_channels is optional."""
+    icc = ICanClean(
+        sfreq=250.0,
+        primary_channels=[0, 1],
+        pseudo_ref=True,
+        filter_ref=("bandstop", (5.0, 45.0)),
+    )
+    assert icc.ref_channels is None
+    with pytest.raises(ValueError, match="ref_channels must be provided"):
+        ICanClean(sfreq=250.0, primary_channels=[0, 1])
+
+
+def test_pseudo_ref_rejects_ref_channels():
+    """pseudo_ref builds its own reference; a real ref_channels would be
+
+    silently ignored (the CCA reference is always rebuilt from the primary
+    channels once pseudo_ref=True), so combining the two must raise instead.
+    """
+    with pytest.raises(ValueError, match="ref_channels is not used"):
         ICanClean(
             sfreq=250.0,
-            ref_channels=[0],
-            filter_ref=("notch", (49.0, 51.0)),
+            ref_channels=[3],
+            pseudo_ref=True,
+            filter_ref=("bandstop", (5.0, 45.0)),
         )
+
+
+def test_filter_ref_rejects_non_positive_frequencies():
+    """A zero or negative band edge fails scipy's own Wn check with a
+
+    confusing message; catch it at construction like the Nyquist check does.
+    """
+    for bad in [
+        ("highpass", 0.0),
+        ("lowpass", -1.0),
+        ("bandstop", (0.0, 45.0)),
+        ("bandpass", (-5.0, 10.0)),
+    ]:
+        with pytest.raises(ValueError):
+            ICanClean(sfreq=250.0, ref_channels=[0], filter_ref=bad)
+
+
+def test_filter_ref_rejects_band_edge_at_or_above_nyquist():
+    """A band edge at or above Nyquist must raise at construction, not fail
+
+    inside scipy the first time data is transformed.
+    """
+    with pytest.raises(ValueError, match="Nyquist"):
+        ICanClean(sfreq=250.0, ref_channels=[0], filter_ref=("lowpass", 125.0))
+    with pytest.raises(ValueError, match="Nyquist"):
+        ICanClean(sfreq=250.0, ref_channels=[0], filter_ref=("bandstop", (5.0, 200.0)))
+
+
+def test_pseudo_ref_preserves_channel_count_and_shape(synthetic_dual_layer):
+    """The appended pseudo-reference rows must not leak into the output."""
+    data, primary_idx, _ref_idx, sfreq, _truth = synthetic_dual_layer
+    icc = ICanClean(
+        sfreq=sfreq,
+        primary_channels=primary_idx,
+        pseudo_ref=True,
+        filter_ref=("bandstop", (5.0, 45.0)),
+        segment_len=1.0,
+        threshold=0.9,
+        verbose=False,
+    )
+    out = icc.fit_transform(data)
+    assert out.shape == data.shape
+
+
+def test_pseudo_ref_removes_out_of_band_artifact(synthetic_dual_layer):
+    """A strong sub-band drift shared across channels should be attenuated.
+
+    The pseudo-reference retains only content outside 5-45 Hz, so CCA can see
+    the drift but not the in-band signal.
+    """
+    data, primary_idx, _ref_idx, sfreq, truth = synthetic_dual_layer
+    primary = truth["brain"]
+    n_times = primary.shape[1]
+    t = np.arange(n_times) / sfreq
+    drift = 8.0 * np.sin(2 * np.pi * 0.7 * t)
+    contaminated = primary + drift[None, :]
+
+    icc = ICanClean(
+        sfreq=sfreq,
+        primary_channels=list(range(len(primary_idx))),
+        pseudo_ref=True,
+        filter_ref=("bandstop", (5.0, 45.0)),
+        segment_len=2.0,
+        threshold=0.5,
+        verbose=False,
+    )
+    cleaned = icc.fit_transform(contaminated)
+
+    edge = int(sfreq)
+    before = np.mean(np.abs(contaminated[:, edge:-edge] - primary[:, edge:-edge]))
+    after = np.mean(np.abs(cleaned[:, edge:-edge] - primary[:, edge:-edge]))
+    assert after < before, f"drift not attenuated: {before:.3f} -> {after:.3f}"
 
 
 def test_icanclean_max_reject_zero_preserves_data(synthetic_dual_layer):
