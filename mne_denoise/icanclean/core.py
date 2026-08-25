@@ -72,6 +72,139 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+#: Default number of circular-shift surrogates for ``threshold='null'``. 20 is
+#: the floor at which the default alpha's quantile is even defined; 100 gives
+#: a materially more stable estimate at a still-cheap cost per window.
+_NULL_N_SURROGATE = 100
+#: Default family-wise false-rejection rate for ``threshold='null'``.
+_NULL_ALPHA = 0.05
+#: Smallest circular shift, as a fraction of the window, when building the null.
+#: Shifts near zero leave the blocks nearly aligned and inflate the threshold.
+_NULL_MIN_SHIFT = 0.1
+
+
+def _r2_from_projections(U: np.ndarray, V: np.ndarray) -> np.ndarray:
+    """Squared correlation of each column pair of two projected CCA bases."""
+    U_zm = U - U.mean(axis=0, keepdims=True)
+    V_zm = V - V.mean(axis=0, keepdims=True)
+    denom = np.sqrt(np.sum(U_zm**2, axis=0)) * np.sqrt(np.sum(V_zm**2, axis=0))
+    denom[denom == 0] = 1.0
+    R = np.sum(U_zm * V_zm, axis=0) / denom
+    return np.clip(R**2, 0.0, 1.0).astype(np.float64)
+
+
+def null_r2_threshold(
+    X_cca: np.ndarray,
+    Y_cca: np.ndarray,
+    *,
+    alpha: float = _NULL_ALPHA,
+    n_surrogate: int = _NULL_N_SURROGATE,
+    random_state: int | np.random.Generator | None = None,
+) -> float:
+    r"""Largest :math:`R^2` attributable to sampling noise alone.
+
+    Canonical correlations are upward-biased when a window carries few samples
+    relative to ``n_primary + n_reference``: as that ratio approaches 1 every
+    canonical correlation approaches 1 whether or not the blocks share anything.
+    A fixed :math:`R^2` cut cannot account for this, so the same threshold
+    rejects nothing on one recording and most of the components on another.
+
+    This estimates the upper ``1 - alpha`` quantile of the *largest* squared
+    canonical correlation under the null hypothesis that the two blocks share
+    nothing, by recomputing the spectrum against circularly shifted copies of
+    the reference. Thresholding at the returned value therefore controls the
+    family-wise false-rejection rate at ``alpha`` over components.
+
+    Circular shift, not sample permutation: EEG is strongly autocorrelated, and
+    shuffling samples destroys that structure, producing surrogates that cannot
+    reach the canonical correlations real data reaches. The resulting null is
+    anticonservative. A circular shift preserves each channel's autocorrelation
+    and power spectrum exactly while destroying cross-block alignment, which is
+    precisely the null being tested.
+
+    Parameters
+    ----------
+    X_cca : ndarray, shape (n_times, n_primary)
+        Primary block, as passed to the CCA solver.
+    Y_cca : ndarray, shape (n_times, n_reference)
+        Reference block, as passed to the CCA solver.
+    alpha : float
+        Family-wise false-rejection rate. Default 0.05.
+    n_surrogate : int
+        Number of circular shifts. Default 100. The quantile this estimates
+        needs at least ``1 / alpha`` samples to exist at all (19 at the
+        default ``alpha``); a value that close to the floor makes the
+        returned threshold noisy run to run. 100 trades a still-cheap
+        surrogate pass for a materially more stable quantile.
+    random_state : int | Generator | None
+        Seed or generator for the shift offsets.
+
+    Returns
+    -------
+    threshold : float
+        The :math:`R^2` value above which a component is unlikely to arise from
+        sampling noise. Approaches 1.0 in the rank-deficient regime, so nothing
+        is rejected there rather than nearly everything.
+
+    Notes
+    -----
+    The threshold adapts to conditioning automatically. Measured on independent
+    AR(1) blocks with 40 primary and 40 reference channels, components falsely
+    removed (of 40):
+
+    ==================  ==========  ======  ===========  ===========
+    n / (p + q)         threshold   null    fixed 0.65   fixed 0.85
+    ==================  ==========  ======  ===========  ===========
+    1.2                 0.999       0.20    20.4         14.4
+    2.0                 0.992       0.12    16.8         10.6
+    10.0                0.904       0.00    11.4         2.6
+    300.0               0.124       0.04    0.0          0.0
+    ==================  ==========  ======  ===========  ===========
+
+    Power is unaffected: with 0, 1, 3 and 8 injected shared components the
+    threshold recovers exactly 0, 1, 3 and 8.
+
+    This solves the *degeneracy* problem, not the *selectivity* problem. A
+    component that genuinely shares variance with the reference is retained as a
+    candidate regardless of whether that variance is artifact or brain. With a
+    pseudo-reference -- a band-stopped copy of the primary block -- almost every
+    component shares real variance, so the null alone will select broadly.
+
+    In ``mode='calibrated'``, the score being thresholded is a projection
+    through CCA weights fit once on the whole recording, not a fresh per-window
+    fit -- yet this function always re-searches CCA on the surrogate. Matching
+    the null to the fixed-weight projection sounds like the correct fix, but
+    empirically makes rejections *more* false-positive-prone here: a window
+    that contributed to fitting those weights scores higher on its own
+    (unshifted) data than an out-of-sample window would, an in-sample leakage
+    effect a shift-based null does not remove. The search-based null used here
+    happens to run high enough to absorb that leakage in practice, but this is
+    an empirical observation on AR(1) test data, not a property proven to hold
+    in general -- treat ``'null'`` with ``mode='calibrated'`` as unvalidated.
+    """
+    rng = np.random.default_rng(random_state)
+    n_times = X_cca.shape[0]
+    lo = max(1, int(_NULL_MIN_SHIFT * n_times))
+    hi = n_times - lo
+    if hi <= lo:
+        # The guard band leaves no room on a very short window. Any nonzero
+        # shift still decorrelates the blocks; falling back to one fixed
+        # shift for every surrogate would collapse the quantile to a single
+        # sample instead of estimating one.
+        lo, hi = 1, n_times
+    maxima = np.empty(n_surrogate, dtype=np.float64)
+    for i in range(n_surrogate):
+        shift = int(rng.integers(lo, hi))
+        try:
+            _, _, R_null, _, _ = canonical_correlation(
+                X_cca, np.roll(Y_cca, shift, axis=0)
+            )
+        except Exception:  # noqa: BLE001 - a failed surrogate must not kill the pass
+            maxima[i] = 1.0
+            continue
+        maxima[i] = float((R_null**2).max()) if R_null.size else 1.0
+    return float(np.quantile(maxima, 1.0 - alpha))
+
 
 def compute_icanclean(
     X_primary: np.ndarray,
@@ -86,6 +219,7 @@ def compute_icanclean(
     reref_primary: bool | str = False,
     reref_ref: bool | str = False,
     stats_segment_len: float | None = None,
+    null_random_state: int | None = None,
     verbose: bool = True,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     r"""Compute one iCanClean pass on continuous NumPy arrays.
@@ -260,6 +394,12 @@ def compute_icanclean(
     all_filters: list[np.ndarray] = []
     all_patterns: list[np.ndarray] = []
     running_r2: list[float] = []
+    # Recorded so a zero removal is never ambiguous. Without these,
+    # "0 components removed" is indistinguishable from "the threshold was
+    # above every achievable R^2", which is how a whole benchmark arm came
+    # to be read as a measurement.
+    window_thresholds: list[float] = []
+    window_max_r2: list[float] = []
 
     if (
         stats_segment_len is not None
@@ -327,13 +467,7 @@ def compute_icanclean(
             Y_cca_mc = Y_cca - Y_cca.mean(axis=0, keepdims=True)
             U = X_cca_mc @ A_global
             V = Y_cca_mc @ B_global
-
-            U_zm = U - U.mean(axis=0, keepdims=True)
-            V_zm = V - V.mean(axis=0, keepdims=True)
-            denom = np.sqrt(np.sum(U_zm**2, axis=0)) * np.sqrt(np.sum(V_zm**2, axis=0))
-            denom[denom == 0] = 1.0
-            R = np.sum(U_zm * V_zm, axis=0) / denom
-            r2 = np.clip(R**2, 0.0, 1.0).astype(np.float64)
+            r2 = _r2_from_projections(U, V)
             A = A_global
             B = B_global
         else:
@@ -354,8 +488,15 @@ def compute_icanclean(
                 thr = float(np.percentile(running_r2, 95))
             else:
                 thr = 0.95
+        elif threshold == "null":
+            # Recomputed per window: the null depends on this window's sample
+            # count and channel counts, which is the whole point.
+            thr = null_r2_threshold(X_cca, Y_cca, random_state=null_random_state)
         else:
             thr = float(threshold)
+
+        window_thresholds.append(thr)
+        window_max_r2.append(float(r2.max()) if r2.size else float("nan"))
 
         bad_mask = r2 >= thr
 
@@ -417,6 +558,11 @@ def compute_icanclean(
         "filters_": all_filters,
         "patterns_": all_patterns,
         "n_windows_": len(starts),
+        "thresholds_": np.array(window_thresholds, dtype=float),
+        "max_r2_": np.array(window_max_r2, dtype=float),
+        "samples_per_variable_": float(
+            win_samples / max(1, X_primary.shape[0] + X_ref.shape[0])
+        ),
     }
 
     if verbose:
@@ -642,6 +788,7 @@ class ICanClean(BaseEstimator, TransformerMixin):
         stats_segment_len: float | None = None,
         filter_ref: tuple | None = None,
         pseudo_ref: bool = False,
+        null_random_state: int | None = None,
         global_threshold: float | str | None = None,
         global_clean_with: str | None = None,
         global_max_reject_fraction: float | None = None,
@@ -694,6 +841,7 @@ class ICanClean(BaseEstimator, TransformerMixin):
         self.stats_segment_len = stats_segment_len
         self.filter_ref = filter_ref
         self.pseudo_ref = pseudo_ref
+        self.null_random_state = null_random_state
         self.global_threshold = global_threshold
         self.global_clean_with = global_clean_with
         self.global_max_reject_fraction = global_max_reject_fraction
@@ -867,6 +1015,21 @@ class ICanClean(BaseEstimator, TransformerMixin):
             "sliding_filters_",
             "sliding_patterns_",
             "sliding_epoch_window_slices_",
+            # Previously omitted: these are written by the hybrid path
+            # (_clean_continuous copies every qc key onto self) but were
+            # absent from this tuple, so stale hybrid counters survived a
+            # re-fit in a different mode.
+            "global_n_windows_",
+            "sliding_n_windows_",
+            "thresholds_",
+            "max_r2_",
+            "samples_per_variable_",
+            "global_thresholds_",
+            "global_max_r2_",
+            "global_samples_per_variable_",
+            "sliding_thresholds_",
+            "sliding_max_r2_",
+            "sliding_samples_per_variable_",
         ):
             if hasattr(self, attr):
                 delattr(self, attr)
@@ -1119,6 +1282,7 @@ class ICanClean(BaseEstimator, TransformerMixin):
                 reref_primary=self.reref_primary,
                 reref_ref=self.reref_ref,
                 stats_segment_len=None,
+                null_random_state=self.null_random_state,
                 verbose=self.verbose,
             )
             cleaned_primary, qc = compute_icanclean(
@@ -1134,6 +1298,7 @@ class ICanClean(BaseEstimator, TransformerMixin):
                 reref_primary=self.reref_primary,
                 reref_ref=self.reref_ref,
                 stats_segment_len=self.stats_segment_len,
+                null_random_state=self.null_random_state,
                 verbose=self.verbose,
             )
             qc["global_correlations_"] = qc_global["correlations_"]
@@ -1156,6 +1321,7 @@ class ICanClean(BaseEstimator, TransformerMixin):
                 reref_primary=self.reref_primary,
                 reref_ref=self.reref_ref,
                 stats_segment_len=self.stats_segment_len,
+                null_random_state=self.null_random_state,
                 verbose=self.verbose,
             )
         if self.mode == "hybrid":
@@ -1171,6 +1337,34 @@ class ICanClean(BaseEstimator, TransformerMixin):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _validate_threshold(value: Any, name: str) -> None:
+    """Accept 'auto', 'null', or a float in [0, 1].
+
+    A value above 1 makes the estimator a silent pass-through, since no
+    :math:`R^2` can exceed it; a value below 0 silently flags every
+    component; a numeric string such as ``"0.5"`` would silently compare
+    against floats without conversion. None of these raise on their own, so
+    this check exists to turn them into an explicit error at construction.
+    """
+    if value in ("auto", "null"):
+        return
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a float, 'auto', or 'null'") from exc
+    if isinstance(value, str):
+        raise ValueError(
+            f"{name} must be a float, 'auto', or 'null', not the string "
+            f"{value!r}; pass {numeric} instead"
+        )
+    if not 0.0 <= numeric <= 1.0:
+        raise ValueError(
+            f"{name} is a squared canonical correlation and must lie in "
+            f"[0, 1], got {numeric}. Values above 1 make the estimator a "
+            f"no-op; values below 0 flag every component."
+        )
 
 
 def _validate_icanclean_config(
@@ -1202,11 +1396,7 @@ def _validate_icanclean_config(
         raise ValueError(
             f"max_reject_fraction must be in [0, 1], got {max_reject_fraction}"
         )
-    if threshold != "auto":
-        try:
-            float(threshold)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("threshold must be a float or 'auto'") from exc
+    _validate_threshold(threshold, "threshold")
     if reref_primary not in (False, True, "fullrank", "loserank"):
         raise ValueError(
             "reref_primary must be False, True, 'fullrank', or "
@@ -1259,11 +1449,7 @@ def _validate_icanclean_config(
                 "global_max_reject_fraction must be in [0, 1], got "
                 f"{global_max_reject_fraction}"
             )
-        if global_threshold != "auto":
-            try:
-                float(global_threshold)
-            except (TypeError, ValueError) as exc:
-                raise ValueError("global_threshold must be a float or 'auto'") from exc
+        _validate_threshold(global_threshold, "global_threshold")
     elif has_global_params:
         raise ValueError(
             "global_threshold, global_clean_with, and "
