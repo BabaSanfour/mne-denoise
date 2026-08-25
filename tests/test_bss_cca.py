@@ -891,3 +891,119 @@ def test_mne_lag_seconds_uses_container_sfreq(muscle_data):
     estimator = BSSCCA(lag_seconds=2.0 / sfreq, n_remove=3).fit(raw)
     assert estimator.lag_samples_ == 2
     assert estimator.sfreq_ == pytest.approx(sfreq)
+
+
+def _drift_and_muscle(rng, n_times=4000, sfreq=200.0):
+    """Mixture with one strongly autocorrelated source and one white source."""
+    t = np.arange(n_times) / sfreq
+    drift = np.sin(2 * np.pi * 0.3 * t)
+    muscle = rng.standard_normal(n_times)
+    brain = np.sin(2 * np.pi * 10.0 * t)
+    mixing = rng.standard_normal((8, 3))
+    return mixing @ np.vstack([drift, muscle, brain]), drift, muscle
+
+
+def test_reject_high_drops_the_autocorrelated_end():
+    """``reject='high'`` removes drift; ``reject='low'`` removes muscle."""
+    rng = np.random.default_rng(0)
+    observed, drift, muscle = _drift_and_muscle(rng)
+
+    low, _ = compute_bss_cca(observed, lag_samples=1, n_remove=2, reject="low")
+    high, _ = compute_bss_cca(observed, lag_samples=1, n_remove=2, reject="high")
+
+    # Dropping the low-autocorrelation end leaves the drift behind.
+    assert abs(np.corrcoef(low[0], drift)[0, 1]) > 0.9
+    assert abs(np.corrcoef(low[0], muscle)[0, 1]) < 0.1
+    # Dropping the high-autocorrelation end leaves the muscle behind.
+    assert abs(np.corrcoef(high[0], muscle)[0, 1]) > 0.9
+    assert abs(np.corrcoef(high[0], drift)[0, 1]) < 0.1
+
+
+def test_reject_defaults_to_low_and_is_backward_compatible():
+    """Omitting ``reject`` reproduces the previous behaviour exactly."""
+    rng = np.random.default_rng(1)
+    observed, _drift, _muscle = _drift_and_muscle(rng)
+    without, _ = compute_bss_cca(observed, lag_samples=1, n_remove=2)
+    explicit, _ = compute_bss_cca(observed, lag_samples=1, n_remove=2, reject="low")
+    np.testing.assert_allclose(without, explicit)
+
+
+def test_reject_threshold_selects_opposite_ends():
+    """The two modes remove disjoint component sets.
+
+    Not a strict partition: a component whose correlation sits exactly on the
+    threshold is kept by both, since ``low`` keeps ``rho >= t`` and ``high``
+    keeps ``rho <= t``. Disjointness of the *removed* sets is the real invariant.
+    """
+    rng = np.random.default_rng(2)
+    observed, _drift, _muscle = _drift_and_muscle(rng)
+    low = BSSCCA(rho_threshold=0.5, reject="low").fit(observed)
+    high = BSSCCA(rho_threshold=0.5, reject="high").fit(observed)
+    assert low.n_removed_ >= 1 and high.n_removed_ >= 1
+    n_components = low.n_kept_ + low.n_removed_
+    assert low.n_removed_ + high.n_removed_ <= n_components
+
+
+def test_reject_rejects_unknown_value():
+    rng = np.random.default_rng(3)
+    observed, _drift, _muscle = _drift_and_muscle(rng)
+    with pytest.raises(ValueError, match="reject must be 'low' or 'high'"):
+        compute_bss_cca(observed, lag_samples=1, n_remove=1, reject="sideways")
+
+
+def test_threshold_on_rsq_matches_squared_rho():
+    """``rsq`` thresholds the squared correlation, not the correlation itself."""
+    rng = np.random.default_rng(4)
+    observed, _drift, _muscle = _drift_and_muscle(rng)
+    # rho >= sqrt(0.36) == 0.6 selects the same set as rho**2 >= 0.36.
+    on_rho = BSSCCA(rho_threshold=0.6, threshold_on="rho").fit(observed)
+    on_rsq = BSSCCA(rho_threshold=0.36, threshold_on="rsq").fit(observed)
+    assert on_rho.n_removed_ == on_rsq.n_removed_
+    assert on_rho.n_kept_ == on_rsq.n_kept_
+
+
+def test_threshold_on_defaults_to_rho():
+    """Omitting ``threshold_on`` leaves the correlation scale unchanged."""
+    rng = np.random.default_rng(5)
+    observed, _drift, _muscle = _drift_and_muscle(rng)
+    without, _ = compute_bss_cca(observed, lag_samples=1, rho_threshold=0.5)
+    explicit, _ = compute_bss_cca(
+        observed, lag_samples=1, rho_threshold=0.5, threshold_on="rho"
+    )
+    np.testing.assert_allclose(without, explicit)
+
+
+def test_threshold_on_rejects_unknown_value():
+    rng = np.random.default_rng(6)
+    observed, _drift, _muscle = _drift_and_muscle(rng)
+    with pytest.raises(ValueError, match="threshold_on must be 'rho' or 'rsq'"):
+        compute_bss_cca(observed, lag_samples=1, rho_threshold=0.5, threshold_on="r2")
+
+
+def test_estimator_forwards_reject_and_threshold_on():
+    """The estimator must honour both knobs, not just the functional API.
+
+    Regression: ``BSSCCA.__init__`` stored ``reject``/``threshold_on`` but
+    ``fit`` did not pass them to ``compute_bss_cca``, so the estimator silently
+    used the defaults -- a threshold meant as r-squared was applied to rho
+    instead, removing far fewer components than intended.
+    """
+    rng = np.random.default_rng(11)
+    observed, _drift, _muscle = _drift_and_muscle(rng)
+
+    # rho ordering is fixed, so thresholding rho**2 at t must remove at least as
+    # many components as thresholding rho at the same t.
+    on_rho = BSSCCA(rho_threshold=0.59, threshold_on="rho").fit(observed)
+    on_rsq = BSSCCA(rho_threshold=0.59, threshold_on="rsq").fit(observed)
+    assert on_rsq.n_removed_ >= on_rho.n_removed_
+    assert (on_rsq.n_removed_, on_rho.n_removed_) != (0, 0)
+
+    # And the estimator must agree with the function it delegates to.
+    for kwargs in (
+        {"reject": "high"},
+        {"threshold_on": "rsq"},
+        {"reject": "high", "threshold_on": "rsq"},
+    ):
+        est = BSSCCA(rho_threshold=0.59, **kwargs).fit(observed)
+        _cleaned, info = compute_bss_cca(observed, rho_threshold=0.59, **kwargs)
+        np.testing.assert_array_equal(est.kept_mask_, info["kept_mask"])
