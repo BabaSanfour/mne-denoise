@@ -1,4 +1,4 @@
-"""Extract data and metadata from MNE objects and array-like inputs."""
+"""Shared data extraction and reconstruction for arrays and MNE objects."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ from typing import Any
 
 import numpy as np
 
-from ._mne import mne
+from . import _mne
 
 logger = logging.getLogger(__name__)
 
 
 def _mne_instance_types() -> tuple[type, ...]:
     """Return supported MNE instance types when MNE-Python is available."""
-    if mne is None:
+    if _mne.mne is None:
         return ()
 
     from mne.epochs import BaseEpochs
@@ -74,7 +74,7 @@ def _get_homogeneous_picks(
     for ch_type, pick_kws in pick_specs:
         if ch_type not in ch_types:
             continue
-        picks = mne.pick_types(inst.info, exclude=(), **pick_kws)
+        picks = _mne.mne.pick_types(inst.info, exclude=(), **pick_kws)
         if len(picks) > 0:
             present_types.append(ch_type)
             if best_picks is None:
@@ -204,7 +204,7 @@ def extract_data_from_mne(
             extracted_ch_names = [X.ch_names[p] for p in picks]
         else:
             if auto_pick == "data":
-                picks = mne.pick_types(
+                picks = _mne.mne.pick_types(
                     X.info,
                     meg=True,
                     ref_meg=False,
@@ -266,3 +266,69 @@ def extract_data_from_mne(
         data = np.transpose(data, (1, 2, 0))
 
     return data, sfreq, mne_type, orig_inst, picks, extracted_ch_names
+
+
+def reconstruct_mne_object(
+    data: np.ndarray,
+    orig_inst: Any,
+    mne_type: str,
+    picks: np.ndarray | None = None,
+    verbose: bool = False,
+) -> Any:
+    """Insert processed data into a copy of an MNE object.
+
+    Parameters
+    ----------
+    data : array
+        The cleaned/processed data.
+    orig_inst : object
+        The original MNE instance (template).
+    mne_type : str
+        Type string returned by extract_data_from_mne ('raw', 'epochs', 'evoked', 'array').
+    picks : array of int | None
+        If provided, `data` is re-inserted into a copy of `orig_inst` only at these channel indices.
+    verbose : bool
+        Retained for API compatibility. Copy-based reconstruction does not
+        create a new MNE object.
+
+    Returns
+    -------
+    out : Raw | Epochs | Evoked | array
+        Reconstructed object or the data array.
+    """
+    if mne_type == "array" or orig_inst is None:
+        return data
+
+    if _mne.mne is None:
+        return data
+
+    if mne_type in ("raw", "epochs"):
+        out = orig_inst.copy().load_data()
+        target = out._data
+        if picks is None:
+            if target.shape != data.shape:
+                raise ValueError(
+                    f"Processed data shape {data.shape} does not match {mne_type} "
+                    f"shape {target.shape}"
+                )
+            target[...] = data
+        elif mne_type == "epochs":
+            target[:, picks, :] = data
+        else:
+            target[picks, :] = data
+        return out
+
+    if mne_type == "evoked":
+        out = orig_inst.copy()
+        if picks is None:
+            if out.data.shape != data.shape:
+                raise ValueError(
+                    f"Processed data shape {data.shape} does not match evoked "
+                    f"shape {out.data.shape}"
+                )
+            out.data[...] = data
+        else:
+            out.data[picks, :] = data
+        return out
+
+    return data

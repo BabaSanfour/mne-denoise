@@ -45,7 +45,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
 from .._cca import canonical_correlation
-from .._data import extract_data_from_mne
+from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._logging import set_log_level_from_verbose
 from .._spatial import (
     apply_spatial_transform,
@@ -60,7 +60,6 @@ from .._validation import (
     resolve_sfreq,
 )
 from ..blending import overlap_add_combine
-from ..utils import reconstruct_mne_object
 
 logger = logging.getLogger(__name__)
 

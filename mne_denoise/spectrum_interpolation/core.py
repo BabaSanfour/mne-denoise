@@ -42,9 +42,8 @@ except ImportError:
     mne = None
     _HAS_MNE = False
 
-from .._data import extract_data_from_mne
+from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._validation import check_sfreq, resolve_sfreq
-from ..utils import reconstruct_mne_object
 
 
 def interpolate_spectrum(

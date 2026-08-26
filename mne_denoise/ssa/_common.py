@@ -9,7 +9,7 @@ import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
-from .._data import extract_data_from_mne
+from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._logging import set_log_level_from_verbose
 from .._validation import (
     check_channel_first_data,
@@ -18,7 +18,6 @@ from .._validation import (
     check_sfreq,
     resolve_sfreq,
 )
-from ..utils import reconstruct_mne_object
 
 
 def _resolve_window_length(

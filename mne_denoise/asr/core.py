@@ -24,9 +24,8 @@ from typing import Any
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 
-from .._data import extract_data_from_mne
+from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._logging import logger, set_log_level_from_verbose
-from ..utils import reconstruct_mne_object
 from ._annotations import (
     _calibration_annotations,
     _rejection_annotations,

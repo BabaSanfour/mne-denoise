@@ -28,7 +28,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
 from .._covariance import compute_covariance
-from .._data import extract_data_from_mne
+from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._logging import set_log_level_from_verbose
 from .._spatial import (
     apply_spatial_transform,
@@ -40,7 +40,6 @@ from .._validation import (
     check_channel_layout,
     check_chunk_size,
 )
-from ..utils import reconstruct_mne_object
 
 logger = logging.getLogger(__name__)
 

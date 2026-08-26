@@ -60,10 +60,9 @@ from scipy import linalg as la
 from sklearn.base import BaseEstimator, TransformerMixin
 
 from .._cca import canonical_correlation
-from .._data import extract_data_from_mne
+from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._filtering import _filter_channels
 from .._logging import set_log_level_from_verbose
-from ..utils import reconstruct_mne_object
 
 # Optional MNE support
 try:
