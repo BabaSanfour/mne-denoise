@@ -93,18 +93,69 @@ def _get_homogeneous_picks(
         else:
             raise ValueError(msg)
 
-    if best_picks is not None:
-        if len(best_picks) == len(inst.ch_names):
-            return None
-        logger.info(
-            "Auto-picking %d/%d %s channels and preserving other channels.",
-            len(best_picks),
-            len(inst.ch_names),
-            best_type,
-        )
-        return best_picks
+    if best_picks is None or len(best_picks) == len(inst.ch_names):
+        return None
 
-    return None
+    logger.info(
+        "Auto-picking %d/%d %s channels and preserving other channels.",
+        len(best_picks),
+        len(inst.ch_names),
+        best_type,
+    )
+    return best_picks
+
+
+def _resolve_mne_picks(
+    inst: Any,
+    ch_names: list[str] | None,
+    auto_pick: bool | str,
+    exclude_bads: bool,
+) -> np.ndarray | None:
+    """Resolve the channel-selection policy for an MNE instance."""
+    if ch_names is not None:
+        missing = [ch for ch in ch_names if ch not in inst.ch_names]
+        if missing:
+            raise ValueError(
+                f"Input MNE object is missing required channels: {missing[:5]}"
+            )
+        return np.array([inst.ch_names.index(ch) for ch in ch_names])
+
+    if auto_pick == "data":
+        picks = _mne.mne.pick_types(
+            inst.info,
+            meg=True,
+            ref_meg=False,
+            eeg=True,
+            seeg=True,
+            ecog=True,
+            dbs=True,
+            fnirs=True,
+            csd=True,
+            exclude=(),
+        )
+        if picks.size == 0:
+            raise ValueError("No data channels found for joint decomposition")
+    elif auto_pick is not False:
+        picks = _get_homogeneous_picks(inst, auto_pick=auto_pick)
+    else:
+        picks = None
+
+    if not exclude_bads:
+        return picks
+
+    candidate_picks = (
+        np.arange(len(inst.ch_names), dtype=int)
+        if picks is None
+        else np.asarray(picks, dtype=int)
+    )
+    bads = set(inst.info["bads"])
+    picks = np.asarray(
+        [pick for pick in candidate_picks if inst.ch_names[pick] not in bads],
+        dtype=int,
+    )
+    if picks.size == 0:
+        raise ValueError("No good data channels remain after excluding bads")
+    return picks
 
 
 def extract_data_from_mne(
@@ -190,68 +241,22 @@ def extract_data_from_mne(
 
     mne_types = _mne_instance_types()
     if isinstance(X, mne_types):
-        orig_inst = X
-        sfreq = X.info["sfreq"]
-
-        if ch_names is not None:
-            missing = [ch for ch in ch_names if ch not in X.ch_names]
-            if missing:
-                raise ValueError(
-                    f"Input MNE object is missing required channels: {missing[:5]}"
-                )
-            picks = np.array([X.ch_names.index(ch) for ch in ch_names])
-            data = X.get_data(picks=picks)
-            extracted_ch_names = [X.ch_names[p] for p in picks]
-        else:
-            if auto_pick == "data":
-                picks = _mne.mne.pick_types(
-                    X.info,
-                    meg=True,
-                    ref_meg=False,
-                    eeg=True,
-                    seeg=True,
-                    ecog=True,
-                    dbs=True,
-                    fnirs=True,
-                    csd=True,
-                    exclude=(),
-                )
-                if picks.size == 0:
-                    raise ValueError("No data channels found for joint decomposition")
-            elif auto_pick is not False:
-                picks = _get_homogeneous_picks(X, auto_pick=auto_pick)
-            else:
-                picks = None
-
-            if exclude_bads:
-                candidate_picks = (
-                    np.arange(len(X.ch_names), dtype=int)
-                    if picks is None
-                    else np.asarray(picks, dtype=int)
-                )
-                bads = set(X.info["bads"])
-                picks = np.asarray(
-                    [pick for pick in candidate_picks if X.ch_names[pick] not in bads],
-                    dtype=int,
-                )
-                if picks.size == 0:
-                    raise ValueError(
-                        "No good data channels remain after excluding bads"
-                    )
-
-            if picks is not None:
-                data = X.get_data(picks=picks)
-                extracted_ch_names = [X.ch_names[p] for p in picks]
-            else:
-                data = X.get_data()
-                extracted_ch_names = X.ch_names.copy()
-
         if isinstance(X, mne_types[1]):
             mne_type = "epochs"
         elif isinstance(X, mne_types[2]):
             mne_type = "evoked"
         else:
             mne_type = "raw"
+
+        orig_inst = X
+        sfreq = X.info["sfreq"]
+        picks = _resolve_mne_picks(X, ch_names, auto_pick, exclude_bads)
+        if picks is None:
+            data = X.get_data()
+            extracted_ch_names = X.ch_names.copy()
+        else:
+            data = X.get_data(picks=picks)
+            extracted_ch_names = [X.ch_names[p] for p in picks]
     else:
         # Assume array
         data = np.asarray(X)
@@ -302,33 +307,25 @@ def reconstruct_mne_object(
     if _mne.mne is None:
         return data
 
-    if mne_type in ("raw", "epochs"):
-        out = orig_inst.copy().load_data()
-        target = out._data
-        if picks is None:
-            if target.shape != data.shape:
-                raise ValueError(
-                    f"Processed data shape {data.shape} does not match {mne_type} "
-                    f"shape {target.shape}"
-                )
-            target[...] = data
-        elif mne_type == "epochs":
-            target[:, picks, :] = data
-        else:
-            target[picks, :] = data
-        return out
-
     if mne_type == "evoked":
         out = orig_inst.copy()
-        if picks is None:
-            if out.data.shape != data.shape:
-                raise ValueError(
-                    f"Processed data shape {data.shape} does not match evoked "
-                    f"shape {out.data.shape}"
-                )
-            out.data[...] = data
-        else:
-            out.data[picks, :] = data
-        return out
+        target = out.data
+    elif mne_type in ("raw", "epochs"):
+        out = orig_inst.copy().load_data()
+        target = out._data
+    else:
+        return data
 
-    return data
+    if picks is None:
+        if target.shape != data.shape:
+            raise ValueError(
+                f"Processed data shape {data.shape} does not match {mne_type} "
+                f"shape {target.shape}"
+            )
+        target[...] = data
+    elif mne_type == "epochs":
+        target[:, picks, :] = data
+    else:
+        target[picks, :] = data
+
+    return out
