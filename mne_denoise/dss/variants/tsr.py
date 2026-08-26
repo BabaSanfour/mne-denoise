@@ -25,10 +25,11 @@ except ImportError:  # pragma: no cover - MNE is a required dependency
     BaseEpochs = ()
 
 from ..._cca import canonical_correlation
+from ..._data import extract_data_from_mne
 from ..._logging import set_log_level_from_verbose
 from ..._spatial import fit_mixing_matrix
 from ..._validation import check_positive_integer, resolve_sfreq
-from ...utils import extract_data_from_mne, reconstruct_mne_object
+from ...utils import reconstruct_mne_object
 from ..denoisers import AverageBias, SmoothingBias
 from ..linear import DSS
 

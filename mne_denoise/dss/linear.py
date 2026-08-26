@@ -31,6 +31,7 @@ except ImportError:
     mne = None
 
 from .._covariance import compute_covariance, compute_mean
+from .._data import extract_data_from_mne
 from .._logging import set_log_level_from_verbose
 from .._spatial import (
     apply_spatial_transform,
@@ -38,7 +39,7 @@ from .._spatial import (
     epochs_to_continuous,
 )
 from ..blending import overlap_add_combine
-from ..utils import extract_data_from_mne, reconstruct_mne_object
+from ..utils import reconstruct_mne_object
 from .denoisers import LinearDenoiser
 from .denoisers.temporal import SmoothingBias
 from .utils.segmentation import CovarianceSegmenter, FixedWindowSegmenter

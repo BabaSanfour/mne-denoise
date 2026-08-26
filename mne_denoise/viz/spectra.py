@@ -19,7 +19,7 @@ import mne
 import numpy as np
 from scipy import signal
 
-from ..utils import _get_homogeneous_picks
+from .._data import _get_homogeneous_picks
 from .theme import (
     COLORS,
     DIVERGING_CMAP,

@@ -18,10 +18,11 @@ from matplotlib.colors import to_rgba
 from matplotlib.gridspec import GridSpec
 from mne.time_frequency import psd_array_welch
 
+from .._data import extract_data_from_mne
 from .._spatial import continuous_to_epochs, epochs_to_continuous
 from ..dss.linear import DSS
 from ..dss.nonlinear import IterativeDSS
-from ..utils import extract_data_from_mne, reconstruct_mne_object
+from ..utils import reconstruct_mne_object
 from ..zapline.core import ZapLine
 from ._utils import _compute_gfp, _get_info, _get_patterns
 from .components import _resolve_component_indices

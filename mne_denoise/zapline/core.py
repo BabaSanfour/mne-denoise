@@ -41,6 +41,7 @@ import warnings
 
 import numpy as np
 
+from .._data import extract_data_from_mne
 from .._logging import set_log_level_from_verbose
 from .._spatial import (
     apply_spatial_transform,
@@ -56,10 +57,7 @@ from ..dss.utils.segmentation import CovarianceSegmenter
 from ..dss.utils.whitening import (
     map_spatial_matrices_to_sensor_space,
 )
-from ..utils import (
-    extract_data_from_mne,
-    reconstruct_mne_object,
-)
+from ..utils import reconstruct_mne_object
 from .adaptive import (
     apply_hybrid_cleanup,
     check_artifact_presence,

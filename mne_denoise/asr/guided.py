@@ -33,7 +33,7 @@ from typing import Any
 
 import numpy as np
 
-from ..utils import extract_data_from_mne
+from .._data import extract_data_from_mne
 from ._covariance import (
     _covariance_stack_bytes,
     _process_memory_info,

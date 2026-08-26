@@ -23,8 +23,8 @@ from typing import Any
 import numpy as np
 from scipy import spatial, stats
 
+from .._data import extract_data_from_mne
 from .._logging import set_log_level_from_verbose
-from ..utils import extract_data_from_mne
 from ._calibration import calibrate_asr
 from ._filters import _design_statistics_filter, _lfilter_channels
 from ._validation import (
