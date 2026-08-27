@@ -39,16 +39,11 @@ References
 
 from __future__ import annotations
 
-import logging
-
 import numpy as np
 from scipy import signal
 from scipy.signal import find_peaks, welch
 
 from .._filtering import design_butter_sos
-
-logger = logging.getLogger(__name__)
-
 
 # -----------------------------------------------------------------------------
 # 1. CleanLine Utilities (Fallback cleanup)

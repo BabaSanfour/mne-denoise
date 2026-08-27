@@ -1,3 +1,5 @@
+import logging
+
 import mne
 import numpy as np
 import pytest
@@ -42,6 +44,20 @@ def test_ssvep_dss_array(ssvep_data_generator):
     source = dss.filters_[0] @ data
     corr = np.abs(np.corrcoef(source, signal)[0, 1])
     assert corr > 0.8
+
+
+def test_ssvep_dss_fit_summary_describes_stimulus_and_harmonics(
+    ssvep_data_generator, caplog
+):
+    """The fitted parent DSS identifies the SSVEP comb configuration."""
+    data, sfreq, f0, _signal = ssvep_data_generator((3, 500))
+    dss = ssvep_dss(sfreq=sfreq, stim_freq=f0, n_harmonics=2)
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        dss.fit(data, verbose=True)
+    summaries = [r for r in caplog.records if r.message.startswith("DSS:")]
+    assert len(summaries) == 1
+    for token in ("CombFilterBias", "f0=12", "harmonics=2", "rank=", "components="):
+        assert token in summaries[0].message
 
 
 def test_ssvep_dss_raw(ssvep_data_generator):

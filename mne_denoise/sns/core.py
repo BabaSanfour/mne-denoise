@@ -19,7 +19,6 @@ References
 
 from __future__ import annotations
 
-import logging
 from numbers import Integral, Real
 from typing import Any
 
@@ -28,20 +27,19 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
 from .._covariance import compute_covariance
-from .._logging import set_log_level_from_verbose
-from .._spatial import (
-    apply_spatial_transform,
+from .._data import (
     continuous_to_epochs,
     epochs_to_continuous,
+    extract_data_from_mne,
+    reconstruct_mne_object,
 )
+from .._logging import logger, verbose
+from .._spatial import apply_spatial_transform
 from .._validation import (
     check_channel_first_data,
     check_channel_layout,
     check_chunk_size,
 )
-from ..utils import extract_data_from_mne, reconstruct_mne_object
-
-logger = logging.getLogger(__name__)
 
 _DEFAULT_RCOND = 1e-12
 
@@ -179,6 +177,7 @@ def compute_sns_weights(
     return weights, k_neighbors, neighbor_ranks
 
 
+@verbose
 def compute_sns(
     X: np.ndarray,
     n_neighbors: int = 0,
@@ -190,6 +189,7 @@ def compute_sns(
     outlier_threshold: float | None = None,
     chunk_size: int | None = None,
     sample_weight: np.ndarray | None = None,
+    verbose: bool | str | int | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """Learn and apply Sensor Noise Suppression to a channel-first array.
 
@@ -221,6 +221,9 @@ def compute_sns(
     sample_weight : ndarray, shape (n_times,) | (n_epochs, n_times) | None
         Non-negative fitting weight for each sample. Zero excludes a sample
         when learning the mean and operator, but not when applying the operator.
+    verbose : bool | str | int | None
+        MNE-style logging level. The fitted summary is emitted at INFO and
+        iteration details at DEBUG.
 
     Returns
     -------
@@ -301,6 +304,13 @@ def compute_sns(
         matrices.append(matrix)
         ranks.append(iteration_ranks)
         composite = matrix @ composite
+        logger.debug(
+            "SNS iteration %d/%d: effective neighbours=%d, median local rank=%.1f.",
+            iteration + 1,
+            n_iter,
+            effective_neighbors,
+            float(np.median(iteration_ranks)),
+        )
         if iteration + 1 < int(n_iter):
             current = apply_spatial_transform(matrix, current, chunk_size=chunk_size)
 
@@ -308,7 +318,7 @@ def compute_sns(
     if preserve_mean:
         cleaned += training_mean
     cleaned = continuous_to_epochs(cleaned, X.shape)
-    return cleaned, {
+    info = {
         "weights": composite,
         "denoising_matrix": composite,
         "denoising_matrices": tuple(matrices),
@@ -327,6 +337,15 @@ def compute_sns(
         "effective_weight_sum": float(combined_weight.sum()),
         "rejected_sample_count": int(np.count_nonzero(automatic_weight == 0)),
     }
+    logger.info(
+        "SNS: learned %d iteration(s) on %d channels (%d neighbours each; "
+        "%d samples rejected).",
+        info["n_iter"],
+        X.shape[-2],
+        info["n_neighbors"],
+        info["rejected_sample_count"],
+    )
+    return cleaned, info
 
 
 class SNS(BaseEstimator, TransformerMixin):
@@ -396,7 +415,15 @@ class SNS(BaseEstimator, TransformerMixin):
         self.outlier_threshold = outlier_threshold
         self.chunk_size = chunk_size
 
-    def fit(self, X: Any, y=None, sample_weight: np.ndarray | None = None) -> SNS:
+    @verbose
+    def fit(
+        self,
+        X: Any,
+        y=None,
+        sample_weight: np.ndarray | None = None,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> SNS:
         """Learn fitted means and SNS operators from ``X``.
 
         Parameters
@@ -414,7 +441,6 @@ class SNS(BaseEstimator, TransformerMixin):
         self : SNS
             Fitted estimator.
         """
-        set_log_level_from_verbose(self.verbose)
         data, _sfreq, _mne_type, _orig, _picks, names = extract_data_from_mne(
             X, auto_pick=True
         )
@@ -442,17 +468,16 @@ class SNS(BaseEstimator, TransformerMixin):
         self.effective_weight_sum_ = info["effective_weight_sum"]
         self.rejected_sample_count_ = info["rejected_sample_count"]
         self.feature_names_in_ = None if names is None else tuple(names)
-        logger.info(
-            "SNS: learned %d iteration(s) on %d channels (%d neighbours each; "
-            "%d samples rejected).",
-            self.n_iter_,
-            self.denoising_matrix_.shape[0],
-            self.n_neighbors_,
-            self.rejected_sample_count_,
-        )
         return self
 
-    def transform(self, X: Any, y=None) -> Any:
+    @verbose
+    def transform(
+        self,
+        X: Any,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> Any:
         """Apply the fitted SNS operator.
 
         Parameters
@@ -468,7 +493,6 @@ class SNS(BaseEstimator, TransformerMixin):
             A copy with selected data channels replaced by their SNS result.
         """
         check_is_fitted(self, ("denoising_matrix_", "training_mean_"))
-        set_log_level_from_verbose(self.verbose)
         data, _sfreq, mne_type, orig_inst, picks, names = extract_data_from_mne(
             X, auto_pick=True
         )
@@ -493,12 +517,14 @@ class SNS(BaseEstimator, TransformerMixin):
         cleaned = continuous_to_epochs(cleaned, data.shape)
         return reconstruct_mne_object(cleaned, orig_inst, mne_type, picks=picks)
 
+    @verbose
     def fit_transform(
         self,
         X: Any,
         y=None,
         *,
         sample_weight: np.ndarray | None = None,
+        verbose: bool | str | int | None = None,
         **fit_params,
     ) -> Any:
         """Fit on ``X`` and apply the fitted operator.

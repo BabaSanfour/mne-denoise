@@ -37,10 +37,10 @@ import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
+from .._data import epochs_to_continuous, extract_data_from_mne, reconstruct_mne_object
 from .._leadfield import resolve_leadfield
-from .._logging import logger, set_log_level_from_verbose
-from .._spatial import epochs_to_continuous
-from ..utils import extract_data_from_mne, reconstruct_mne_object
+from .._logging import logger, verbose
+from .._validation import check_channel_layout, check_option, check_positive_real
 
 
 def _noise_level(noise_filter: np.ndarray, cov: np.ndarray, n_times: int) -> float:
@@ -177,13 +177,13 @@ def _estimate_sigmas(
     here, since both entry points accept it unchanged.
     """
     n_channels, n_times = data.shape
-    if tol is not None and (
-        isinstance(tol, (bool, np.bool_))
-        or not isinstance(tol, Real)
-        or not np.isfinite(tol)
-        or tol <= 0
-    ):
-        raise ValueError(f"tol must be positive and finite or None, got {tol!r}.")
+    if tol is not None:
+        try:
+            tol = check_positive_real(tol, name="tol")
+        except (TypeError, ValueError) as err:
+            raise ValueError(
+                f"tol must be positive and finite or None, got {tol!r}."
+            ) from err
 
     rng = np.random.default_rng(random_state)
     llt = leadfield @ leadfield.T  # (n_channels, n_channels); spans the column space
@@ -216,12 +216,20 @@ def _estimate_sigmas(
             noise_filter[i] = 1.0
             noise_filter[others] = -(m * w)
             sigmas[i] = _noise_level(noise_filter, cov, n_times)
-        convergence.append(np.max(np.abs(sigmas_old - sigmas) / sigmas_old))
+        relative_change = np.max(np.abs(sigmas_old - sigmas) / sigmas_old)
+        convergence.append(relative_change)
+        logger.debug(
+            "SOUND sigma iteration %d/%d: max relative change %.2e.",
+            len(convergence),
+            n_iter,
+            relative_change,
+        )
         if tol is not None and convergence[-1] < tol:
             break
     return sigmas, np.asarray(convergence), llt
 
 
+@verbose
 def compute_sound(
     data: np.ndarray,
     leadfield: np.ndarray,
@@ -230,6 +238,7 @@ def compute_sound(
     n_iter: int = 5,
     tol: float | None = None,
     random_state=None,
+    verbose: bool | str | int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute the SOUND cleaning operator from data and a lead field.
 
@@ -260,6 +269,9 @@ def compute_sound(
         statement in Mutanen et al. (2022) [2]_ combines both criteria.
     random_state : int | np.random.Generator | None
         Seed/generator controlling the random channel-update order.
+    verbose : bool | str | int | None
+        MNE-style logging level. The final convergence report is emitted at
+        INFO and sigma iterations at DEBUG.
 
     Returns
     -------
@@ -307,9 +319,18 @@ def compute_sound(
             "positive lambda_ or a better-conditioned forward model."
         ) from err
     operator = ((llt * w[None, :]) @ inv) * w[None, :]
+    logger.info(
+        "SOUND: %d iteration(s), channels=%d, sources=%d, "
+        "final max relative sigma change %.2e, reference=average",
+        convergence.size,
+        n_channels,
+        leadfield.shape[1],
+        convergence[-1] if convergence.size else float("nan"),
+    )
     return operator, sigmas, convergence
 
 
+@verbose
 def compute_sound_ref_best(
     data: np.ndarray,
     leadfield: np.ndarray,
@@ -318,6 +339,7 @@ def compute_sound_ref_best(
     n_iter: int = 5,
     tol: float | None = None,
     random_state=None,
+    verbose: bool | str | int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
     """SOUND with the reference bookkeeping of ``tesa_sound`` [1]_.
 
@@ -339,6 +361,9 @@ def compute_sound_ref_best(
         Convergence tolerance; see :func:`compute_sound`.
     random_state : int | np.random.Generator | None
         Seed/generator controlling the random channel-update order.
+    verbose : bool | str | int | None
+        MNE-style logging level. The final convergence report is emitted at
+        INFO and sigma iterations at DEBUG.
 
     Returns
     -------
@@ -439,6 +464,15 @@ def compute_sound_ref_best(
             "positive lambda_ or a better-conditioned forward model."
         ) from err
     operator = cross * w[None, :] @ reconstruction
+    logger.info(
+        "SOUND: %d iteration(s), channels=%d, sources=%d, "
+        "final max relative sigma change %.2e, reference=best channel %d",
+        convergence.size,
+        n_channels,
+        leadfield.shape[1],
+        convergence[-1] if convergence.size else float("nan"),
+        best,
+    )
     return operator, sigmas, convergence, best
 
 
@@ -482,8 +516,9 @@ class SOUND(BaseEstimator, TransformerMixin):
         Number of dipoles for the spherical lead field.
     random_state : int | np.random.Generator | None
         Controls the random channel-update order for reproducibility.
-    verbose : bool, default=True
-        Whether to log progress information.
+    verbose : bool | str | int | None, default=None
+        MNE-style logging level. The fitted SOUND summary is emitted at INFO;
+        sigma iterations are emitted at DEBUG.
 
     Attributes
     ----------
@@ -519,7 +554,7 @@ class SOUND(BaseEstimator, TransformerMixin):
         sigma_source: str = "evoked",
         n_dipoles: int = 5000,
         random_state=None,
-        verbose: bool | str | int | None = True,
+        verbose: bool | str | int | None = None,
     ):
         self.lambda_ = lambda_
         self.n_iter = n_iter
@@ -530,7 +565,6 @@ class SOUND(BaseEstimator, TransformerMixin):
         self.n_dipoles = n_dipoles
         self.random_state = random_state
         self.verbose = verbose
-        set_log_level_from_verbose(self.verbose)
 
     def _fit_data(self, data):
         """Reduce input to the (n_channels, n_times) matrix sigmas come from.
@@ -576,17 +610,19 @@ class SOUND(BaseEstimator, TransformerMixin):
                 stacklevel=3,
             )
 
-    def fit(self, X, y=None):
+    @verbose
+    def fit(
+        self,
+        X,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+    ):
         """Estimate the SOUND cleaning operator from ``X``."""
-        set_log_level_from_verbose(self.verbose)
-        if self.reference not in ("best", "average"):
-            raise ValueError(
-                f"reference must be 'best' or 'average', got {self.reference!r}."
-            )
-        if self.sigma_source not in ("evoked", "trials"):
-            raise ValueError(
-                f"sigma_source must be 'evoked' or 'trials', got {self.sigma_source!r}."
-            )
+        check_option(self.reference, name="reference", allowed=("best", "average"))
+        check_option(
+            self.sigma_source, name="sigma_source", allowed=("evoked", "trials")
+        )
         data, _, _, orig_inst, _, ch_names = extract_data_from_mne(X)
         n_channels = data.shape[-2]  # (..., n_channels, n_times)
         self.leadfield_ = resolve_leadfield(
@@ -626,32 +662,27 @@ class SOUND(BaseEstimator, TransformerMixin):
                 random_state=self.random_state,
             )
             self.best_channel_ = None
-        logger.info(
-            "SOUND: %d iteration(s), final max relative sigma change %.2e, "
-            "reference=%s",
-            self.convergence_.size,
-            self.convergence_[-1] if self.convergence_.size else float("nan"),
-            self.reference,
-        )
         return self
 
-    def _check_n_channels(self, data):
-        """Reject data whose channel count cannot meet the fitted operator."""
-        n_channels = data.shape[-2]
-        if n_channels != self.operator_.shape[1]:
-            raise ValueError(
-                f"SOUND was fitted on {self.operator_.shape[1]} channels but "
-                f"got {n_channels}. The operator and its lead field are tied "
-                "to the fitted montage; refit on this data."
-            )
-
-    def transform(self, X):
+    @verbose
+    def transform(
+        self,
+        X,
+        *,
+        verbose: bool | str | int | None = None,
+    ):
         """Apply the fitted SOUND operator to ``X``."""
         check_is_fitted(self, attributes=["operator_"])
-        data, _, mne_type, orig_inst, picks, _ = extract_data_from_mne(
+        data, _, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
             X, ch_names=getattr(self, "_mne_ch_names_", None)
         )
-        self._check_n_channels(data)
+        check_channel_layout(
+            "SOUND",
+            n_channels=data.shape[-2],
+            fitted_n_channels=self.operator_.shape[1],
+            ch_names=ch_names,
+            fitted_ch_names=getattr(self, "_mne_ch_names_", None),
+        )
         # matmul broadcasts the (n_channels, n_channels) operator over any
         # leading epoch axis, so 2D and 3D share one BLAS-backed path.
         cleaned = self.operator_ @ data

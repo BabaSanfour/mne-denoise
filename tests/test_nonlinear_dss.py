@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 
 import mne
@@ -237,30 +238,59 @@ def test_iterative_dss_with_w_init():
     assert filters.shape == (3, 6)
 
 
-def test_iterative_dss_verbose(capsys):
-    """iterative_dss should print progress when verbose=True."""
+def test_iterative_dss_debug_logging(caplog):
+    """iterative_dss should report component progress at DEBUG."""
     rng = np.random.default_rng(42)
     data = rng.standard_normal((5, 500))
 
     denoiser = KurtosisDenoiser()
-    iterative_dss(data, denoiser, n_components=2, max_iter=5, verbose=True)
+    with caplog.at_level(logging.DEBUG, logger="mne_denoise"):
+        iterative_dss(data, denoiser, n_components=2, max_iter=5, verbose="DEBUG")
 
-    captured = capsys.readouterr()
-    assert "Component" in captured.out or "Symmetric" in captured.out
+    assert "IterativeDSS component" in caplog.text
 
 
-def test_iterative_dss_symmetric_verbose(capsys):
-    """iterative_dss symmetric should print progress when verbose=True."""
+@pytest.mark.parametrize("verbosity", [True, "DEBUG"])
+def test_iterative_dss_uses_logging_not_stdout(verbosity, caplog, capsys):
+    """INFO and DEBUG iterative reports never write processing output to stdout."""
+    rng = np.random.default_rng(43)
+    data = rng.standard_normal((4, 300))
+    with caplog.at_level(logging.DEBUG, logger="mne_denoise"):
+        iterative_dss(
+            data,
+            KurtosisDenoiser(),
+            n_components=1,
+            max_iter=3,
+            verbose=verbosity,
+        )
+    assert capsys.readouterr().out == ""
+    summaries = [
+        record
+        for record in caplog.records
+        if record.message.startswith("Iterative DSS:")
+    ]
+    assert len(summaries) == 1
+    for token in ("method=", "denoiser=KurtosisDenoiser", "converged=", "iterations="):
+        assert token in summaries[0].message
+
+
+def test_iterative_dss_symmetric_debug_logging(caplog):
+    """iterative_dss symmetric should report progress at DEBUG."""
     rng = np.random.default_rng(42)
     data = rng.standard_normal((5, 500))
 
     denoiser = KurtosisDenoiser()
-    iterative_dss(
-        data, denoiser, n_components=2, method="symmetric", max_iter=5, verbose=True
-    )
+    with caplog.at_level(logging.DEBUG, logger="mne_denoise"):
+        iterative_dss(
+            data,
+            denoiser,
+            n_components=2,
+            method="symmetric",
+            max_iter=5,
+            verbose="DEBUG",
+        )
 
-    captured = capsys.readouterr()
-    assert "Symmetric" in captured.out
+    assert "IterativeDSS symmetric iteration" in caplog.text
 
 
 def test_iterative_dss_symmetric_with_alpha_beta():
@@ -645,7 +675,7 @@ def test_iterative_dss_symmetric_callable_alpha_beta():
     assert filters.shape == (2, 5)
 
 
-def test_iterative_dss_symmetric_converges(capsys):
+def test_iterative_dss_symmetric_converges(caplog):
     """Symmetric method should report convergence when it happens."""
     rng = np.random.default_rng(42)
     data = rng.standard_normal((4, 2000))  # Enough data for convergence
@@ -654,19 +684,19 @@ def test_iterative_dss_symmetric_converges(capsys):
     def denoiser(s):
         return s**3  # cubic
 
-    filters, sources, patterns, conv = iterative_dss(
-        data,
-        denoiser,
-        n_components=2,
-        method="symmetric",
-        max_iter=100,
-        tol=1e-4,
-        verbose=True,
-    )
+    with caplog.at_level(logging.DEBUG, logger="mne_denoise"):
+        filters, sources, patterns, conv = iterative_dss(
+            data,
+            denoiser,
+            n_components=2,
+            method="symmetric",
+            max_iter=100,
+            tol=1e-4,
+            verbose="DEBUG",
+        )
 
-    captured = capsys.readouterr()
     # Either converges or hits max_iter - both are covered
-    assert "Symmetric" in captured.out
+    assert "IterativeDSS symmetric" in caplog.text
 
 
 def test_iterative_dss_transform_mne_raw():

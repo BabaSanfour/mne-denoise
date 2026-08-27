@@ -15,7 +15,6 @@ References
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 
 import numpy as np
@@ -31,16 +30,20 @@ except ImportError:
     mne = None
 
 from .._covariance import compute_covariance, compute_mean
-from .._logging import set_log_level_from_verbose
-from .._spatial import (
-    apply_spatial_transform,
+from .._data import (
     continuous_to_epochs,
     epochs_to_continuous,
+    extract_data_from_mne,
+    reconstruct_mne_object,
 )
+from .._logging import logger, verbose
+from .._spatial import apply_spatial_transform
 from ..blending import overlap_add_combine
-from ..utils import extract_data_from_mne, reconstruct_mne_object
 from .denoisers import LinearDenoiser
-from .denoisers.temporal import SmoothingBias
+from .denoisers.averaging import AverageBias
+from .denoisers.periodic import CombFilterBias, PeakFilterBias
+from .denoisers.spectral import BandpassBias, LineNoiseBias
+from .denoisers.temporal import LagAverageBias, SmoothingBias
 from .utils.segmentation import CovarianceSegmenter, FixedWindowSegmenter
 from .utils.selection import auto_select_components_robust
 from .utils.whitening import (
@@ -50,8 +53,6 @@ from .utils.whitening import (
     map_spatial_matrices_to_sensor_space,
 )
 
-logger = logging.getLogger(__name__)
-
 _COMPONENT_ACTIONS = frozenset({"extract", "retain", "subtract"})
 
 # -----------------------------------------------------------------------------
@@ -59,6 +60,7 @@ _COMPONENT_ACTIONS = frozenset({"extract", "retain", "subtract"})
 # -----------------------------------------------------------------------------
 
 
+@verbose
 def compute_dss(
     covariance_baseline: np.ndarray,
     covariance_biased: np.ndarray,
@@ -66,6 +68,7 @@ def compute_dss(
     n_components: int | None = None,
     rank: int | None = None,
     reg: float = 1e-9,
+    verbose: bool | str | int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     r"""Compute DSS spatial filters from baseline and biased covariances.
 
@@ -101,6 +104,9 @@ def compute_dss(
         Rank for whitening stage. If None, auto-determined from data.
     reg : float
         Regularization threshold. Default 1e-9.
+    verbose : bool | str | int | None
+        MNE-style logging level. DSS numerical details are emitted at DEBUG;
+        the estimator owns the user-facing fit summary.
 
     Returns
     -------
@@ -219,6 +225,14 @@ def compute_dss(
     # Note: Patterns are in physical units. Use get_normalized_patterns() for visualization.
     dss_patterns = covariance_baseline @ unmixing_matrix
 
+    logger.debug(
+        "DSS numerical core: input channels=%d, whitening rank=%d, "
+        "returned components=%d.",
+        n_channels,
+        n_keep,
+        n_components,
+    )
+
     return dss_filters, dss_patterns, eigenvalues
 
 
@@ -255,6 +269,41 @@ def _as_smoother(smooth: LinearDenoiser | int | None) -> LinearDenoiser | None:
         # Covers SmoothingBias and any other LinearDenoiser
         return smooth
     raise TypeError(f"smooth must be SmoothingBias, int, or None, got {type(smooth)}")
+
+
+def _bias_name(bias: object) -> str:
+    """Return a concise scientific description of a DSS bias."""
+    if bias is None:
+        return "None"
+    if isinstance(bias, CombFilterBias):
+        return (
+            f"CombFilterBias(f0={float(bias.fundamental_freq):.3g} Hz, "
+            f"harmonics={int(bias.n_harmonics)})"
+        )
+    if isinstance(bias, BandpassBias):
+        low, high = bias.freq_band
+        return f"BandpassBias({float(low):.3g}-{float(high):.3g} Hz)"
+    if isinstance(bias, SmoothingBias):
+        return f"SmoothingBias(window={int(bias.window)})"
+    if isinstance(bias, AverageBias):
+        return f"AverageBias(axis={bias.axis})"
+    if isinstance(bias, LineNoiseBias):
+        harmonics = (
+            f", harmonics={int(bias.n_harmonics)}"
+            if bias.n_harmonics is not None
+            else ""
+        )
+        return (
+            f"LineNoiseBias(freq={float(bias.freq):.3g} Hz, "
+            f"method={bias.method}{harmonics})"
+        )
+    if isinstance(bias, PeakFilterBias):
+        return f"PeakFilterBias(freq={float(bias.freq):.3g} Hz)"
+    if isinstance(bias, LagAverageBias):
+        return f"LagAverageBias(lags={bias.lags})"
+    if isinstance(bias, LinearDenoiser):
+        return type(bias).__name__
+    return getattr(bias, "__name__", type(bias).__name__)
 
 
 class DSS(BaseEstimator, TransformerMixin):
@@ -478,7 +527,6 @@ class DSS(BaseEstimator, TransformerMixin):
         self.whiten = whiten
         self.noise_cov = noise_cov
         self.verbose = verbose
-        set_log_level_from_verbose(self.verbose)
 
         # Fitted attributes
         self.filters_: np.ndarray | None = None
@@ -496,11 +544,14 @@ class DSS(BaseEstimator, TransformerMixin):
         self._mne_info = None
         self._mne_ch_names_: list[str] | None = None
 
+    @verbose
     def fit(
         self,
         X: BaseRaw | BaseEpochs | Evoked | np.ndarray,
         y=None,
         weights: np.ndarray | None = None,
+        *,
+        verbose: bool | str | int | None = None,
     ) -> DSS:
         """Compute DSS spatial filters.
 
@@ -524,14 +575,13 @@ class DSS(BaseEstimator, TransformerMixin):
         self : DSS
             The fitted transformer.
         """
-        set_log_level_from_verbose(self.verbose)
         self._mne_ch_names_ = None
         self._validate_component_action()
         self._validate_decomposition_parameters()
         if not isinstance(self.center, bool):
             raise TypeError("center must be a bool")
         if self.adaptive:
-            logger.info(
+            logger.debug(
                 "DSS(adaptive=True).fit() computes a single global fit. "
                 "Call fit_transform() for the per-segment adaptive pathway."
             )
@@ -541,6 +591,14 @@ class DSS(BaseEstimator, TransformerMixin):
             # channel-wise normalization and the homogeneous-type isolation.
             self._fit_whitened(X, weights=weights)
             self.mixing_ = self.patterns_
+            logger.info(
+                "DSS: bias=%s, channels=%d, rank=%d, components=%d, action=%s.",
+                _bias_name(self.bias),
+                self.filters_.shape[1],
+                self.filters_.shape[0],
+                self.filters_.shape[0],
+                self.component_action,
+            )
             return self
 
         if self.normalize_input:
@@ -583,6 +641,16 @@ class DSS(BaseEstimator, TransformerMixin):
         # Automatic component selection
         if self._effective_n_select() is not None and self.eigenvalues_ is not None:
             self.n_selected_ = self.auto_select()
+
+        logger.info(
+            "DSS: bias=%s, channels=%d, rank=%d, components=%d, action=%s%s.",
+            _bias_name(self.bias),
+            self.filters_.shape[1],
+            self.filters_.shape[0],
+            self.filters_.shape[0],
+            self.component_action,
+            f" (selected {self.n_selected_})" if self.n_selected_ is not None else "",
+        )
 
         return self
 
@@ -959,8 +1027,12 @@ class DSS(BaseEstimator, TransformerMixin):
         self._dewhitener_ = dewhitener
         return apply_spatial_transform(whitener, data)
 
+    @verbose
     def transform(
-        self, X: BaseRaw | BaseEpochs | Evoked | np.ndarray
+        self,
+        X: BaseRaw | BaseEpochs | Evoked | np.ndarray,
+        *,
+        verbose: bool | str | int | None = None,
     ) -> np.ndarray | BaseRaw | BaseEpochs | Evoked:
         """Apply the configured DSS component operation.
 
@@ -993,7 +1065,6 @@ class DSS(BaseEstimator, TransformerMixin):
         action: str,
     ) -> np.ndarray | BaseRaw | BaseEpochs | Evoked:
         """Apply a validated operation without mutating estimator parameters."""
-        set_log_level_from_verbose(self.verbose)
         if action not in _COMPONENT_ACTIONS:
             raise ValueError(f"Unknown component action {action!r}.")
         if self.filters_ is None:
@@ -1090,8 +1161,13 @@ class DSS(BaseEstimator, TransformerMixin):
             verbose=False,
         )
 
+    @verbose
     def inverse_transform(
-        self, sources: np.ndarray, component_indices: np.ndarray | None = None
+        self,
+        sources: np.ndarray,
+        component_indices: np.ndarray | None = None,
+        *,
+        verbose: bool | str | int | None = None,
     ) -> np.ndarray:
         """Transform sources back to sensor space.
 
@@ -1190,7 +1266,15 @@ class DSS(BaseEstimator, TransformerMixin):
     # Segmented mode
     # -----------------------------------------------------------------
 
-    def fit_transform(self, X, y=None, **fit_params):
+    @verbose
+    def fit_transform(
+        self,
+        X,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+        **fit_params,
+    ):
         """Fit and apply the configured component operation.
 
         In **adaptive mode** (``adaptive=True``), the data is split into
@@ -1264,7 +1348,9 @@ class DSS(BaseEstimator, TransformerMixin):
         # describes all of the data. Per-segment results are kept separately in
         # segment_results_.
         global_est = self._make_segment_estimator()
-        global_est.fit(data_cont)
+        # Adaptive DSS owns the aggregate INFO record; hide the global helper
+        # fit so one operation does not report its internal DSS twice.
+        global_est.fit(data_cont, verbose="WARNING")
         self.filters_ = global_est.filters_
         self.patterns_ = global_est.patterns_
         self.mixing_ = global_est.patterns_
@@ -1279,13 +1365,21 @@ class DSS(BaseEstimator, TransformerMixin):
         if is_epochs:
             cleaned = continuous_to_epochs(cleaned, (n_ep, n_ch, n_t))
 
-        return reconstruct_mne_object(
+        result = reconstruct_mne_object(
             cleaned,
             orig_inst,
             mne_type,
             picks=picks,
             verbose=False,
         )
+        logger.info(
+            "DSS: adaptive fit, %d segment(s), max %d component(s) selected, "
+            "action=%s.",
+            len(self.segment_results_ or ()),
+            self.n_selected_ or 0,
+            self.component_action,
+        )
+        return result
 
     def _resolve_segmenter(self, sfreq: float):
         """Resolve the segmenter parameter.
@@ -1364,9 +1458,10 @@ class DSS(BaseEstimator, TransformerMixin):
                 "and data length."
             )
 
-        logger.info(
-            f"Segmented DSS: {len(segments)} segment(s) "
-            f"over {data.shape[1] / sfreq:.1f}s"
+        logger.debug(
+            "Segmented DSS engine: %d segment(s) over %.1f s.",
+            len(segments),
+            data.shape[1] / sfreq,
         )
 
         # ------ cross-fade setup ------
@@ -1418,6 +1513,14 @@ class DSS(BaseEstimator, TransformerMixin):
             # carried through untouched.
             meta = {k: v for k, v in result.items() if k != "cleaned"}
             self.segment_results_.append({"start": start, "end": end, **meta})
+            logger.debug(
+                "Segmented DSS segment %d/%d: samples=%d:%d, selected=%d.",
+                seg_idx + 1,
+                len(segments),
+                start,
+                end,
+                result.get("n_selected", 0),
+            )
 
         # Per-segment filters live in ``segment_results_``. The estimator-level
         # ``filters_``/``patterns_``/``eigenvalues_`` come from a single global
@@ -1457,6 +1560,9 @@ class DSS(BaseEstimator, TransformerMixin):
             min_select=0,
             # A dict rank is an MNE-object concept; segments are plain arrays.
             rank=self.rank if isinstance(self.rank, int | type(None)) else None,
+            # The adaptive parent owns the aggregate report; segment clones
+            # are numerical helpers and must not emit duplicate DSS INFO.
+            verbose="WARNING",
         )
         return est
 
@@ -1487,7 +1593,9 @@ class DSS(BaseEstimator, TransformerMixin):
         """
         n_channels = chunk.shape[0]
         seg_dss = self._make_segment_estimator()
-        seg_dss.fit(chunk)
+        # Adaptive DSS owns the aggregate INFO record; segment DSS fits are
+        # implementation details rather than separate user-facing results.
+        seg_dss.fit(chunk, verbose="WARNING")
         n_sel = seg_dss.n_selected_ if seg_dss.n_selected_ is not None else 0
 
         # Apply caps

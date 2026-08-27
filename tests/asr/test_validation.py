@@ -3,7 +3,6 @@ import pytest
 
 from mne_denoise.asr._validation import (
     _check_enough_samples,
-    _check_transform_channels,
     _resolve_max_dims,
     _resolve_max_dims_padded,
     _round_half_up,
@@ -193,18 +192,6 @@ def test_validate_backend_params():
             stepsize=None,
             window_criterion="invalid",  # type: ignore
         )
-
-
-def test_check_transform_channels():
-    """Test channel count and name validation against fitted state."""
-    _check_transform_channels(3, ["A", "B", "C"], 3, ["A", "B", "C"])
-    _check_transform_channels(3, None, 3, None)
-
-    with pytest.raises(ValueError, match="Input channel count does not match"):
-        _check_transform_channels(3, ["A", "B", "C"], 2, ["A", "B"])
-
-    with pytest.raises(ValueError, match="Input channel names/order do not match"):
-        _check_transform_channels(3, ["A", "B", "C"], 3, ["C", "B", "A"])
 
 
 def test_validate_adaptive_params():

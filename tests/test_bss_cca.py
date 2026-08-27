@@ -263,7 +263,7 @@ def test_selection_rule_must_be_explicit(rng, kwargs):
 def test_unreachable_threshold_warns_and_removes_everything(rng, caplog):
     """An unreachable threshold is reported, never silently reinterpreted."""
     data = rng.standard_normal((6, 3000))
-    with caplog.at_level(logging.WARNING, logger="mne_denoise.bss_cca.core"):
+    with caplog.at_level(logging.WARNING, logger="mne_denoise"):
         cleaned, info = compute_bss_cca(data, rho_threshold=0.9, preserve_mean=False)
     assert "no component reaches rho_threshold" in caplog.text
     assert info["n_kept"] == 0
@@ -306,7 +306,7 @@ def test_undersampled_data_is_rejected(rng):
 
 def test_scarce_samples_warn(rng, caplog):
     """A thin but usable sample count is flagged rather than rejected."""
-    with caplog.at_level(logging.WARNING, logger="mne_denoise.bss_cca.core"):
+    with caplog.at_level(logging.WARNING, logger="mne_denoise"):
         compute_bss_cca(rng.standard_normal((8, 40)), n_remove=1)
     assert "lagged pairs for" in caplog.text
 
@@ -585,22 +585,29 @@ def test_fit_transform_rejects_unexpected_fit_params(rng):
 def test_fit_reports_the_resolved_operating_point(rng, caplog):
     """The fitted lag, block count, and component counts are logged."""
     data = rng.standard_normal((5, 1000))
-    with caplog.at_level(logging.INFO, logger="mne_denoise.bss_cca.core"):
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
         BSSCCA(n_remove=2, lag_samples=2, verbose=True).fit(data)
-    assert "BSS-CCA: lag=2 sample(s), 1 block(s), removed 2 of 5" in caplog.text
+    summaries = [r for r in caplog.records if r.message.startswith("BSS-CCA:")]
+    assert len(summaries) == 1
+    for token in (
+        "lag=2 sample(s), 1 block(s)",
+        "reject=low, n_remove=2",
+        "removed 2 of 5",
+    ):
+        assert token in summaries[0].message
 
 
 @pytest.mark.parametrize(
-    ("verbose", "expected"),
-    [("ERROR", logging.ERROR), (True, logging.INFO), (False, logging.WARNING)],
+    "verbose",
+    ["ERROR", True, False],
 )
-def test_verbose_sets_the_package_logger_level(rng, verbose, expected):
-    """MNE-style verbosity routes through the shared level helper."""
+def test_verbose_temporarily_sets_the_package_logger_level(rng, verbose):
+    """MNE-style verbosity is scoped to the operation and then restored."""
     package_logger = logging.getLogger("mne_denoise")
     previous = package_logger.level
     try:
         BSSCCA(n_remove=1, verbose=verbose).fit(rng.standard_normal((5, 500)))
-        assert package_logger.level == expected
+        assert package_logger.level == previous
     finally:
         package_logger.setLevel(previous)
 

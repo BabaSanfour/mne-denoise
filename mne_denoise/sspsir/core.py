@@ -41,9 +41,15 @@ from scipy.special import expit
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
+from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._leadfield import resolve_leadfield
-from .._logging import logger, set_log_level_from_verbose
-from ..utils import extract_data_from_mne, reconstruct_mne_object
+from .._logging import logger, verbose
+from .._validation import (
+    check_channel_layout,
+    check_matching_sfreq,
+    check_option,
+    check_positive_real,
+)
 
 __all__ = ["SSPSIR", "compute_sir", "compute_sspsir"]
 
@@ -302,8 +308,9 @@ class SSPSIR(BaseEstimator, TransformerMixin):
         Sampling frequency, required only for plain-array input.
     n_dipoles : int
         Number of dipoles for the spherical lead field.
-    verbose : bool, default=True
-        Whether to log progress information.
+    verbose : bool | str | int | None, default=None
+        MNE-style logging level. The fitted SSP-SIR summary is emitted at
+        INFO; numerical reconstruction helpers remain silent.
 
     Attributes
     ----------
@@ -388,7 +395,7 @@ class SSPSIR(BaseEstimator, TransformerMixin):
         smooth_length: float = _SMOOTH_LENGTH,
         sfreq=None,
         n_dipoles: int = 5000,
-        verbose: bool | str | int | None = True,
+        verbose: bool | str | int | None = None,
     ):
         self.n_components = n_components
         self.forward = forward
@@ -457,37 +464,23 @@ class SSPSIR(BaseEstimator, TransformerMixin):
         kernel = np.sqrt(kernel / kernel.max()) if kernel.max() > 0 else kernel
         return kernel[None, :] * data_high, kernel
 
-    def fit(self, X, y=None):
+    @verbose
+    def fit(
+        self,
+        X,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+    ):
         """Estimate the SSP-SIR cleaning operators from ``X``."""
         if self.n_components is None:
             raise ValueError(
                 "n_components must be set (number of artifact PCs to remove, or a "
                 "variance fraction in (0, 1))."
             )
-        if self.blend not in ("auto", "constant"):
-            raise ValueError(f"blend must be 'auto' or 'constant', got {self.blend!r}.")
-        if isinstance(self.high_pass, (bool, np.bool_)) or not isinstance(
-            self.high_pass, Real
-        ):
-            raise ValueError(
-                f"high_pass must be a positive finite number, got {self.high_pass!r}."
-            )
-        if not np.isfinite(self.high_pass) or self.high_pass <= 0.0:
-            raise ValueError(
-                f"high_pass must be a positive finite number, got {self.high_pass!r}."
-            )
-        if isinstance(self.smooth_length, (bool, np.bool_)) or not isinstance(
-            self.smooth_length, Real
-        ):
-            raise ValueError(
-                "smooth_length must be a positive finite number, got "
-                f"{self.smooth_length!r}."
-            )
-        if not np.isfinite(self.smooth_length) or self.smooth_length <= 0.0:
-            raise ValueError(
-                "smooth_length must be a positive finite number, got "
-                f"{self.smooth_length!r}."
-            )
+        check_option(self.blend, name="blend", allowed=("auto", "constant"))
+        check_positive_real(self.high_pass, name="high_pass")
+        check_positive_real(self.smooth_length, name="smooth_length")
         if isinstance(self.n_dipoles, (bool, np.bool_)) or not isinstance(
             self.n_dipoles, Integral
         ):
@@ -519,7 +512,6 @@ class SSPSIR(BaseEstimator, TransformerMixin):
                 raise ValueError(
                     f"art_window must satisfy tmin < tmax, got {self.art_window}."
                 )
-        set_log_level_from_verbose(self.verbose)
         data, sfreq, _, orig_inst, _, ch_names = extract_data_from_mne(X)
         sfreq = self._resolve_sfreq(sfreq)
         times = getattr(orig_inst, "times", None)
@@ -568,8 +560,9 @@ class SSPSIR(BaseEstimator, TransformerMixin):
             else []
         )
         logger.info(
-            "SSP-SIR: removed %d artifact component(s), SIR truncation M=%d "
-            "(data rank %d), blend=%s",
+            "SSP-SIR: channels=%d, removed %d artifact component(s), "
+            "SIR truncation M=%d (data rank %d), blend=%s",
+            n_channels,
             self.n_components_,
             self.M_,
             data_rank,
@@ -577,19 +570,25 @@ class SSPSIR(BaseEstimator, TransformerMixin):
         )
         return self
 
-    def transform(self, X):
+    @verbose
+    def transform(
+        self,
+        X,
+        *,
+        verbose: bool | str | int | None = None,
+    ):
         """Apply the fitted SSP-SIR operators to ``X``."""
         check_is_fitted(self, attributes=["operator_", "operator_orig_", "kernel_"])
-        data, sfreq, mne_type, orig_inst, picks, _ = extract_data_from_mne(
+        data, sfreq, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
             X, ch_names=getattr(self, "_mne_ch_names_", None)
         )
-        n_channels = data.shape[-2]
-        if n_channels != self.operator_.shape[1]:
-            raise ValueError(
-                f"SSPSIR was fitted on {self.operator_.shape[1]} channels but "
-                f"got {n_channels}. The operators and their lead field are "
-                "tied to the fitted montage; refit on this data."
-            )
+        check_channel_layout(
+            "SSPSIR",
+            n_channels=data.shape[-2],
+            fitted_n_channels=self.operator_.shape[1],
+            ch_names=ch_names,
+            fitted_ch_names=getattr(self, "_mne_ch_names_", None),
+        )
         n_times = data.shape[-1]
         if self.blend == "constant":
             # This branch is spatially and temporally invariant.
@@ -602,13 +601,13 @@ class SSPSIR(BaseEstimator, TransformerMixin):
                 "data; refit on this data, or use blend='constant' to apply the "
                 "projection uniformly over time."
             )
-        if sfreq is not None and not np.isclose(
-            float(sfreq), self.sfreq_, rtol=0.0, atol=1e-12
-        ):
-            raise ValueError(
-                f"SSPSIR was fitted at {self.sfreq_} Hz but got {float(sfreq)} Hz. "
-                "The crossfade kernel is tied to the fitted sampling frequency."
-            )
+        check_matching_sfreq(
+            sfreq,
+            self.sfreq_,
+            name="SSPSIR",
+            rtol=0.0,
+            atol=1e-12,
+        )
         times = getattr(orig_inst, "times", None)
         if times is not None and not np.allclose(
             np.asarray(times), self.times_, rtol=0.0, atol=1e-12

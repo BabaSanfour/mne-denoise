@@ -36,7 +36,6 @@ References
 
 from __future__ import annotations
 
-import logging
 from numbers import Integral, Real
 from typing import Any
 
@@ -45,23 +44,25 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
 from .._cca import canonical_correlation
-from .._logging import set_log_level_from_verbose
-from .._spatial import (
-    apply_spatial_transform,
+from .._data import (
     continuous_to_epochs,
     epochs_to_continuous,
+    extract_data_from_mne,
+    reconstruct_mne_object,
+)
+from .._logging import logger, verbose
+from .._spatial import (
+    apply_spatial_transform,
     fit_mixing_matrix,
 )
 from .._validation import (
     check_channel_first_data,
     check_channel_layout,
-    check_sfreq,
+    check_matching_sfreq,
+    check_positive_real,
     resolve_sfreq,
 )
 from ..blending import overlap_add_combine
-from ..utils import extract_data_from_mne, reconstruct_mne_object
-
-logger = logging.getLogger(__name__)
 
 #: Warn when the number of lagged pairs falls below this multiple of the
 #: channel count; canonical correlations saturate toward 1 as the ratio drops.
@@ -94,7 +95,9 @@ def _resolve_lag_samples(
             raise TypeError("lag_seconds must be a finite number")
         if lag_seconds <= 0:
             raise ValueError("lag_seconds must be positive")
-        sfreq = check_sfreq(sfreq, context="lag_seconds")
+        if sfreq is None:
+            raise ValueError("sfreq is required when lag_seconds is used")
+        sfreq = check_positive_real(sfreq, name="sfreq")
         resolved = int(np.floor(lag_seconds * sfreq + 0.5))
         if resolved < 1:
             raise ValueError(
@@ -371,6 +374,7 @@ def _segment_bounds(
     return bounds
 
 
+@verbose
 def compute_bss_cca(
     X: np.ndarray,
     *,
@@ -491,7 +495,6 @@ def compute_bss_cca(
            artifact removal. Epilepsia, 48(5), 950-958.
            https://doi.org/10.1111/j.1528-1167.2007.01031.x
     """
-    set_log_level_from_verbose(verbose)
     X = check_channel_first_data(X, name="BSS-CCA")
     if not isinstance(preserve_mean, bool):
         raise TypeError("preserve_mean must be a bool")
@@ -568,6 +571,10 @@ def compute_bss_cca(
         "overlap": float(overlap),
         "preserve_mean": preserve_mean,
         "n_channels": int(X.shape[-2]),
+        "reject": reject,
+        "threshold_on": threshold_on,
+        "n_remove": n_remove,
+        "rho_threshold": rho_threshold,
         # Minimal records needed to re-apply the fitted operators; consumed by
         # BSSCCA.fit so the estimator never re-derives them.
         "operators": tuple(
@@ -578,10 +585,18 @@ def compute_bss_cca(
             for op in operators
         ),
     }
+    if n_remove is not None:
+        selection = f"reject={reject}, n_remove={n_remove}"
+    else:
+        selection = (
+            f"reject={reject}, threshold_on={threshold_on}, "
+            f"rho_threshold={rho_threshold:.4g}"
+        )
     logger.info(
-        "BSS-CCA: lag=%d sample(s), %d block(s), removed %s of %s components.",
+        "BSS-CCA: lag=%d sample(s), %d block(s), %s, removed %s of %s components.",
         lag,
         len(operators),
+        selection,
         info["n_removed"],
         info["input_rank"],
     )
@@ -603,12 +618,10 @@ def _resolve_blocking(
         raise ValueError("overlap must be finite and in [0, 1)")
     if segment_len is None:
         return None, None
-    if isinstance(segment_len, bool) or not isinstance(segment_len, Real):
-        raise TypeError("segment_len must be a positive number or None")
-    segment_len = float(segment_len)
-    if not np.isfinite(segment_len) or segment_len <= 0:
-        raise ValueError("segment_len must be finite and positive")
-    sfreq = check_sfreq(sfreq, context="segment_len")
+    segment_len = check_positive_real(segment_len, name="segment_len")
+    if sfreq is None:
+        raise ValueError("sfreq is required when segment_len is used")
+    sfreq = check_positive_real(sfreq, name="sfreq")
     n_block = int(np.floor(segment_len * sfreq + 0.5))
     if n_block < 2:
         raise ValueError(
@@ -616,7 +629,7 @@ def _resolve_blocking(
             f"sfreq={sfreq}; use a longer block"
         )
     if n_block >= n_times:
-        logger.info(
+        logger.debug(
             "BSS-CCA: segment_len covers the whole recording; learning one operator."
         )
     hop = max(1, n_block - int(np.floor(overlap * n_block + 0.5)))
@@ -785,7 +798,14 @@ class BSSCCA(BaseEstimator, TransformerMixin):
         self.preserve_mean = preserve_mean
         self.verbose = verbose
 
-    def fit(self, X: Any, y=None) -> BSSCCA:
+    @verbose
+    def fit(
+        self,
+        X: Any,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> BSSCCA:
         """Learn the BSS-CCA operators.
 
         Parameters
@@ -801,7 +821,6 @@ class BSSCCA(BaseEstimator, TransformerMixin):
             Fitted estimator.
         """
         del y
-        set_log_level_from_verbose(self.verbose)
         data, data_sfreq, _mne_type, _orig, _picks, names = extract_data_from_mne(
             X, auto_pick=True
         )
@@ -818,7 +837,6 @@ class BSSCCA(BaseEstimator, TransformerMixin):
             segment_len=self.segment_len,
             overlap=self.overlap,
             preserve_mean=self.preserve_mean,
-            verbose=self.verbose,
         )
         self.cleaning_matrix_ = info["cleaning_matrix"]
         self.filters_ = info["filters"]
@@ -841,7 +859,14 @@ class BSSCCA(BaseEstimator, TransformerMixin):
         self._operators = list(info["operators"])
         return self
 
-    def transform(self, X: Any, y=None) -> Any:
+    @verbose
+    def transform(
+        self,
+        X: Any,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> Any:
         """Apply the fitted operators to new data.
 
         Parameters
@@ -858,20 +883,11 @@ class BSSCCA(BaseEstimator, TransformerMixin):
         """
         del y
         check_is_fitted(self, ("cleaning_matrix_", "training_mean_"))
-        set_log_level_from_verbose(self.verbose)
         data, data_sfreq, mne_type, orig_inst, picks, names = extract_data_from_mne(
             X, ch_names=list(self.feature_names_in_) if self.feature_names_in_ else None
         )
         transform_sfreq = resolve_sfreq(self.sfreq, data_sfreq, required=False)
-        if (
-            self.sfreq_ is not None
-            and transform_sfreq is not None
-            and not np.isclose(self.sfreq_, float(transform_sfreq))
-        ):
-            raise ValueError(
-                f"transform sfreq={transform_sfreq} disagrees with fitted "
-                f"sfreq={self.sfreq_}"
-            )
+        check_matching_sfreq(transform_sfreq, self.sfreq_, name="BSS-CCA")
         data = check_channel_first_data(data, name="BSS-CCA")
         check_channel_layout(
             "BSS-CCA",
@@ -890,7 +906,15 @@ class BSSCCA(BaseEstimator, TransformerMixin):
         )
         return reconstruct_mne_object(cleaned, orig_inst, mne_type, picks=picks)
 
-    def fit_transform(self, X: Any, y=None, **fit_params) -> Any:
+    @verbose
+    def fit_transform(
+        self,
+        X: Any,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+        **fit_params,
+    ) -> Any:
         """Fit on ``X`` and apply the fitted operators to ``X``.
 
         Parameters

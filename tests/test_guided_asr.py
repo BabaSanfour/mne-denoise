@@ -9,6 +9,7 @@ I/O, and the experimental opt-in / validation guards.
 from __future__ import annotations
 
 import inspect
+import logging
 
 import numpy as np
 import pytest
@@ -83,6 +84,29 @@ def test_hard_no_bias_needs_no_experimental_optin():
         sfreq=SFREQ, cutoff=20.0, reconstruction="hard", picks=None, verbose=False
     ).fit_transform(_eeg())
     assert np.all(np.isfinite(np.asarray(out)))
+
+
+def test_guided_asr_reports_distinct_calibration_and_guidance_results(caplog):
+    """GuidedASR has one shared calibration and one distinct configuration report."""
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        GuidedASR(
+            sfreq=SFREQ,
+            cutoff=20.0,
+            reconstruction="hard",
+            picks=None,
+        ).fit(_eeg(n_times=4000), verbose=True)
+    calibration = [
+        record for record in caplog.records if "GuidedASR calibrated:" in record.message
+    ]
+    guidance = [
+        record
+        for record in caplog.records
+        if record.message.startswith("GuidedASR: reconstruction=")
+    ]
+    assert len(calibration) == 1
+    assert len(guidance) == 1
+    assert "reconstruction=hard" in guidance[0].message
+    assert "guidance strength=" in guidance[0].message
 
 
 def test_constructor_tracks_asr_parameter_defaults_and_kinds():

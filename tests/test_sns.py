@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pytest
 from sklearn.base import clone
@@ -597,13 +599,27 @@ def test_sns_mne_evoked_preserves_identity_fields(sensor_noise_data):
 
 
 def test_sns_verbose_uses_package_logging(rng):
-    """MNE-style string verbosity controls the package logger."""
-    import logging
+    """MNE-style string verbosity is scoped to the SNS operation."""
 
     package_logger = logging.getLogger("mne_denoise")
     previous = package_logger.level
     try:
         SNS(n_neighbors=3, verbose="ERROR").fit(rng.standard_normal((5, 100)))
-        assert package_logger.level == logging.ERROR
+        assert package_logger.level == previous
     finally:
         package_logger.setLevel(previous)
+
+
+def test_sns_emits_one_aggregate_summary(rng, caplog):
+    """The SNS core owns one summary that includes learned neighbours."""
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        compute_sns(
+            rng.standard_normal((5, 300)),
+            n_neighbors=2,
+            n_iter=2,
+            verbose=True,
+        )
+    summaries = [r for r in caplog.records if r.message.startswith("SNS:")]
+    assert len(summaries) == 1
+    assert "neighbours each" in summaries[0].message
+    assert "iteration(s)" in summaries[0].message

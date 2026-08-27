@@ -1,3 +1,5 @@
+import logging
+
 import mne
 import numpy as np
 import pytest
@@ -40,6 +42,21 @@ def test_narrowband_dss_array(osc_data_generator):
     sources = dss.transform(data)
     corr = np.abs(np.corrcoef(sources[0], signal)[0, 1])
     assert corr > 0.90
+
+
+def test_narrowband_dss_fit_summary_describes_target_band(osc_data_generator, caplog):
+    """The parent DSS summary identifies the effective narrowband target."""
+    data, sfreq, freq, _signal = osc_data_generator((3, 500))
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        narrowband_dss(
+            sfreq=sfreq,
+            freq=freq,
+            bandwidth=2.0,
+            n_components=1,
+        ).fit(data, verbose=True)
+    summaries = [r for r in caplog.records if r.message.startswith("DSS:")]
+    assert len(summaries) == 1
+    assert "BandpassBias(9-11 Hz)" in summaries[0].message
 
 
 def test_narrowband_dss_raw(osc_data_generator):
@@ -143,6 +160,48 @@ def test_narrowband_scan_errors():
         )
         assert len(freqs) == 3  # 9, 10, 11
         # The scan should complete despite 10.0 failing
+
+
+def test_narrowband_scan_logs_returned_successful_winner(caplog):
+    """The reported scan winner is the same successful candidate returned."""
+    from unittest.mock import patch
+
+    class FakeDSS:
+        def __init__(self, freq, eigenvalue):
+            self.freq = freq
+            self.eigenvalue = eigenvalue
+
+        def fit(self, data, *, verbose=None):
+            del data, verbose
+            if self.freq == 10.0:
+                raise ValueError("simulated candidate failure")
+            self.eigenvalues_ = np.array([self.eigenvalue])
+            return self
+
+    def make_candidate(sfreq, freq, **kwargs):
+        del sfreq, kwargs
+        return FakeDSS(freq, {-1.0: -0.2, 1.0: -0.4}.get(freq, -0.3))
+
+    data = np.zeros((3, 100))
+    with patch(
+        "mne_denoise.dss.variants.narrowband.narrowband_dss",
+        side_effect=make_candidate,
+    ):
+        with caplog.at_level(logging.INFO, logger="mne_denoise"):
+            best_dss, frequencies, _ = narrowband_scan(
+                data,
+                sfreq=100,
+                freq_range=(9, 11),
+                freq_step=1.0,
+                verbose=True,
+            )
+
+    assert best_dss.freq == frequencies[0]
+    summary = [
+        record for record in caplog.records if "Narrowband DSS scan:" in record.message
+    ]
+    assert len(summary) == 1
+    assert "best=9 Hz" in summary[0].message
 
 
 def test_narrowband_scan_all_fail():

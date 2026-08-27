@@ -132,6 +132,16 @@ def test_sspsir_transform_length_mismatch_raises(tms_epochs):
         ss.transform(epochs.get_data()[:, :, :100])
 
 
+def test_sspsir_transform_channel_count_mismatch_raises(tms_epochs):
+    """SSP-SIR rejects data with a different fitted channel count."""
+    epochs = tms_epochs[0]
+    ss = SSPSIR(n_components=2).fit(epochs)
+    with pytest.raises(
+        ValueError, match="SSPSIR: X has 23 channels; fitted data had 24"
+    ):
+        ss.transform(epochs.get_data()[:, :-1, :])
+
+
 def test_sspsir_constant_blend_survives_length_change(tms_epochs):
     """blend='constant' is time-invariant, so any length transforms fine."""
     epochs = tms_epochs[0]
@@ -261,6 +271,16 @@ def test_sspsir_requires_n_components(tms_epochs):
     epochs = tms_epochs[0]
     with pytest.raises(ValueError, match="n_components must be set"):
         SSPSIR().fit(epochs)
+
+
+def test_sspsir_fit_preserves_constructor_parameters(tms_epochs):
+    """Validation during fit does not normalize constructor parameters."""
+    model = SSPSIR(n_components=2, high_pass=100, smooth_length=1)
+    model.fit(tms_epochs[0])
+    assert model.high_pass == 100
+    assert model.smooth_length == 1
+    assert type(model.high_pass) is int
+    assert type(model.smooth_length) is int
 
 
 @pytest.mark.parametrize(
@@ -455,5 +475,8 @@ def test_sspsir_verbose_logs_fit_summary(tms_epochs, caplog):
     with caplog.at_level(logging.INFO, logger="mne_denoise"):
         SSPSIR(n_components=3, verbose=True).fit(epochs)
     assert any(
-        "SSP-SIR: removed 3 artifact component(s)" in r.message for r in caplog.records
+        "SSP-SIR:" in r.message
+        and "channels=" in r.message
+        and "removed 3 artifact component(s)" in r.message
+        for r in caplog.records
     )

@@ -24,8 +24,9 @@ from typing import Any
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 
-from .._logging import logger, set_log_level_from_verbose
-from ..utils import extract_data_from_mne, reconstruct_mne_object
+from .._data import extract_data_from_mne, reconstruct_mne_object
+from .._logging import logger, verbose
+from .._validation import check_channel_layout
 from ._annotations import (
     _calibration_annotations,
     _rejection_annotations,
@@ -34,7 +35,6 @@ from ._annotations import (
 from ._calibration import calibrate_asr
 from ._reconstruction import process_asr
 from ._validation import (
-    _check_transform_channels,
     _validate_backend_params,
     _validate_common_params,
 )
@@ -303,6 +303,7 @@ class ASR(BaseEstimator, TransformerMixin):
         self.n_jobs = n_jobs
         self.verbose = verbose
 
+    @verbose
     def fit(
         self,
         X: BaseRaw | BaseEpochs | np.ndarray,
@@ -310,6 +311,7 @@ class ASR(BaseEstimator, TransformerMixin):
         *,
         calibration: BaseRaw | BaseEpochs | np.ndarray | None = None,
         calibration_mask: np.ndarray | None = None,
+        verbose: bool | str | int | None = None,
     ) -> ASR:
         """Fit ASR calibration state.
 
@@ -348,7 +350,6 @@ class ASR(BaseEstimator, TransformerMixin):
         >>> clean_target = asr.transform(target_raw)
         """
         del y
-        set_log_level_from_verbose(self.verbose)
         _validate_backend_params(
             method=self.method,
             experimental=self.experimental,
@@ -430,10 +431,16 @@ class ASR(BaseEstimator, TransformerMixin):
         self.calibration_mask_kind_ = "window"
         self.calibration_info_ = cal_info
         logger.info(
-            "ASR calibrated: method=%s, %d channels, rank %d.",
+            "%s calibrated: method=%s, channels=%d, sfreq=%.3g Hz, "
+            "cutoff=%.3g, rank=%d, clean calibration windows=%d/%d.",
+            type(self).__name__,
             self.method,
             self.n_channels_,
+            self.sfreq_,
+            self.cutoff,
             self.rank_,
+            cal_info.get("n_clean_windows", 0),
+            cal_info.get("n_calibration_windows", 0),
         )
         self.history_ = {
             "method": self.method,
@@ -470,12 +477,15 @@ class ASR(BaseEstimator, TransformerMixin):
             method=self.method,
         )
 
+    @verbose
     def transform(
         self,
         X: BaseRaw | BaseEpochs | Evoked | np.ndarray,
         y=None,
         copy: bool | None = None,
         return_diagnostics: bool = False,
+        *,
+        verbose: bool | str | int | None = None,
     ) -> Any:
         """Apply the fitted ASR model.
 
@@ -509,7 +519,6 @@ class ASR(BaseEstimator, TransformerMixin):
         >>> clean_data, diagnostics = asr.transform(data, return_diagnostics=True)
         """
         del y, copy
-        set_log_level_from_verbose(self.verbose)
         self._check_is_fitted()
         data, sfreq, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
             X, auto_pick=True
@@ -519,11 +528,17 @@ class ASR(BaseEstimator, TransformerMixin):
             raise ValueError(
                 f"Input sfreq {sfreq} does not match fitted sfreq {self.sfreq_}"
             )
-        _check_transform_channels(
-            self.n_channels_,
-            self.ch_names_,
-            data.shape[1] if mne_type == "epochs" else data.shape[0],
-            ch_names,
+        if self.ch_names_ is not None and ch_names is None:
+            raise ValueError(
+                "ASR was fitted with named channels; transform input must provide "
+                "channel names so their order can be verified."
+            )
+        check_channel_layout(
+            type(self).__name__,
+            n_channels=data.shape[1] if mne_type == "epochs" else data.shape[0],
+            fitted_n_channels=self.n_channels_,
+            ch_names=ch_names,
+            fitted_ch_names=self.ch_names_,
         )
         self._warn_preprocessing_state(orig_inst, mne_type)
 
@@ -573,6 +588,15 @@ class ASR(BaseEstimator, TransformerMixin):
             cleaned_data = selected_clean
 
         self._store_transform_diagnostics(diagnostics)
+        logger.info(
+            "%s: processed method=%s, %d window(s), %.1f%% of samples "
+            "reconstructed (max %d component(s)).",
+            type(self).__name__,
+            diagnostics.get("covariance_geometry", self.method),
+            diagnostics["n_windows"],
+            100.0 * diagnostics["fraction_reconstructed_samples"],
+            diagnostics["max_components_reconstructed"],
+        )
         cleaned = reconstruct_mne_object(
             cleaned_data, orig_inst, mne_type, picks=picks, verbose=False
         )
@@ -580,12 +604,15 @@ class ASR(BaseEstimator, TransformerMixin):
             return cleaned, diagnostics
         return cleaned
 
+    @verbose
     def fit_transform(
         self,
         X: BaseRaw | BaseEpochs | np.ndarray,
         y=None,
         calibration: BaseRaw | BaseEpochs | np.ndarray | None = None,
         return_diagnostics: bool = False,
+        *,
+        verbose: bool | str | int | None = None,
     ) -> Any:
         """Fit ASR and apply it to ``X``.
 

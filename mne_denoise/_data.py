@@ -1,44 +1,34 @@
-"""General utilities for mne-denoise."""
+"""Shared data extraction and reconstruction for arrays and MNE objects."""
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import numpy as np
 
-try:
-    import mne
+from . import _mne
+from ._logging import logger
+
+
+def _mne_instance_types() -> tuple[type, ...]:
+    """Return supported MNE instance types when MNE-Python is available."""
+    if _mne.mne is None:
+        return ()
+
     from mne.epochs import BaseEpochs
     from mne.evoked import Evoked
     from mne.io import BaseRaw
 
-    _HAS_MNE = True
-except ImportError:
-    mne = None
-    # Mock classes for type hinting/checking when MNE not available
-
-    class BaseRaw:  # noqa: D101
-        """Mock BaseRaw class."""
-
-    class BaseEpochs:  # noqa: D101
-        """Mock BaseEpochs class."""
-
-    class Evoked:  # noqa: D101
-        """Mock Evoked class."""
-
-    _HAS_MNE = False
-
-import logging
-import warnings
-
-logger = logging.getLogger(__name__)
+    return BaseRaw, BaseEpochs, Evoked
 
 
 def _get_homogeneous_picks(
     inst: Any, auto_pick: bool | str = "auto"
 ) -> np.ndarray | None:
     """Choose one homogeneous data channel type from an MNE object."""
-    if not (_HAS_MNE and isinstance(inst, BaseRaw | BaseEpochs | Evoked)):
+    mne_types = _mne_instance_types()
+    if not isinstance(inst, mne_types):
         return None
 
     ch_types = inst.get_channel_types()
@@ -82,7 +72,7 @@ def _get_homogeneous_picks(
     for ch_type, pick_kws in pick_specs:
         if ch_type not in ch_types:
             continue
-        picks = mne.pick_types(inst.info, exclude=(), **pick_kws)
+        picks = _mne.mne.pick_types(inst.info, exclude=(), **pick_kws)
         if len(picks) > 0:
             present_types.append(ch_type)
             if best_picks is None:
@@ -101,18 +91,140 @@ def _get_homogeneous_picks(
         else:
             raise ValueError(msg)
 
-    if best_picks is not None:
-        if len(best_picks) == len(inst.ch_names):
-            return None
-        logger.info(
-            "Auto-picking %d/%d %s channels and preserving other channels.",
-            len(best_picks),
-            len(inst.ch_names),
-            best_type,
-        )
-        return best_picks
+    if best_picks is None or len(best_picks) == len(inst.ch_names):
+        return None
 
-    return None
+    logger.debug(
+        "Auto-picking %d/%d %s channels and preserving other channels.",
+        len(best_picks),
+        len(inst.ch_names),
+        best_type,
+    )
+    return best_picks
+
+
+def _resolve_mne_picks(
+    inst: Any,
+    ch_names: list[str] | None,
+    auto_pick: bool | str,
+    exclude_bads: bool,
+) -> np.ndarray | None:
+    """Resolve the channel-selection policy for an MNE instance."""
+    if ch_names is not None:
+        missing = [ch for ch in ch_names if ch not in inst.ch_names]
+        if missing:
+            raise ValueError(
+                f"Input MNE object is missing required channels: {missing[:5]}"
+            )
+        return np.array([inst.ch_names.index(ch) for ch in ch_names])
+
+    if auto_pick == "data":
+        picks = _mne.mne.pick_types(
+            inst.info,
+            meg=True,
+            ref_meg=False,
+            eeg=True,
+            seeg=True,
+            ecog=True,
+            dbs=True,
+            fnirs=True,
+            csd=True,
+            exclude=(),
+        )
+        if picks.size == 0:
+            raise ValueError("No data channels found for joint decomposition")
+    elif auto_pick is not False:
+        picks = _get_homogeneous_picks(inst, auto_pick=auto_pick)
+    else:
+        picks = None
+
+    if not exclude_bads:
+        return picks
+
+    candidate_picks = (
+        np.arange(len(inst.ch_names), dtype=int)
+        if picks is None
+        else np.asarray(picks, dtype=int)
+    )
+    bads = set(inst.info["bads"])
+    picks = np.asarray(
+        [pick for pick in candidate_picks if inst.ch_names[pick] not in bads],
+        dtype=int,
+    )
+    if picks.size == 0:
+        raise ValueError("No good data channels remain after excluding bads")
+    return picks
+
+
+def epochs_to_continuous(data: np.ndarray) -> np.ndarray:
+    """Convert standard epoch-major data to continuous channel-first data.
+
+    Parameters
+    ----------
+    data : ndarray, shape (n_channels, n_times) | (n_epochs, n_channels, n_times)
+        Standard MNE-style data. Two-dimensional input has shape
+        ``(n_channels, n_times)`` and is returned unchanged. Three-dimensional
+        input has shape ``(n_epochs, n_channels, n_times)`` and is concatenated
+        epoch-by-epoch along time.
+
+    Returns
+    -------
+    continuous : ndarray, shape (n_channels, n_times) | (n_channels, n_epochs * n_times)
+        Continuous channel-first data.
+
+    See Also
+    --------
+    continuous_to_epochs : Inverse operation.
+    """
+    data = np.asarray(data)
+    if data.ndim == 2:
+        return data
+    if data.ndim != 3:
+        raise ValueError(f"data must be 2D or 3D, got {data.ndim}D")
+    return data.transpose(1, 0, 2).reshape(data.shape[1], -1)
+
+
+def continuous_to_epochs(continuous: np.ndarray, shape: tuple[int, ...]) -> np.ndarray:
+    """Convert continuous data to the original standard epoch-major shape.
+
+    Parameters
+    ----------
+    continuous : ndarray, shape (n_channels, n_epochs * n_times)
+        Continuous channel-first data, typically the output of
+        :func:`epochs_to_continuous`.
+    shape : tuple
+        Original shape. It must represent either ``(n_channels, n_times)`` or
+        ``(n_epochs, n_channels, n_times)``. A two-dimensional shape returns
+        ``continuous`` unchanged.
+
+    Returns
+    -------
+    epoched : ndarray, shape (n_epochs, n_channels, n_times)
+        Data reshaped to the original standard epoch-major representation.
+
+    See Also
+    --------
+    epochs_to_continuous : Forward operation.
+    """
+    if len(shape) == 2:
+        return continuous
+    if len(shape) != 3:
+        raise ValueError(f"shape must have 2 or 3 entries, got {len(shape)}")
+    n_epochs, n_channels, n_times = shape
+    if continuous.ndim != 2:
+        raise ValueError(f"continuous must be 2D, got {continuous.ndim}D")
+    if continuous.shape[0] != n_channels:
+        raise ValueError(
+            f"continuous has {continuous.shape[0]} channels but target shape "
+            f"expects {n_channels}"
+        )
+    expected_samples = n_epochs * n_times
+    if continuous.shape[1] != expected_samples:
+        raise ValueError(
+            f"continuous has {continuous.shape[1]} samples but target shape "
+            f"expects {expected_samples}"
+        )
+    return continuous.reshape(n_channels, n_epochs, n_times).transpose(1, 0, 2)
 
 
 def extract_data_from_mne(
@@ -196,69 +308,24 @@ def extract_data_from_mne(
             "concatenate_epochs and channel_first_epochs cannot both be True"
         )
 
-    if _HAS_MNE and isinstance(X, BaseRaw | BaseEpochs | Evoked):
-        orig_inst = X
-        sfreq = X.info["sfreq"]
-
-        if ch_names is not None:
-            missing = [ch for ch in ch_names if ch not in X.ch_names]
-            if missing:
-                raise ValueError(
-                    f"Input MNE object is missing required channels: {missing[:5]}"
-                )
-            picks = np.array([X.ch_names.index(ch) for ch in ch_names])
-            data = X.get_data(picks=picks)
-            extracted_ch_names = [X.ch_names[p] for p in picks]
-        else:
-            if auto_pick == "data":
-                picks = mne.pick_types(
-                    X.info,
-                    meg=True,
-                    ref_meg=False,
-                    eeg=True,
-                    seeg=True,
-                    ecog=True,
-                    dbs=True,
-                    fnirs=True,
-                    csd=True,
-                    exclude=(),
-                )
-                if picks.size == 0:
-                    raise ValueError("No data channels found for joint decomposition")
-            elif auto_pick is not False:
-                picks = _get_homogeneous_picks(X, auto_pick=auto_pick)
-            else:
-                picks = None
-
-            if exclude_bads:
-                candidate_picks = (
-                    np.arange(len(X.ch_names), dtype=int)
-                    if picks is None
-                    else np.asarray(picks, dtype=int)
-                )
-                bads = set(X.info["bads"])
-                picks = np.asarray(
-                    [pick for pick in candidate_picks if X.ch_names[pick] not in bads],
-                    dtype=int,
-                )
-                if picks.size == 0:
-                    raise ValueError(
-                        "No good data channels remain after excluding bads"
-                    )
-
-            if picks is not None:
-                data = X.get_data(picks=picks)
-                extracted_ch_names = [X.ch_names[p] for p in picks]
-            else:
-                data = X.get_data()
-                extracted_ch_names = X.ch_names.copy()
-
-        if isinstance(X, BaseEpochs):
+    mne_types = _mne_instance_types()
+    if isinstance(X, mne_types):
+        if isinstance(X, mne_types[1]):
             mne_type = "epochs"
-        elif isinstance(X, Evoked):
+        elif isinstance(X, mne_types[2]):
             mne_type = "evoked"
         else:
             mne_type = "raw"
+
+        orig_inst = X
+        sfreq = X.info["sfreq"]
+        picks = _resolve_mne_picks(X, ch_names, auto_pick, exclude_bads)
+        if picks is None:
+            data = X.get_data()
+            extracted_ch_names = X.ch_names.copy()
+        else:
+            data = X.get_data(picks=picks)
+            extracted_ch_names = [X.ch_names[p] for p in picks]
     else:
         # Assume array
         data = np.asarray(X)
@@ -268,7 +335,7 @@ def extract_data_from_mne(
             raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
         raise TypeError(f"Unsupported input type: {type(X)}")
     if concatenate_epochs and data.ndim == 3:
-        data = np.transpose(data, (1, 0, 2)).reshape(data.shape[1], -1)
+        data = epochs_to_continuous(data)
     elif channel_first_epochs and mne_type == "epochs":
         data = np.transpose(data, (1, 2, 0))
 
@@ -306,36 +373,28 @@ def reconstruct_mne_object(
     if mne_type == "array" or orig_inst is None:
         return data
 
-    if not _HAS_MNE:
+    if _mne.mne is None:
         return data
-
-    if mne_type in ("raw", "epochs"):
-        out = orig_inst.copy().load_data()
-        target = out._data
-        if picks is None:
-            if target.shape != data.shape:
-                raise ValueError(
-                    f"Processed data shape {data.shape} does not match {mne_type} "
-                    f"shape {target.shape}"
-                )
-            target[...] = data
-        elif mne_type == "epochs":
-            target[:, picks, :] = data
-        else:
-            target[picks, :] = data
-        return out
 
     if mne_type == "evoked":
         out = orig_inst.copy()
-        if picks is None:
-            if out.data.shape != data.shape:
-                raise ValueError(
-                    f"Processed data shape {data.shape} does not match evoked "
-                    f"shape {out.data.shape}"
-                )
-            out.data[...] = data
-        else:
-            out.data[picks, :] = data
-        return out
+        target = out.data
+    elif mne_type in ("raw", "epochs"):
+        out = orig_inst.copy().load_data()
+        target = out._data
+    else:
+        return data
 
-    return data
+    if picks is None:
+        if target.shape != data.shape:
+            raise ValueError(
+                f"Processed data shape {data.shape} does not match {mne_type} "
+                f"shape {target.shape}"
+            )
+        target[...] = data
+    elif mne_type == "epochs":
+        target[:, picks, :] = data
+    else:
+        target[picks, :] = data
+
+    return out

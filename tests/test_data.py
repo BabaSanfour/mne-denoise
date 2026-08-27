@@ -1,28 +1,30 @@
-"""Tests for mne_denoise.utils module."""
+"""Tests for MNE and array data extraction helpers."""
 
 import mne
 import numpy as np
 import pytest
 
-from mne_denoise.utils import (
-    _HAS_MNE,
+from mne_denoise._data import (
+    _get_homogeneous_picks,
+    continuous_to_epochs,
+    epochs_to_continuous,
     extract_data_from_mne,
     reconstruct_mne_object,
 )
 
-# =====================================================================
-# extract_data_from_mne
-# =====================================================================
-
 
 def test_extract_data_from_mne_raw():
     info = mne.create_info(ch_names=["C1", "C2"], sfreq=100.0, ch_types="eeg")
-    raw = mne.io.RawArray(np.random.randn(2, 200), info)
+    raw_data = np.random.randn(2, 200)
+    raw = mne.io.RawArray(raw_data, info)
     data, sfreq, mne_type, orig, picks, ch_names = extract_data_from_mne(raw)
     assert data.shape == (2, 200)
     assert sfreq == 100.0
     assert mne_type == "raw"
     assert orig is raw
+    assert picks is None
+    assert ch_names == ["C1", "C2"]
+    np.testing.assert_array_equal(data, raw_data)
 
 
 def test_extract_data_from_mne_epochs():
@@ -35,6 +37,8 @@ def test_extract_data_from_mne_epochs():
     assert sfreq == 100.0
     assert mne_type == "epochs"
     assert orig is epochs
+    assert picks is None
+    assert ch_names == ["C1", "C2"]
 
     continuous, _, mne_type, _, _, _ = extract_data_from_mne(
         epochs, concatenate_epochs=True
@@ -87,13 +91,35 @@ def test_extract_data_from_mne_explicit_names_override_bad_exclusion():
 
     data, _, _, _, picks, ch_names = extract_data_from_mne(
         raw,
-        ch_names=["C2"],
+        ch_names=["C2", "C1"],
         exclude_bads=True,
     )
 
-    np.testing.assert_array_equal(picks, [1])
-    assert data.shape == (1, 100)
-    assert ch_names == ["C2"]
+    np.testing.assert_array_equal(picks, [1, 0])
+    assert data.shape == (2, 100)
+    assert ch_names == ["C2", "C1"]
+
+
+def test_extract_data_from_mne_excluding_all_bads_raises():
+    info = mne.create_info(["C1", "C2"], 100.0, "eeg")
+    raw = mne.io.RawArray(np.ones((2, 100)), info, verbose=False)
+    raw.info["bads"] = ["C1", "C2"]
+
+    with pytest.raises(
+        ValueError, match="No good data channels remain after excluding bads"
+    ):
+        extract_data_from_mne(raw, exclude_bads=True)
+
+
+def test_extract_data_from_mne_missing_explicit_names():
+    info = mne.create_info(["C1", "C2"], 100.0, "eeg")
+    raw = mne.io.RawArray(np.ones((2, 100)), info, verbose=False)
+
+    with pytest.raises(
+        ValueError,
+        match=r"Input MNE object is missing required channels: \['C3'\]",
+    ):
+        extract_data_from_mne(raw, ch_names=["C3"])
 
 
 def test_extract_data_from_mne_epoch_layout_options_are_exclusive():
@@ -112,7 +138,12 @@ def test_extract_data_from_mne_evoked():
     evoked = mne.EvokedArray(data_2d, info, tmin=0.0)
     data, sfreq, mne_type, orig, picks, ch_names = extract_data_from_mne(evoked)
     assert data.shape == (2, 100)
+    assert sfreq == 100.0
     assert mne_type == "evoked"
+    assert orig is evoked
+    assert picks is None
+    assert ch_names == ["C1", "C2"]
+    np.testing.assert_array_equal(data, data_2d)
 
 
 def test_extract_data_from_mne_ndarray():
@@ -122,6 +153,8 @@ def test_extract_data_from_mne_ndarray():
     assert sfreq is None
     assert mne_type == "array"
     assert orig is None
+    assert picks is None
+    assert ch_names is None
 
     epochs = np.arange(30).reshape(3, 2, 5)
     continuous, *_ = extract_data_from_mne(epochs, concatenate_epochs=True)
@@ -136,12 +169,52 @@ def test_extract_data_from_mne_list_input():
         [[1, 2], [3, 4]]
     )
     assert isinstance(data, np.ndarray)
+    assert sfreq is None
     assert mne_type == "array"
+    assert orig is None
+    assert picks is None
+    assert ch_names is None
 
 
-# =====================================================================
-# reconstruct_mne_object
-# =====================================================================
+def test_auto_pick_single_type():
+    # Only grad and eog
+    info = mne.create_info(
+        ch_names=["grad1", "grad2", "eog1"],
+        sfreq=100.0,
+        ch_types=["grad", "grad", "eog"],
+    )
+    raw = mne.io.RawArray(np.random.randn(3, 100), info)
+
+    # Should return picks for the 2 grad channels, ignoring EOG
+    picks = _get_homogeneous_picks(raw)
+    assert len(picks) == 2
+    np.testing.assert_array_equal(picks, [0, 1])
+
+
+def test_auto_pick_mixed_types_warn():
+    # Mixed mag and grad
+    info = mne.create_info(
+        ch_names=["mag1", "grad1"], sfreq=100.0, ch_types=["mag", "grad"]
+    )
+    raw = mne.io.RawArray(np.random.randn(2, 100), info)
+
+    # By default (auto_pick='auto'), it should warn and pick 'mag' (the first one)
+    with pytest.warns(UserWarning, match="Found multiple data channel types"):
+        picks = _get_homogeneous_picks(raw)
+    assert len(picks) == 1
+    assert picks[0] == 0
+
+
+def test_auto_pick_mixed_types_raise():
+    # Mixed mag and grad
+    info = mne.create_info(
+        ch_names=["mag1", "grad1"], sfreq=100.0, ch_types=["mag", "grad"]
+    )
+    raw = mne.io.RawArray(np.random.randn(2, 100), info)
+
+    # If auto_pick='raise', it should raise ValueError
+    with pytest.raises(ValueError, match="Found multiple data channel types"):
+        _get_homogeneous_picks(raw, auto_pick="raise")
 
 
 def test_reconstruct_mne_object_array_passthrough():
@@ -234,63 +307,80 @@ def test_reconstruct_mne_object_unknown_type_passthrough():
     assert out is arr
 
 
-# =====================================================================
-# has_mne
-# =====================================================================
+def test_epochs_to_continuous_concatenates_along_time():
+    """Epochs are laid out channel-first and joined end to end."""
+    X = np.arange(2 * 3 * 4).reshape(2, 3, 4)
+    continuous = epochs_to_continuous(X)
+    assert continuous.shape == (3, 8)
+    # Channel 0 of epoch 0 followed by channel 0 of epoch 1.
+    np.testing.assert_array_equal(continuous[0], np.concatenate([X[0, 0], X[1, 0]]))
 
 
-def test_mne_available():
-    """Test that _HAS_MNE is True in test environment."""
-    assert _HAS_MNE is True
-
-
-# =====================================================================
-# auto_pick
-# =====================================================================
-
-
-def test_auto_pick_single_type():
-    from mne_denoise.utils import _get_homogeneous_picks
-
-    # Only grad and eog
-    info = mne.create_info(
-        ch_names=["grad1", "grad2", "eog1"],
-        sfreq=100.0,
-        ch_types=["grad", "grad", "eog"],
+def test_round_trip_is_exact():
+    """continuous_to_epochs inverts epochs_to_continuous."""
+    rng = np.random.default_rng(0)
+    X = rng.standard_normal((5, 4, 30))
+    np.testing.assert_array_equal(
+        continuous_to_epochs(epochs_to_continuous(X), X.shape), X
     )
-    raw = mne.io.RawArray(np.random.randn(3, 100), info)
-
-    # Should return picks for the 2 grad channels, ignoring EOG
-    picks = _get_homogeneous_picks(raw)
-    assert len(picks) == 2
-    np.testing.assert_array_equal(picks, [0, 1])
 
 
-def test_auto_pick_mixed_types_warn():
-    from mne_denoise.utils import _get_homogeneous_picks
+def test_continuous_input_passes_through():
+    """Two-dimensional data is returned unchanged by both helpers."""
+    rng = np.random.default_rng(1)
+    X = rng.standard_normal((4, 50))
+    assert epochs_to_continuous(X) is X
+    continuous = epochs_to_continuous(X)
+    np.testing.assert_array_equal(continuous_to_epochs(continuous, X.shape), X)
 
-    # Mixed mag and grad
-    info = mne.create_info(
-        ch_names=["mag1", "grad1"], sfreq=100.0, ch_types=["mag", "grad"]
+
+def test_matches_the_manual_idiom():
+    """The helpers reproduce the transpose/reshape idiom they replaced."""
+    rng = np.random.default_rng(2)
+    X = rng.standard_normal((3, 6, 20))
+    n_epochs, n_channels, n_times = X.shape
+    np.testing.assert_array_equal(
+        epochs_to_continuous(X), X.transpose(1, 0, 2).reshape(n_channels, -1)
     )
-    raw = mne.io.RawArray(np.random.randn(2, 100), info)
-
-    # By default (auto_pick='auto'), it should warn and pick 'mag' (the first one)
-    with pytest.warns(UserWarning, match="Found multiple data channel types"):
-        picks = _get_homogeneous_picks(raw)
-    assert len(picks) == 1
-    assert picks[0] == 0
-
-
-def test_auto_pick_mixed_types_raise():
-    from mne_denoise.utils import _get_homogeneous_picks
-
-    # Mixed mag and grad
-    info = mne.create_info(
-        ch_names=["mag1", "grad1"], sfreq=100.0, ch_types=["mag", "grad"]
+    continuous = epochs_to_continuous(X)
+    np.testing.assert_array_equal(
+        continuous_to_epochs(continuous, X.shape),
+        continuous.reshape(n_channels, n_epochs, n_times).transpose(1, 0, 2),
     )
-    raw = mne.io.RawArray(np.random.randn(2, 100), info)
 
-    # If auto_pick='raise', it should raise ValueError
-    with pytest.raises(ValueError, match="Found multiple data channel types"):
-        _get_homogeneous_picks(raw, auto_pick="raise")
+
+@pytest.mark.parametrize("ndim", [1, 4])
+def test_epochs_to_continuous_rejects_other_dimensions(ndim):
+    """Only 2-D and 3-D layouts are meaningful."""
+    with pytest.raises(ValueError, match="must be 2D or 3D"):
+        epochs_to_continuous(np.ones((2,) * ndim))
+
+
+def test_continuous_to_epochs_rejects_other_shapes():
+    """The target shape must describe continuous or epoched data."""
+    with pytest.raises(ValueError, match="shape must have 2 or 3 entries"):
+        continuous_to_epochs(np.ones((3, 10)), (2, 3, 4, 5))
+
+
+def test_continuous_to_epochs_rejects_channel_mismatch():
+    """The continuous channel count must match the target epoch shape."""
+    with pytest.raises(
+        ValueError,
+        match="continuous has 2 channels but target shape expects 3",
+    ):
+        continuous_to_epochs(np.ones((2, 30)), (3, 3, 10))
+
+
+def test_continuous_to_epochs_rejects_sample_count_mismatch():
+    """The continuous sample count must match all target epochs."""
+    with pytest.raises(
+        ValueError,
+        match="continuous has 29 samples but target shape expects 30",
+    ):
+        continuous_to_epochs(np.ones((2, 29)), (3, 2, 10))
+
+
+def test_continuous_to_epochs_rejects_non_2d_continuous_input():
+    """A 3-D target requires continuous channel-first input."""
+    with pytest.raises(ValueError, match="continuous must be 2D, got 3D"):
+        continuous_to_epochs(np.ones((3, 2, 10)), (3, 2, 10))

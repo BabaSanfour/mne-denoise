@@ -16,21 +16,23 @@ References
 
 from __future__ import annotations
 
-import logging
 from numbers import Real
 from typing import Any
 
 import numpy as np
 
-from .._validation import check_channel_first_data, check_positive_integer, check_sfreq
+from .._logging import logger, verbose
+from .._validation import (
+    check_channel_first_data,
+    check_positive_integer,
+    check_positive_real,
+)
 from ._common import (
     _BaseSSATransformer,
     _diagonal_average,
     _resolve_window_length,
     _trajectory_matrix,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def ssa_decompose(
@@ -204,7 +206,7 @@ def _check_frequency_parameters(
     n_check: int | None,
 ) -> tuple[float, float, tuple[float, float] | None, int | None]:
     """Validate the package-specific Basic SSA grouping rule."""
-    sfreq = check_sfreq(sfreq)
+    sfreq = check_positive_real(sfreq, name="sfreq")
     if isinstance(drop_freq_max, bool) or not isinstance(drop_freq_max, Real):
         raise TypeError("drop_freq_max must be a finite number")
     drop_freq_max = float(drop_freq_max)
@@ -341,6 +343,7 @@ def ssa_clean_channel(
     return cleaned
 
 
+@verbose
 def compute_basic_ssa(
     X: np.ndarray,
     sfreq: float,
@@ -351,6 +354,7 @@ def compute_basic_ssa(
     max_window: int = 100,
     *,
     window_seconds: float | None = None,
+    verbose: bool | str | int | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """Apply frequency-guided Basic SSA independently to every channel.
 
@@ -375,6 +379,9 @@ def compute_basic_ssa(
     window_seconds : float | None, default=None
         Embedding duration in seconds, mutually exclusive with
         ``window_length``.
+    verbose : bool | str | int | None
+        MNE-style logging level. Channel helpers remain silent; this function
+        reports one aggregate result at INFO.
 
     Returns
     -------
@@ -439,6 +446,14 @@ def compute_basic_ssa(
         "window_length": records[0]["window_length"],
         "frequency_resolution": records[0]["frequency_resolution"],
     }
+    logger.info(
+        "Basic SSA: window=%d samples, channels=%d, dropped=%d component(s) "
+        "(mean %.1f/channel).",
+        info["window_length"],
+        X.shape[0],
+        int(np.sum(info["dropped_counts"])),
+        float(np.mean(info["dropped_counts"])),
+    )
     return cleaned, info
 
 
@@ -562,6 +577,8 @@ class SingularSpectrumAnalysis(_BaseSSATransformer):
     def _compute_record(
         self, data: np.ndarray, sfreq: float
     ) -> tuple[np.ndarray, dict[str, Any]]:
+        # The estimator owns one aggregate SSA report; suppress the core's
+        # standalone summary for each record while retaining its computation.
         return compute_basic_ssa(
             data,
             sfreq,
@@ -571,6 +588,7 @@ class SingularSpectrumAnalysis(_BaseSSATransformer):
             self.n_check,
             self.max_window,
             window_seconds=self.window_seconds,
+            verbose="WARNING",
         )
 
     def _set_diagnostic_attributes(
@@ -588,4 +606,12 @@ class SingularSpectrumAnalysis(_BaseSSATransformer):
             self.dropped_counts_ = records[0]["dropped_counts"]
             self.dropped_frequencies_ = records[0]["dropped_frequencies"]
             mean_count = float(np.mean(self.dropped_counts_))
-        logger.info("SSA: dropped a mean of %.1f components/channel.", mean_count)
+        window = records[0].get("window_length", self.window_length or "auto")
+        logger.info(
+            "Basic SSA: window=%s samples, channels=%d, dropped=%d component(s) "
+            "(mean %.1f/channel).",
+            window,
+            self.n_channels_in_,
+            int(np.sum(self.dropped_counts_)),
+            mean_count,
+        )

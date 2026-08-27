@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import mne
 import numpy as np
 import pytest
@@ -277,6 +279,30 @@ def test_sound_array_with_forward(forward):
     assert sound.transform(arr).shape == (24, 600)
 
 
+def test_sound_transform_checks_fitted_channel_count(forward):
+    """SOUND rejects array transforms with a different channel count."""
+    arr = np.random.default_rng(51).standard_normal((24, 600))
+    sound = SOUND(n_iter=1, forward=forward, random_state=0).fit(arr)
+
+    assert sound.transform(arr).shape == arr.shape
+    with pytest.raises(
+        ValueError, match="SOUND: X has 23 channels; fitted data had 24"
+    ):
+        sound.transform(arr[:-1])
+
+
+def test_sound_mne_transform_uses_fitted_channel_order(noisy_raw, forward):
+    """MNE transforms are extracted in the fitted channel order."""
+    raw, _ = noisy_raw
+    sound = SOUND(n_iter=1, forward=forward, random_state=0).fit(raw)
+    reordered = raw.copy().reorder_channels(raw.ch_names[::-1])
+
+    cleaned = sound.transform(reordered)
+    np.testing.assert_allclose(
+        cleaned.get_data()[::-1], sound.operator_ @ raw.get_data()
+    )
+
+
 def test_sound_mne_object_with_forward(noisy_raw, forward):
     """Raw + an individual forward: the main real-world path.
 
@@ -320,12 +346,19 @@ def test_sound_array_forward_channel_mismatch_raises(forward):
 
 def test_sound_verbose_logs_fit_summary(noisy_raw, caplog):
     """The package logging convention reports the iteration outcome."""
-    import logging
-
     raw, _ = noisy_raw
     with caplog.at_level(logging.INFO, logger="mne_denoise"):
         SOUND(n_iter=2, random_state=0, verbose=True).fit(raw)
-    assert any("SOUND: 2 iteration(s)" in r.message for r in caplog.records)
+    summaries = [r for r in caplog.records if r.message.startswith("SOUND:")]
+    assert len(summaries) == 1
+    for token in (
+        "2 iteration(s)",
+        "channels=",
+        "sources=",
+        "final max relative sigma change",
+        "reference=",
+    ):
+        assert token in summaries[0].message
 
 
 def test_sound_ref_best_channel_mismatch_raises():

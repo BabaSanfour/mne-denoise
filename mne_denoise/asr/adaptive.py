@@ -27,9 +27,9 @@ from typing import Any
 
 import numpy as np
 
-from .._logging import set_log_level_from_verbose
-from .._spatial import continuous_to_epochs
-from ..utils import extract_data_from_mne, reconstruct_mne_object
+from .._data import continuous_to_epochs, extract_data_from_mne, reconstruct_mne_object
+from .._logging import logger, verbose
+from .._validation import check_channel_layout
 from ._covariance import (
     _adaptive_covariance_sqrt,
 )
@@ -42,7 +42,6 @@ from ._learner import _AdaptiveSimilarityMatcher, _build_adaptive_learner
 from ._reconstruction import _process_adaptive_chunk
 from ._types import ASRState, _copy_asr_state, _copy_process_state
 from ._validation import (
-    _check_transform_channels,
     _round_half_up,
     _validate_adaptive_params,
     _validate_array_2d,
@@ -237,12 +236,15 @@ class AdaptiveASR(ASR):
         self.mw_window_length = mw_window_length
         self.mw_mode = mw_mode
 
+    @verbose
     def fit(
         self,
         X: BaseRaw | BaseEpochs | np.ndarray,
         y=None,
         calibration: BaseRaw | BaseEpochs | np.ndarray | None = None,
         calibration_mask: np.ndarray | None = None,
+        *,
+        verbose: bool | str | int | None = None,
     ) -> AdaptiveASR:
         """Fit the initial adaptive ASR state from calibration data.
 
@@ -272,7 +274,6 @@ class AdaptiveASR(ASR):
             The fitted estimator instance.
         """
         del y
-        set_log_level_from_verbose(self.verbose)
         _validate_adaptive_params(
             variant=self.variant,
             update_window_length=self.update_window_length,
@@ -360,13 +361,29 @@ class AdaptiveASR(ASR):
             "n_channels": self.n_channels_,
             "sfreq": self.sfreq_,
         }
+        logger.info(
+            "AdaptiveASR: variant=%s, method=%s, channels=%d, sfreq=%.3g Hz, "
+            "cutoff=%.3g, rank=%d, "
+            "clean calibration windows=%d/%d.",
+            self.variant,
+            self.method,
+            self.n_channels_,
+            self.sfreq_,
+            self.cutoff,
+            self.rank_,
+            cal_info.get("n_clean_windows", 0),
+            cal_info.get("n_calibration_windows", 0),
+        )
         return self
 
+    @verbose
     def partial_fit(
         self,
         X: BaseRaw | BaseEpochs | np.ndarray,
         y=None,
         calibration_mask: np.ndarray | None = None,
+        *,
+        verbose: bool | str | int | None = None,
     ) -> AdaptiveASR:
         """Update the adaptive calibration state on a new clean chunk.
 
@@ -394,7 +411,6 @@ class AdaptiveASR(ASR):
             The updated estimator instance.
         """
         del y
-        set_log_level_from_verbose(self.verbose)
         if self.variant == "mw":
             raise NotImplementedError(
                 "AdaptiveASR(variant='mw') does not support partial_fit. "
@@ -417,11 +433,17 @@ class AdaptiveASR(ASR):
             raise ValueError(
                 f"Input sfreq {sfreq} does not match fitted sfreq {self.sfreq_}"
             )
-        _check_transform_channels(
-            self.n_channels_,
-            self.ch_names_,
-            data.shape[0],
-            ch_names,
+        if self.ch_names_ is not None and ch_names is None:
+            raise ValueError(
+                "ASR was fitted with named channels; transform input must provide "
+                "channel names so their order can be verified."
+            )
+        check_channel_layout(
+            "AdaptiveASR",
+            n_channels=data.shape[0],
+            fitted_n_channels=self.n_channels_,
+            ch_names=ch_names,
+            fitted_ch_names=self.ch_names_,
         )
         self._warn_preprocessing_state(orig_inst, mne_type)
         data_2d = np.asarray(data, dtype=np.float64)
@@ -453,14 +475,23 @@ class AdaptiveASR(ASR):
         self.calibration_patterns_ = self.state_.calibration_patterns
         self.patterns_ = self.state_.calibration_patterns
         self.rank_ = self.state_.rank
+        logger.info(
+            "AdaptiveASR: variant=%s update, rank=%d, %d clean sample(s).",
+            self.variant,
+            self.rank_,
+            update_info.get("calibration_samples", 0),
+        )
         return self
 
+    @verbose
     def transform(
         self,
         X: BaseRaw | BaseEpochs | Evoked | np.ndarray,
         y=None,
         copy: bool | None = None,
         return_diagnostics: bool = False,
+        *,
+        verbose: bool | str | int | None = None,
     ) -> Any:
         """Clean data using the current adaptive ASR state.
 
@@ -489,7 +520,6 @@ class AdaptiveASR(ASR):
             eigenvalues). Only returned if ``return_diagnostics=True``.
         """
         del y, copy
-        set_log_level_from_verbose(self.verbose)
         self._check_is_fitted()
         data, sfreq, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
             X, auto_pick=True
@@ -501,11 +531,17 @@ class AdaptiveASR(ASR):
             raise ValueError(
                 f"Input sfreq {sfreq} does not match fitted sfreq {self.sfreq_}"
             )
-        _check_transform_channels(
-            self.n_channels_,
-            self.ch_names_,
-            data.shape[1] if mne_type == "epochs" else data.shape[0],
-            ch_names,
+        if self.ch_names_ is not None and ch_names is None:
+            raise ValueError(
+                "ASR was fitted with named channels; transform input must provide "
+                "channel names so their order can be verified."
+            )
+        check_channel_layout(
+            "AdaptiveASR",
+            n_channels=data.shape[1] if mne_type == "epochs" else data.shape[0],
+            fitted_n_channels=self.n_channels_,
+            ch_names=ch_names,
+            fitted_ch_names=self.ch_names_,
         )
         self._warn_preprocessing_state(orig_inst, mne_type)
 
@@ -568,6 +604,14 @@ class AdaptiveASR(ASR):
             self.process_state_ = next_process_state
 
         self._store_transform_diagnostics(diagnostics)
+        logger.info(
+            "AdaptiveASR: variant=%s processed %d window(s), %.1f%% of samples "
+            "reconstructed (max %d component(s)).",
+            self.variant,
+            diagnostics["n_windows"],
+            100.0 * diagnostics["fraction_reconstructed_samples"],
+            diagnostics["max_components_reconstructed"],
+        )
         cleaned = reconstruct_mne_object(
             cleaned_data, orig_inst, mne_type, picks=picks, verbose=False
         )
@@ -575,12 +619,15 @@ class AdaptiveASR(ASR):
             return cleaned, diagnostics
         return cleaned
 
+    @verbose
     def fit_transform(
         self,
         X: BaseRaw | BaseEpochs | np.ndarray,
         y=None,
         calibration: BaseRaw | BaseEpochs | np.ndarray | None = None,
         return_diagnostics: bool = False,
+        *,
+        verbose: bool | str | int | None = None,
     ) -> Any:
         """Fit adaptive ASR and reconstruct ``X`` with the fitted state.
 
@@ -727,6 +774,14 @@ class AdaptiveASR(ASR):
             if window.shape[1] < self.blocksize:
                 entry["status"] = "skipped_too_short"
                 mw_diagnostics.append(entry)
+                logger.debug(
+                    "AdaptiveASR variant=mw sliding window %d/%d: skipped "
+                    "(%d samples < blocksize=%d).",
+                    window_idx + 1,
+                    n_windows,
+                    window.shape[1],
+                    self.blocksize,
+                )
                 continue
             try:
                 state, cal_info, learner, process_state = self._fit_adaptive_state(
@@ -760,7 +815,11 @@ class AdaptiveASR(ASR):
                 )
                 last = (state, cal_info, learner, process_state)
             except Exception as exc:  # noqa: BLE001
-                print("CAUGHT:", repr(exc))
+                logger.warning(
+                    "AdaptiveASR variant=mw window %d failed; passing it through: %s",
+                    window_idx,
+                    exc,
+                )
                 entry.update(
                     {
                         "status": "failed",
@@ -769,6 +828,12 @@ class AdaptiveASR(ASR):
                     }
                 )
             mw_diagnostics.append(entry)
+            logger.debug(
+                "AdaptiveASR variant=mw sliding window %d/%d: status=%s.",
+                window_idx + 1,
+                n_windows,
+                entry["status"],
+            )
 
         if last is None:
             raise RuntimeError(
@@ -840,6 +905,14 @@ class AdaptiveASR(ASR):
         else:
             full[idx, :] = cleaned
         result = reconstruct_mne_object(full, orig_inst, mne_type, verbose=False)
+        n_passed = sum(entry.get("status") == "passed" for entry in mw_diagnostics)
+        logger.info(
+            "AdaptiveASR: variant=mw, mode=sliding, %d window(s), "
+            "%d passed, %d failed/skipped.",
+            len(mw_diagnostics),
+            n_passed,
+            len(mw_diagnostics) - n_passed,
+        )
         if return_diagnostics:
             return result, self.diagnostics_
         return result
@@ -905,13 +978,25 @@ class AdaptiveASR(ASR):
             stop = min(start + win_samples, n_times)
             window = X[:, start:stop]
             if window.shape[1] < self.blocksize:
+                logger.debug(
+                    "AdaptiveASR variant=mw calibration window %d/%d: skipped "
+                    "(%d samples < blocksize=%d).",
+                    window_idx + 1,
+                    n_windows,
+                    window.shape[1],
+                    self.blocksize,
+                )
                 continue
             try:
                 state, cal_info, learner, process_state = self._fit_adaptive_state(
                     window, sfreq
                 )
             except Exception as exc:  # noqa: BLE001
-                print("CAUGHT:", repr(exc))
+                logger.warning(
+                    "AdaptiveASR variant=mw calibration window %d failed: %s",
+                    window_idx,
+                    exc,
+                )
                 diagnostics_list.append(
                     {
                         "window_idx": int(window_idx),
@@ -941,6 +1026,16 @@ class AdaptiveASR(ASR):
                 }
             )
             last = (state, cal_info, learner, process_state)
+            logger.debug(
+                "AdaptiveASR variant=mw calibration window %d/%d: rank=%d, "
+                "clean fraction=%.3f.",
+                window_idx + 1,
+                n_windows,
+                state.rank,
+                float(
+                    cal_info.get("calibration_clean_window_fraction") or float("nan")
+                ),
+            )
 
         if last is None:
             raise RuntimeError(
@@ -1104,6 +1199,15 @@ class AdaptiveASR(ASR):
             event="update",
         )
         diagnostics.update(covariance_memory_info)
+        logger.debug(
+            "AdaptiveASR update: variant=%s, rank=%d, clean windows=%d/%d, "
+            "calibration samples=%d.",
+            self.variant,
+            self.state_.rank,
+            diagnostics["n_clean_windows"],
+            diagnostics["n_calibration_windows"],
+            diagnostics["calibration_samples"],
+        )
         return diagnostics
 
     def _check_adaptive_segment_length(

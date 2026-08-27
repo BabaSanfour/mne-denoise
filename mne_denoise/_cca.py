@@ -30,13 +30,17 @@ from __future__ import annotations
 import numpy as np
 from scipy import linalg as la
 
+from ._logging import logger, verbose
 
+
+@verbose
 def canonical_correlation(
     X: np.ndarray,
     Y: np.ndarray,
     *,
     sample_weight: np.ndarray | None = None,
     rtol: float | None = None,
+    verbose: bool | str | int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     r"""Compute canonical correlation analysis between two matrices.
 
@@ -70,6 +74,9 @@ def canonical_correlation(
     rtol : float | None
         Optional relative rank threshold applied to the diagonal of each QR
         factor. ``None`` uses the existing machine-precision threshold.
+    verbose : bool | str | int | None
+        MNE-style logging level. CCA is a shared mathematical primitive and
+        therefore emits only DEBUG diagnostics, never a normal INFO summary.
 
     Returns
     -------
@@ -166,6 +173,12 @@ def canonical_correlation(
     toly = eps * max(Yc.shape) * scale_y if rtol is None else rtol * scale_y
     rx = int(np.sum(np.abs(np.diag(Rx)) > tolx)) if Rx.size else 0
     ry = int(np.sum(np.abs(np.diag(Ry)) > toly)) if Ry.size else 0
+    logger.debug(
+        "CCA ranks: X=%d, Y=%d, canonical dimensions=%d.",
+        rx,
+        ry,
+        min(rx, ry),
+    )
 
     if rx == 0 or ry == 0:
         d = 0

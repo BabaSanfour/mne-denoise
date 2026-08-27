@@ -36,17 +36,18 @@ References
 
 from __future__ import annotations
 
-import logging
 import warnings
 
 import numpy as np
 
-from .._logging import set_log_level_from_verbose
-from .._spatial import (
-    apply_spatial_transform,
+from .._data import (
     continuous_to_epochs,
     epochs_to_continuous,
+    extract_data_from_mne,
+    reconstruct_mne_object,
 )
+from .._logging import logger, verbose
+from .._spatial import apply_spatial_transform
 
 # Inherit from DSS
 from ..dss.denoisers.spectral import LineNoiseBias
@@ -56,10 +57,6 @@ from ..dss.utils.segmentation import CovarianceSegmenter
 from ..dss.utils.whitening import (
     map_spatial_matrices_to_sensor_space,
 )
-from ..utils import (
-    extract_data_from_mne,
-    reconstruct_mne_object,
-)
 from .adaptive import (
     apply_hybrid_cleanup,
     check_artifact_presence,
@@ -68,8 +65,6 @@ from .adaptive import (
     find_fine_peak,
     find_noise_freqs,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class ZapLine(DSS):
@@ -262,7 +257,6 @@ class ZapLine(DSS):
         self.knee_min_ratio = knee_min_ratio
         self.adaptive_params = adaptive_params if adaptive_params is not None else {}
         self.verbose = verbose
-        set_log_level_from_verbose(self.verbose)
 
         # Initialize DSS Bias immediately if line_freq is known and valid
         if self.line_freq is not None and self.line_freq > 0:
@@ -298,7 +292,7 @@ class ZapLine(DSS):
             knee_min_ratio=knee_min_ratio,
             whiten=whiten,
             noise_cov=noise_cov,
-            verbose=self.verbose,
+            verbose=verbose,
         )
 
         self.n_removed_ = None
@@ -308,7 +302,14 @@ class ZapLine(DSS):
         self._mne_ch_names_ = None
         self._whitening_info_ = None
 
-    def fit(self, X, y=None):
+    @verbose
+    def fit(
+        self,
+        X,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+    ):
         """Fit ZapLine spatial filters to data.
 
         Computes DSS filters that maximize power at the line noise frequency.
@@ -343,7 +344,6 @@ class ZapLine(DSS):
         transform : Apply the fitted filters to remove noise.
         fit_transform : Fit and transform in one step.
         """
-        set_log_level_from_verbose(self.verbose)
         if self.adaptive:
             raise RuntimeError(
                 "Adaptive mode requires simultaneous fit and transform (local chunks). "
@@ -373,9 +373,24 @@ class ZapLine(DSS):
         # Run core fitting logic
         self._fit_dss(data)
 
+        logger.info(
+            "ZapLine: mode=standard, frequency=%.3g Hz, harmonics=%d, "
+            "removed=%d component(s) of %d.",
+            self.line_freq,
+            self.n_harmonics_ or 0,
+            self.n_removed_ or 0,
+            len(self.eigenvalues_) if self.eigenvalues_ is not None else 0,
+        )
+
         return self
 
-    def transform(self, X):
+    @verbose
+    def transform(
+        self,
+        X,
+        *,
+        verbose: bool | str | int | None = None,
+    ):
         """Apply ZapLine cleaning to remove line noise.
 
         Uses the fitted spatial filters to project out noise components.
@@ -404,7 +419,6 @@ class ZapLine(DSS):
         fit : Fit the spatial filters.
         fit_transform : Fit and transform in one step.
         """
-        set_log_level_from_verbose(self.verbose)
         if self.adaptive:
             raise RuntimeError(
                 "Adaptive mode requires simultaneous fit and transform (local chunks). "
@@ -436,7 +450,15 @@ class ZapLine(DSS):
 
         return reconstruct_mne_object(cleaned, orig_inst, mne_type, picks=picks)
 
-    def fit_transform(self, X, y=None, **fit_params):
+    @verbose
+    def fit_transform(
+        self,
+        X,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+        **fit_params,
+    ):
         """Fit and transform data in one step.
 
         This method works for both standard and adaptive modes:
@@ -472,7 +494,6 @@ class ZapLine(DSS):
         - ``line_freq``: Detected line frequency
         - ``chunk_info``: List of per-chunk processing information
         """
-        set_log_level_from_verbose(self.verbose)
         if not self.adaptive:
             return super().fit_transform(X, y=y, **fit_params)
 
@@ -526,6 +547,15 @@ class ZapLine(DSS):
 
         if data.ndim == 3:
             cleaned = continuous_to_epochs(cleaned, (n_ep, n_ch, n_t))
+
+        line_freqs = res.get("line_freqs", ())
+        logger.info(
+            "ZapLine: mode=adaptive, frequencies=%s Hz, %d segment pass(es), "
+            "removed=%d component pass(es).",
+            tuple(float(freq) for freq in line_freqs),
+            len(res.get("chunk_info", ())),
+            res.get("n_removed", 0),
+        )
 
         return reconstruct_mne_object(cleaned, orig_inst, mne_type, picks=picks)
 
@@ -592,7 +622,7 @@ class ZapLine(DSS):
             if self.n_removed_ == 0 and check_artifact_presence(
                 data_work, self.sfreq, self.line_freq
             ):
-                logger.info(
+                logger.debug(
                     "ZapLine auto-selection found no DSS component boundary, "
                     "but a line-noise peak is present at %.3g Hz; evaluating "
                     "component counts spectrally.",
@@ -604,11 +634,11 @@ class ZapLine(DSS):
                     full_filters=qa_filters,
                     full_mixing=qa_mixing,
                 )
-                logger.info(
+                logger.debug(
                     "ZapLine spectral fallback selected %d components.",
                     self.n_removed_,
                 )
-            logger.info(
+            logger.debug(
                 "ZapLine auto-selected %d/%d components "
                 "(eigenvalues: max=%.3g, min=%.3g)",
                 self.n_removed_,
@@ -691,7 +721,7 @@ class ZapLine(DSS):
             "n_select manually or using adaptive ZapLine.",
             stacklevel=2,
         )
-        logger.info(
+        logger.debug(
             "ZapLine spectral fallback ended with status %r after %d candidates.",
             last_status,
             n_candidates,
@@ -880,9 +910,9 @@ class ZapLine(DSS):
         # 1. Automatic frequency detection
         line_freqs = self.line_freq
         if line_freqs is None:
-            logger.info("Detecting line noise frequencies...")
+            logger.debug("ZapLine adaptive frequency detection started.")
             line_freqs = find_noise_freqs(data, self.sfreq, fmin=fmin, fmax=fmax)
-            logger.info(f"Detected: {line_freqs}")
+            logger.debug("ZapLine adaptive frequencies detected: %s.", line_freqs)
         elif isinstance(line_freqs, int | float):
             line_freqs = [float(line_freqs)]
 
@@ -922,6 +952,12 @@ class ZapLine(DSS):
                 current_data = self._run_segmented(
                     current_data, self.sfreq, segmenter=segmenter
                 )
+                logger.debug(
+                    "ZapLine adaptive frequency pass %.3g Hz completed over %d "
+                    "segment(s).",
+                    target_freq,
+                    len(self.segment_results_ or ()),
+                )
 
                 for seg in self.segment_results_ or []:
                     all_chunk_metadata.append(
@@ -947,6 +983,7 @@ class ZapLine(DSS):
             "removed": data - current_data,
             "n_removed": sum(c.get("n_removed", 0) for c in all_chunk_metadata),
             "line_freq": line_freqs[0] if line_freqs else 0,
+            "line_freqs": tuple(float(freq) for freq in all_freqs_to_process),
             "chunk_info": all_chunk_metadata,
         }
 
@@ -1002,6 +1039,12 @@ class ZapLine(DSS):
         n_channels = chunk.shape[0]
         fine_freq = find_fine_peak(chunk, self.sfreq, target_freq)
         present = check_artifact_presence(chunk, self.sfreq, fine_freq)
+        logger.debug(
+            "ZapLine segment: target=%.3g Hz, fine=%.3g Hz, artifact_present=%s.",
+            target_freq,
+            fine_freq,
+            present,
+        )
 
         current_sigma = sigma_init
         current_min_remove = min_remove if present else 0
@@ -1026,9 +1069,12 @@ class ZapLine(DSS):
                     "threshold": current_sigma,
                     "adaptive": False,
                     "crossfade": 0.0,
+                    "verbose": "WARNING",
                 }
             )
 
+            # Adaptive ZapLine owns the segment-level aggregate report; hide
+            # each retry's nested DSS fit from the user-facing INFO stream.
             est.fit(chunk)
             res_cleaned = est.transform(chunk)
             res_n_removed = est.n_removed_
@@ -1047,6 +1093,8 @@ class ZapLine(DSS):
                     knee_rel_floor=self.knee_rel_floor,
                     knee_min_ratio=self.knee_min_ratio,
                     adaptive=False,
+                    # The outer adaptive operation owns the aggregate report.
+                    verbose="WARNING",
                 )
                 est.fit(chunk)
                 res_cleaned = est.transform(chunk)
@@ -1059,6 +1107,16 @@ class ZapLine(DSS):
                 max_prop_above=max_prop_above,
                 max_prop_below=max_prop_below,
                 freq_detect_mult=freq_detect_mult,
+            )
+            logger.debug(
+                "ZapLine segment retry %d/%d: fine=%.3g Hz, sigma=%.3g, "
+                "selected=%d, status=%s.",
+                _retry + 1,
+                max_retries,
+                fine_freq,
+                current_sigma,
+                res_n_removed,
+                status,
             )
 
             if status == "ok":

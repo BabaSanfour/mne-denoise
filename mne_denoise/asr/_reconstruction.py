@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from .._logging import logger, verbose
 from ..blending import raised_cosine_ramp
 from ._covariance import (
     _ChunkedMovingCovariances,
@@ -175,6 +176,7 @@ def _prepare_asr_stream(
     )
 
 
+@verbose
 def process_asr(
     X: np.ndarray,
     sfreq: float,
@@ -189,6 +191,7 @@ def process_asr(
     lookahead: float | None = None,
     stepsize: int | None = None,
     method: str | None = None,
+    verbose: bool | str | int | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """Apply a calibrated ASR model to continuous data.
 
@@ -223,6 +226,9 @@ def process_asr(
         ``floor(sfreq * window_length / 2)``, matching the standard algorithm defaults.
     method : {'standard', 'riemannian'} | None
         Covariance geometry for processing. If ``None``, use ``state.method``.
+    verbose : bool | str | int | None
+        MNE-style logging level. Processing details are emitted at DEBUG; the
+        owning estimator reports the user-facing result at INFO.
 
     Returns
     -------
@@ -282,6 +288,11 @@ def process_asr(
                 used_memory_bound=False,
             )
         )
+        logger.debug(
+            "ASR reconstruction details: method=%s, identity path, %d sample(s).",
+            method,
+            n_times,
+        )
         return X.copy(), diagnostics
 
     assert prepared.data_stream is not None
@@ -319,6 +330,14 @@ def process_asr(
                 used_memory_bound=False,
             )
         )
+        logger.debug(
+            "ASR reconstruction details: method=%s, %d window(s), "
+            "%d component(s) maximum, %.1f%% samples reconstructed.",
+            method,
+            diagnostics["n_windows"],
+            diagnostics["max_components_reconstructed"],
+            100.0 * diagnostics["fraction_reconstructed_samples"],
+        )
         return X_clean, diagnostics
 
     if method == "riemannian_windowed":
@@ -350,6 +369,14 @@ def process_asr(
                 chunk_samples=win_len if use_rolling_covariance else n_stream_input,
                 used_memory_bound=use_rolling_covariance,
             )
+        )
+        logger.debug(
+            "ASR reconstruction details: method=%s, %d window(s), "
+            "%d component(s) maximum, %.1f%% samples reconstructed.",
+            method,
+            diagnostics["n_windows"],
+            diagnostics["max_components_reconstructed"],
+            100.0 * diagnostics["fraction_reconstructed_samples"],
         )
         return X_clean, diagnostics
 
@@ -474,6 +501,14 @@ def process_asr(
         )
     if store_reconstruction_matrices:
         diagnostics["reconstruction_matrices"] = np.asarray(reconstruction_matrices)
+    logger.debug(
+        "ASR reconstruction details: method=%s, %d window(s), "
+        "%d component(s) maximum, %.1f%% samples reconstructed.",
+        method,
+        diagnostics["n_windows"],
+        diagnostics["max_components_reconstructed"],
+        100.0 * diagnostics["fraction_reconstructed_samples"],
+    )
     return X_clean, diagnostics
 
 
@@ -611,7 +646,6 @@ def _process_asr_riemannian(
                 sample_mask[start_out:stop_out] = True
             if store_reconstruction_matrices:
                 reconstruction_matrices.append(R.copy())
-
         last_n = int(n)
         last_R = R
         last_trivial = trivial
@@ -1141,6 +1175,15 @@ def _process_adaptive_chunk(
     )
     if store_reconstruction_matrices:
         diagnostics["reconstruction_matrices"] = np.asarray(reconstruction_matrices)
+
+    logger.debug(
+        "AdaptiveASR reconstruction details: variant=%s, %d window(s), "
+        "%d component(s) maximum, %.1f%% samples reconstructed.",
+        adaptive_variant,
+        diagnostics["n_windows"],
+        diagnostics["max_components_reconstructed"],
+        100.0 * diagnostics["fraction_reconstructed_samples"],
+    )
 
     next_state = {
         "cov": cov_state.copy() if cov_state is not None else None,

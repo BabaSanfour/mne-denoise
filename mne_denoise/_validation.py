@@ -1,8 +1,8 @@
-"""Internal input validation shared by array-based algorithms.
+"""Package-wide shared validation primitives.
 
-These helpers centralize the preconditions that every channel-first denoiser
-checks at its public boundary, so error messages and accepted types stay
-consistent across the package.
+These helpers centralize generic data, scalar parameter, fitted-estimator, and
+metadata contracts used across ``mne_denoise``. Algorithm-specific scientific
+validation remains in the module that owns the corresponding method.
 """
 
 from __future__ import annotations
@@ -20,6 +20,24 @@ def check_positive_integer(value: int, *, name: str) -> int:
     if value < 1:
         raise ValueError(f"{name} must be a positive integer")
     return int(value)
+
+
+def check_positive_real(value: float, *, name: str) -> float:
+    """Validate a positive finite real parameter and return it as a float."""
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, Real):
+        raise TypeError(f"{name} must be a positive, finite number")
+    value = float(value)
+    if not np.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be a positive, finite number")
+    return value
+
+
+def check_option(value, *, name: str, allowed: Sequence[object]):
+    """Validate a categorical parameter against the supplied allowed values."""
+    allowed = tuple(allowed)
+    if value not in allowed:
+        raise ValueError(f"{name} must be one of {allowed!r}; received value {value!r}")
+    return value
 
 
 def check_channel_first_data(
@@ -73,38 +91,27 @@ def check_channel_first_data(
     return X
 
 
-def check_sfreq(sfreq: float | None, *, context: str | None = None) -> float:
-    """Validate a sampling frequency and return it as a float.
+def check_matching_sfreq(
+    input_sfreq: float | None,
+    fitted_sfreq: float | None,
+    *,
+    name: str,
+    rtol: float = 1e-5,
+    atol: float = 1e-8,
+) -> None:
+    """Verify that input sampling frequency matches a fitted value.
 
-    Parameters
-    ----------
-    sfreq : float | None
-        Candidate sampling frequency.
-    context : str | None, default=None
-        What requires the value, used to explain a missing one, e.g.
-        ``"lag_seconds"`` produces "sfreq is required when lag_seconds is used".
-
-    Returns
-    -------
-    sfreq : float
-        The validated sampling frequency.
-
-    Raises
-    ------
-    TypeError
-        If ``sfreq`` is a bool or not a real number.
-    ValueError
-        If ``sfreq`` is None, non-finite, or not positive.
+    A missing value is accepted because some array-based transforms do not
+    carry sampling-frequency metadata. Standalone validity checks belong to
+    :func:`check_positive_real`.
     """
-    if sfreq is None:
-        where = f" when {context} is used" if context else ""
-        raise ValueError(f"sfreq is required{where}")
-    if isinstance(sfreq, bool) or not isinstance(sfreq, Real):
-        raise TypeError("sfreq must be a real number")
-    sfreq = float(sfreq)
-    if not np.isfinite(sfreq) or sfreq <= 0:
-        raise ValueError("sfreq must be a positive, finite number")
-    return sfreq
+    if input_sfreq is None or fitted_sfreq is None:
+        return
+    if not np.isclose(input_sfreq, fitted_sfreq, rtol=rtol, atol=atol):
+        raise ValueError(
+            f"{name}: transform sfreq={input_sfreq} does not match fitted "
+            f"sfreq={fitted_sfreq}; sampling frequency must match the fitted value"
+        )
 
 
 def resolve_sample_window(
@@ -160,10 +167,12 @@ def resolve_sample_window(
                 f"{name} boundaries must be integers when {name}_unit='samples'."
             )
         if sfreq is not None:
-            check_sfreq(sfreq)
+            check_positive_real(sfreq, name="sfreq")
         resolved = [int(value) for value in normalized]
     else:
-        sfreq = check_sfreq(sfreq, context=f"{name}_unit='seconds'")
+        if sfreq is None:
+            raise ValueError(f"sfreq is required when {name}_unit='seconds' is used")
+        sfreq = check_positive_real(sfreq, name="sfreq")
         scaled = [float(value) * sfreq for value in normalized]
         if not np.all(np.isfinite(scaled)):
             raise ValueError(
@@ -245,16 +254,23 @@ def resolve_sfreq(
     ValueError
         If the two sources disagree, or if none is available and ``required``.
     """
+    if declared is not None:
+        declared = check_positive_real(declared, name="sfreq")
+    if data_sfreq is not None:
+        data_sfreq = check_positive_real(data_sfreq, name="sfreq")
     if (
         declared is not None
         and data_sfreq is not None
-        and not np.isclose(float(declared), float(data_sfreq))
+        and not np.isclose(declared, data_sfreq)
     ):
         raise ValueError(f"sfreq={declared} disagrees with MNE info sfreq={data_sfreq}")
     value = data_sfreq if data_sfreq is not None else declared
     if value is None and not required:
         return None
-    return check_sfreq(value, context=context)
+    if value is None:
+        where = f" when {context} is used" if context else ""
+        raise ValueError(f"sfreq is required{where}")
+    return value
 
 
 def check_channel_layout(
@@ -293,5 +309,5 @@ def check_channel_layout(
         )
     if n_channels != fitted_n_channels:
         raise ValueError(
-            f"X has {n_channels} channels; fitted data had {fitted_n_channels}"
+            f"{name}: X has {n_channels} channels; fitted data had {fitted_n_channels}"
         )

@@ -18,9 +18,8 @@ from collections.abc import Callable
 
 import numpy as np
 
-from .._logging import set_log_level_from_verbose
-from .._spatial import continuous_to_epochs, epochs_to_continuous
-from ..utils import extract_data_from_mne
+from .._data import continuous_to_epochs, epochs_to_continuous, extract_data_from_mne
+from .._logging import logger, verbose
 from .utils.whitening import whiten_from_data_covariance
 
 
@@ -34,6 +33,7 @@ def _resolve_callable(param, x, default=None):
     return lambda *args: param
 
 
+@verbose
 def iterative_dss_one(
     X_whitened: np.ndarray,
     denoiser: Callable[[np.ndarray], np.ndarray],
@@ -45,6 +45,7 @@ def iterative_dss_one(
     beta: float | Callable[[np.ndarray], float] | None = None,
     gamma: float | Callable[[np.ndarray, np.ndarray, int], float] | None = None,
     random_state: int | np.random.Generator | None = None,
+    verbose: bool | str | int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, int, bool]:
     """Fixed-point iteration for extracting a single DSS component.
 
@@ -96,6 +97,8 @@ def iterative_dss_one(
         Learning rate / relaxation parameter. Controls step size:
         ``w = w_old + gamma · (w_new - w_old)``.
         Default None (gamma=1, full step).
+    verbose : bool | str | int | None
+        MNE-style logging level. Iteration state is emitted at DEBUG.
 
     Returns
     -------
@@ -171,6 +174,12 @@ def iterative_dss_one(
         norm = np.linalg.norm(w_new)
         if norm < 1e-12:
             # Denoiser killed the signal, reinitialize
+            logger.debug(
+                "IterativeDSS single-component iteration %d/%d: "
+                "degenerate update; reinitializing.",
+                iteration + 1,
+                max_iter,
+            )
             w = rng.standard_normal(n_components)
             w = w / np.linalg.norm(w)
             continue
@@ -189,9 +198,25 @@ def iterative_dss_one(
 
         # Check convergence (using abs because sign can flip)
         correlation = np.abs(np.dot(w, w_old))
-        if 1 - correlation < tol:
+        change = 1 - correlation
+        logger.debug(
+            "IterativeDSS single-component iteration %d/%d: change %.3e.",
+            iteration + 1,
+            max_iter,
+            change,
+        )
+        if change < tol:
             converged = True
+            logger.debug(
+                "IterativeDSS single-component converged at iteration %d.",
+                iteration + 1,
+            )
             break
+    else:
+        logger.debug(
+            "IterativeDSS single-component reached max_iter=%d without convergence.",
+            max_iter,
+        )
 
     # Final source extraction
     source = w @ X_whitened
@@ -199,6 +224,7 @@ def iterative_dss_one(
     return w, source, n_iter, converged
 
 
+@verbose
 def iterative_dss(
     data: np.ndarray,
     denoiser: Callable[[np.ndarray], np.ndarray],
@@ -210,7 +236,7 @@ def iterative_dss(
     max_iter: int = 100,
     tol: float = 1e-6,
     w_init: np.ndarray | None = None,
-    verbose: bool = False,
+    verbose: bool | str | int | None = None,
     alpha: float | Callable | None = None,
     beta: float | Callable | None = None,
     gamma: float | Callable | None = None,
@@ -270,8 +296,9 @@ def iterative_dss(
         Convergence tolerance. Default 1e-6.
     w_init : ndarray, shape (n_components, n_whitened), optional
         Initial weight matrix. If None, random initialization.
-    verbose : bool
-        Print convergence info. Default False.
+    verbose : bool | str | int | None
+        MNE-style logging level. Convergence details are emitted at DEBUG and
+        the final numerical result is summarized at INFO.
     alpha : float or callable, optional
         Signal normalization factor (see ``iterative_dss_one``).
     beta : float or callable, optional
@@ -378,6 +405,18 @@ def iterative_dss(
     C = data_centered @ data_centered.T / n_samples
     patterns = C @ filters.T
 
+    n_converged = int(np.sum(convergence_info[:, 1] > 0.5))
+    logger.info(
+        "Iterative DSS: method=%s, denoiser=%s, components=%d, "
+        "converged=%d/%d, iterations=%s.",
+        method,
+        type(denoiser).__name__,
+        n_components,
+        n_converged,
+        n_components,
+        convergence_info[:, 0].astype(int).tolist(),
+    )
+
     return filters, sources, patterns, convergence_info
 
 
@@ -389,7 +428,7 @@ def _iterative_dss_deflation(
     max_iter: int,
     tol: float,
     w_init: np.ndarray | None,
-    verbose: bool,
+    verbose: bool | str | int | None,
     alpha: float | Callable | None = None,
     beta: float | Callable | None = None,
     gamma: float | Callable | None = None,
@@ -418,7 +457,7 @@ def _iterative_dss_deflation(
         Convergence parameters passed to ``iterative_dss_one``.
     w_init : ndarray, optional
         Initial weight matrix.
-    verbose : bool
+    verbose : bool | str | int | None
         Print progress.
     alpha, beta, gamma : optional
         Passed to ``iterative_dss_one``.
@@ -467,9 +506,14 @@ def _iterative_dss_deflation(
             random_state=rng,
         )
 
-        if verbose:
-            status = "converged" if converged else "max_iter"
-            print(f"  Component {i + 1}: {n_iter} iterations ({status})")
+        status = "converged" if converged else "max_iter"
+        logger.debug(
+            "IterativeDSS component %d/%d: %d iteration(s) (%s).",
+            i + 1,
+            n_components,
+            n_iter,
+            status,
+        )
 
         # Orthogonalize against previous components (vectorized)
         if i > 0:
@@ -478,8 +522,12 @@ def _iterative_dss_deflation(
             w = w - W_prev.T @ (W_prev @ w)
             norm = np.linalg.norm(w)
             if norm < 1e-12:
-                if verbose:
-                    print(f"  Component {i + 1}: degenerate, using random")
+                logger.debug(
+                    "IterativeDSS component %d/%d was degenerate after "
+                    "orthogonalization; using random initialization.",
+                    i + 1,
+                    n_components,
+                )
                 w = rng.standard_normal(n_whitened)
                 w = w - W_prev.T @ (W_prev @ w)
                 norm = np.linalg.norm(w)
@@ -504,7 +552,7 @@ def _iterative_dss_symmetric(
     max_iter: int,
     tol: float,
     w_init: np.ndarray | None,
-    verbose: bool,
+    verbose: bool | str | int | None,
     alpha: float | Callable | None = None,
     beta: float | Callable | None = None,
     gamma: float | Callable | None = None,
@@ -536,7 +584,7 @@ def _iterative_dss_symmetric(
         Convergence parameters.
     w_init : ndarray, optional
         Initial weight matrix.
-    verbose : bool
+    verbose : bool | str | int | None
         Print progress.
     alpha, beta, gamma : optional
         Iteration parameters.
@@ -609,15 +657,25 @@ def _iterative_dss_symmetric(
         correlations = np.abs(np.sum(W * W_old, axis=1))
         max_change = np.max(1 - correlations)
 
+        logger.debug(
+            "IterativeDSS symmetric iteration %d/%d: max change %.3e.",
+            iteration + 1,
+            max_iter,
+            max_change,
+        )
         if max_change < tol:
-            if verbose:
-                print(f"  Symmetric: converged at iteration {iteration + 1}")
+            logger.debug(
+                "IterativeDSS symmetric converged at iteration %d.",
+                iteration + 1,
+            )
             convergence_info[:, 0] = iteration + 1
             convergence_info[:, 1] = 1.0
             break
     else:
-        if verbose:
-            print(f"  Symmetric: max iterations ({max_iter})")
+        logger.debug(
+            "IterativeDSS symmetric reached max_iter=%d without convergence.",
+            max_iter,
+        )
         convergence_info[:, 0] = max_iter
         convergence_info[:, 1] = 0.0
 
@@ -676,8 +734,8 @@ class IterativeDSS:
         Maximum iterations per component. Default 100.
     tol : float
         Convergence tolerance. Default 1e-6.
-    verbose : bool
-        Print convergence info. Default False.
+    verbose : bool | str | int | None
+        MNE-style logging level.
     alpha : float or callable, optional
         Signal normalization factor applied after denoising.
     beta : float or callable, optional
@@ -730,7 +788,7 @@ class IterativeDSS:
         normalize_input: bool = True,
         max_iter: int = 100,
         tol: float = 1e-6,
-        verbose: bool | str | int | None = False,
+        verbose: bool | str | int | None = None,
         alpha: float | Callable | None = None,
         beta: float | Callable | None = None,
         gamma: float | Callable | None = None,
@@ -745,7 +803,6 @@ class IterativeDSS:
         self.max_iter = max_iter
         self.tol = tol
         self.verbose = verbose
-        set_log_level_from_verbose(self.verbose)
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma
@@ -758,7 +815,13 @@ class IterativeDSS:
         self.convergence_info_: np.ndarray | None = None
         self._mne_info = None
 
-    def fit(self, X) -> IterativeDSS:
+    @verbose
+    def fit(
+        self,
+        X,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> IterativeDSS:
         """Compute Iterative DSS spatial filters.
 
         Parameters
@@ -775,7 +838,6 @@ class IterativeDSS:
         self : IterativeDSS
             The fitted transformer.
         """
-        set_log_level_from_verbose(self.verbose)
         # Validate and extract data using shared helper
         data, _, mne_type, mne_info, picks, ch_names = extract_data_from_mne(
             X,
@@ -807,7 +869,6 @@ class IterativeDSS:
             reg=self.reg,
             max_iter=self.max_iter,
             tol=self.tol,
-            verbose=self.verbose,
             alpha=self.alpha,
             beta=self.beta,
             gamma=self.gamma,
@@ -821,7 +882,13 @@ class IterativeDSS:
 
         return self
 
-    def transform(self, X) -> np.ndarray:
+    @verbose
+    def transform(
+        self,
+        X,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> np.ndarray:
         """Apply fitted filters to extract sources.
 
         Parameters
@@ -834,7 +901,6 @@ class IterativeDSS:
         sources : ndarray, shape (n_components, n_times) or (n_components, n_times, n_epochs)
             Extracted source time series.
         """
-        set_log_level_from_verbose(self.verbose)
         if self.filters_ is None:
             raise RuntimeError("IterativeDSS not fitted. Call fit() first.")
 
@@ -862,11 +928,20 @@ class IterativeDSS:
 
         # Reshape to original 3D if needed
         # (n_components, n_epochs * n_times) -> (n_epochs, n_components, n_times)
-        sources = continuous_to_epochs(sources, original_shape)
+        source_shape = original_shape
+        if data.ndim == 3:
+            source_shape = (original_shape[0], sources.shape[0], original_shape[2])
+        sources = continuous_to_epochs(sources, source_shape)
 
         return sources
 
-    def inverse_transform(self, sources: np.ndarray) -> np.ndarray:
+    @verbose
+    def inverse_transform(
+        self,
+        sources: np.ndarray,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> np.ndarray:
         """Reconstruct data from sources.
 
         Parameters
@@ -879,7 +954,6 @@ class IterativeDSS:
         reconstructed : ndarray, shape (n_channels, n_times)
             Reconstructed data: ``patterns_[:, :n_sources] @ sources``.
         """
-        set_log_level_from_verbose(self.verbose)
         if self.patterns_ is None:
             raise RuntimeError("IterativeDSS not fitted. Call fit() first.")
 
@@ -924,7 +998,13 @@ class IterativeDSS:
         norms = np.where(norms > threshold, norms, 1.0)
         return self.patterns_ / norms
 
-    def fit_transform(self, X) -> np.ndarray:
+    @verbose
+    def fit_transform(
+        self,
+        X,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> np.ndarray:
         """Fit and transform in one step.
 
         Parameters

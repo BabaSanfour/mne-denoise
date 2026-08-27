@@ -2,22 +2,22 @@
 
 from __future__ import annotations
 
-from numbers import Real
 from typing import Any
 
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
-from .._logging import set_log_level_from_verbose
+from .._data import extract_data_from_mne, reconstruct_mne_object
+from .._logging import verbose
 from .._validation import (
     check_channel_first_data,
     check_channel_layout,
+    check_matching_sfreq,
     check_positive_integer,
-    check_sfreq,
+    check_positive_real,
     resolve_sfreq,
 )
-from ..utils import extract_data_from_mne, reconstruct_mne_object
 
 
 def _resolve_window_length(
@@ -37,17 +37,15 @@ def _resolve_window_length(
     if window_length is not None and window_seconds is not None:
         raise ValueError("Specify only one of window_length and window_seconds")
     if window_seconds is not None:
-        if isinstance(window_seconds, bool) or not isinstance(window_seconds, Real):
-            raise TypeError("window_seconds must be a positive, finite number")
-        window_seconds = float(window_seconds)
-        if not np.isfinite(window_seconds) or window_seconds <= 0:
-            raise ValueError("window_seconds must be a positive, finite number")
-        sfreq = check_sfreq(sfreq, context="window_seconds")
+        window_seconds = check_positive_real(window_seconds, name="window_seconds")
+        if sfreq is None:
+            raise ValueError("sfreq is required when window_seconds is used")
+        sfreq = check_positive_real(sfreq, name="sfreq")
         resolved = int(np.floor(window_seconds * sfreq + 0.5))
     elif window_length is not None:
         resolved = check_positive_integer(window_length, name="window_length")
     elif sfreq is not None:
-        sfreq = check_sfreq(sfreq)
+        sfreq = check_positive_real(sfreq, name="sfreq")
         resolved = min(int(np.floor(0.5 * sfreq + 0.5)), max_window, (n_times + 1) // 2)
     else:
         resolved = min(n_times // 2, max_window)
@@ -94,9 +92,9 @@ class _BaseSSATransformer(BaseEstimator, TransformerMixin):
     ) -> tuple[np.ndarray, dict[str, Any]]:
         raise NotImplementedError
 
+    @verbose
     def fit(self, X: Any, y=None):
         """Validate the operating point and record the fitted channel layout."""
-        set_log_level_from_verbose(self.verbose)
         data, data_sfreq, _kind, _orig, _picks, names = extract_data_from_mne(
             X, auto_pick=True
         )
@@ -116,10 +114,10 @@ class _BaseSSATransformer(BaseEstimator, TransformerMixin):
         self.is_fitted_ = True
         return self
 
+    @verbose
     def transform(self, X: Any, y=None) -> Any:
         """Apply the transductive SSA decomposition to the supplied records."""
         check_is_fitted(self, "is_fitted_")
-        set_log_level_from_verbose(self.verbose)
         data, data_sfreq, kind, original, picks, names = extract_data_from_mne(
             X, auto_pick=True
         )
@@ -132,10 +130,7 @@ class _BaseSSATransformer(BaseEstimator, TransformerMixin):
             context=self._name,
             required=self._requires_sfreq,
         )
-        if self.sfreq_ is not None and not np.isclose(sfreq, self.sfreq_):
-            raise ValueError(
-                f"transform sfreq={sfreq} differs from fitted sfreq={self.sfreq_}"
-            )
+        check_matching_sfreq(sfreq, self.sfreq_, name=self._name)
         check_channel_layout(
             self._name,
             n_channels=data.shape[-2],

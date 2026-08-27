@@ -20,22 +20,24 @@ References
 
 from __future__ import annotations
 
-import logging
 from numbers import Integral
 from typing import Any
 
 import numpy as np
 from sklearn.cluster import KMeans
 
-from .._validation import check_channel_first_data, check_positive_integer, check_sfreq
+from .._logging import logger, verbose
+from .._validation import (
+    check_channel_first_data,
+    check_positive_integer,
+    check_positive_real,
+)
 from ._common import (
     _BaseSSATransformer,
     _diagonal_average,
     _resolve_window_length,
     _trajectory_matrix,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def _mdl_order(eigenvalues: np.ndarray, n_observations: int) -> tuple[int, np.ndarray]:
@@ -250,7 +252,7 @@ def local_ssa_clean_channel(
     if not isinstance(return_info, bool):
         raise TypeError("return_info must be a bool")
     if sfreq is not None:
-        sfreq = check_sfreq(sfreq)
+        sfreq = check_positive_real(sfreq, name="sfreq")
     x = np.asarray(x, dtype=np.float64)
     if x.ndim != 1:
         raise ValueError("x must be one-dimensional")
@@ -297,6 +299,7 @@ def local_ssa_clean_channel(
     return cleaned
 
 
+@verbose
 def compute_local_ssa(
     X: np.ndarray,
     window_length: int | None = None,
@@ -307,6 +310,7 @@ def compute_local_ssa(
     max_clusters: int = 10,
     max_window: int = 100,
     random_state: int | None = 0,
+    verbose: bool | str | int | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """Apply local SSA independently to every input channel.
 
@@ -335,6 +339,9 @@ def compute_local_ssa(
         Maximum delay-vector dimension used by automatic window selection.
     random_state : int | None, default=0
         Random seed passed to k-means.
+    verbose : bool | str | int | None
+        MNE-style logging level. Channel helpers remain silent; this function
+        reports one aggregate result at INFO.
 
     Returns
     -------
@@ -398,7 +405,7 @@ def compute_local_ssa(
         )
         cleaned[len(records)] = result
         records.append(info)
-    return cleaned, {
+    info = {
         "method": "local-mdl",
         "window_length": records[0]["window_length"],
         "n_clusters": np.array([record["n_clusters"] for record in records]),
@@ -408,6 +415,17 @@ def compute_local_ssa(
         "mdl_scores": [record["mdl_scores"] for record in records],
         "artifacts": np.stack([record["artifact"] for record in records]),
     }
+    logger.info(
+        "Local SSA: window=%d samples, channels=%d, mean clusters=%.1f, "
+        "mean subspace dimension=%.1f.",
+        info["window_length"],
+        X.shape[0],
+        float(np.mean(info["n_clusters"])),
+        float(
+            np.mean([np.mean(dimensions) for dimensions in info["subspace_dimensions"]])
+        ),
+    )
+    return cleaned, info
 
 
 class LocalSingularSpectrumAnalysis(_BaseSSATransformer):
@@ -532,6 +550,8 @@ class LocalSingularSpectrumAnalysis(_BaseSSATransformer):
     def _compute_record(
         self, data: np.ndarray, sfreq: float | None
     ) -> tuple[np.ndarray, dict[str, Any]]:
+        # The estimator owns one aggregate SSA report; suppress the core's
+        # standalone summary for each record while retaining its computation.
         return compute_local_ssa(
             data,
             self.window_length,
@@ -541,6 +561,7 @@ class LocalSingularSpectrumAnalysis(_BaseSSATransformer):
             max_clusters=self.max_clusters,
             max_window=self.max_window,
             random_state=self.random_state,
+            verbose="WARNING",
         )
 
     def _set_diagnostic_attributes(
@@ -554,7 +575,16 @@ class LocalSingularSpectrumAnalysis(_BaseSSATransformer):
         else:
             self.n_clusters_ = records[0]["n_clusters"]
             self.subspace_dimensions_ = records[0]["subspace_dimensions"]
+        dimensions = [
+            np.mean(values)
+            for record_dimensions in self.subspace_dimensions_
+            for values in record_dimensions
+        ]
         logger.info(
-            "Local SSA: used a mean of %.1f clusters/channel.",
+            "Local SSA: window=%s samples, channels=%d, mean clusters=%.1f, "
+            "mean subspace dimension=%.1f.",
+            records[0].get("window_length", self.window_length or "auto"),
+            self.n_channels_in_,
             float(np.mean(self.n_clusters_)),
+            float(np.mean(dimensions)),
         )

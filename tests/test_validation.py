@@ -9,7 +9,10 @@ from mne_denoise._validation import (
     check_channel_first_data,
     check_channel_layout,
     check_chunk_size,
-    check_sfreq,
+    check_matching_sfreq,
+    check_option,
+    check_positive_integer,
+    check_positive_real,
     resolve_sample_window,
     resolve_sfreq,
 )
@@ -19,6 +22,106 @@ from mne_denoise._validation import (
 def rng():
     """Shared random generator."""
     return np.random.default_rng(0)
+
+
+# ---------------------------------------------------------------------------
+# check_positive_integer
+# ---------------------------------------------------------------------------
+
+
+def test_positive_integer_accepts_python_and_numpy_integers():
+    """Positive integer validation accepts and normalizes integer scalars."""
+    assert check_positive_integer(1, name="count") == 1
+    value = check_positive_integer(np.int64(2), name="count")
+    assert value == 2
+    assert isinstance(value, int)
+
+
+@pytest.mark.parametrize(
+    ("value", "error"),
+    [(True, TypeError), (1.5, TypeError), (0, ValueError), (-1, ValueError)],
+)
+def test_positive_integer_rejects_invalid_values(value, error):
+    """Booleans, non-integers, and non-positive values are rejected."""
+    with pytest.raises(error, match="count must be a positive integer"):
+        check_positive_integer(value, name="count")
+
+
+# ---------------------------------------------------------------------------
+# check_positive_real
+# ---------------------------------------------------------------------------
+
+
+def test_positive_real_returns_python_float():
+    """Valid real values are normalized to plain Python floats."""
+    for value, expected in [(1, 1.0), (1.5, 1.5), (np.float64(0.5), 0.5)]:
+        result = check_positive_real(value, name="width")
+        assert result == expected
+        assert isinstance(result, float)
+
+
+@pytest.mark.parametrize("value", [True, "1.0", None])
+def test_positive_real_rejects_invalid_types(value):
+    """Booleans and non-real values are rejected with a type error."""
+    with pytest.raises(TypeError, match="width must be a positive, finite number"):
+        check_positive_real(value, name="width")
+
+
+@pytest.mark.parametrize("value", [0, -1, np.nan, np.inf, -np.inf])
+def test_positive_real_rejects_invalid_values(value):
+    """Non-finite and non-positive values are rejected."""
+    with pytest.raises(ValueError, match="width must be a positive, finite number"):
+        check_positive_real(value, name="width")
+
+
+# ---------------------------------------------------------------------------
+# check_option
+# ---------------------------------------------------------------------------
+
+
+def test_option_accepts_an_allowed_value():
+    """Allowed categorical values pass unchanged."""
+    value = "auto"
+    assert check_option(value, name="blend", allowed=("auto", "constant")) is value
+
+
+def test_option_rejects_an_unallowed_value_with_context():
+    """The error identifies the parameter, choices, and received value."""
+    with pytest.raises(ValueError) as exc_info:
+        check_option("invalid", name="blend", allowed=("auto", "constant"))
+    message = str(exc_info.value)
+    assert all(part in message for part in ("blend", "auto", "constant"))
+    assert "received value" in message
+
+
+# ---------------------------------------------------------------------------
+# check_matching_sfreq
+# ---------------------------------------------------------------------------
+
+
+def test_matching_sfreq_accepts_exact_and_close_values():
+    """Exact and default-tolerance matches are accepted."""
+    check_matching_sfreq(250.0, 250.0, name="X")
+    check_matching_sfreq(250.0005, 250.0, name="X")
+
+
+def test_matching_sfreq_accepts_missing_metadata():
+    """Missing input or fitted metadata does not create a mismatch."""
+    check_matching_sfreq(None, 250.0, name="X")
+    check_matching_sfreq(250.0, None, name="X")
+
+
+def test_matching_sfreq_rejects_a_meaningful_mismatch():
+    """A mismatch reports the estimator and both frequencies."""
+    with pytest.raises(ValueError, match="X.*transform sfreq=251.*fitted sfreq=250"):
+        check_matching_sfreq(251.0, 250.0, name="X")
+
+
+def test_matching_sfreq_honours_strict_custom_tolerance():
+    """Caller-controlled tolerance supports strict fitted contracts."""
+    check_matching_sfreq(100.0 + 5e-13, 100.0, name="X", rtol=0.0, atol=1e-12)
+    with pytest.raises(ValueError, match="transform sfreq"):
+        check_matching_sfreq(100.0 + 2e-12, 100.0, name="X", rtol=0.0, atol=1e-12)
 
 
 # ---------------------------------------------------------------------------
@@ -88,40 +191,6 @@ def test_empty_epoch_axis_is_rejected():
 
 
 # ---------------------------------------------------------------------------
-# check_sfreq
-# ---------------------------------------------------------------------------
-
-
-def test_returns_float():
-    """Valid values are returned as plain floats."""
-    assert check_sfreq(250) == 250.0
-    assert isinstance(check_sfreq(np.float64(250.0)), float)
-    assert check_sfreq(np.int64(500)) == 500.0
-
-
-def test_missing_sfreq_reports_the_context():
-    """The message explains what needed the value."""
-    with pytest.raises(ValueError, match="sfreq is required when lag_seconds is used"):
-        check_sfreq(None, context="lag_seconds")
-    with pytest.raises(ValueError, match="^sfreq is required$"):
-        check_sfreq(None)
-
-
-@pytest.mark.parametrize("value", [True, False, "250", None])
-def test_rejects_non_numeric(value):
-    """Booleans and non-numbers are not sampling frequencies."""
-    with pytest.raises((TypeError, ValueError)):
-        check_sfreq(value)
-
-
-@pytest.mark.parametrize("value", [0.0, -1.0, np.nan, np.inf, -np.inf])
-def test_rejects_non_positive_or_non_finite(value):
-    """A sampling frequency must be finite and strictly positive."""
-    with pytest.raises(ValueError, match="sfreq must be a positive, finite number"):
-        check_sfreq(value)
-
-
-# ---------------------------------------------------------------------------
 # resolve_sample_window
 # ---------------------------------------------------------------------------
 
@@ -133,6 +202,13 @@ def test_sample_window_resolves_samples_and_seconds():
         -2,
         2,
     )
+
+
+@pytest.mark.parametrize("sfreq", [0.0, -1.0, np.nan, np.inf])
+def test_sample_window_rejects_invalid_sfreq(sfreq):
+    """A supplied sampling frequency must be positive and finite."""
+    with pytest.raises(ValueError, match="sfreq must be a positive, finite number"):
+        resolve_sample_window((0, 1), unit="samples", sfreq=sfreq)
 
 
 @pytest.mark.parametrize(
@@ -186,11 +262,19 @@ def test_chunk_size_rejects_invalid(value, error):
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_prefers_the_container_when_they_agree():
-    """Agreeing sources collapse to one value."""
-    assert resolve_sfreq(250.0, 250.0) == 250.0
-    assert resolve_sfreq(None, 250.0) == 250.0
+def test_resolve_returns_declared_value_when_it_is_the_only_source():
+    """A declared value is returned when container metadata is absent."""
     assert resolve_sfreq(250.0, None) == 250.0
+
+
+def test_resolve_returns_container_value_when_it_is_the_only_source():
+    """Container metadata is used when no value was declared."""
+    assert resolve_sfreq(None, 250.0) == 250.0
+
+
+def test_resolve_returns_the_container_value_when_both_sources_agree():
+    """Agreeing sources collapse to one effective value."""
+    assert resolve_sfreq(250.0, 250.0) == 250.0
 
 
 def test_resolve_rejects_disagreement():
@@ -205,15 +289,37 @@ def test_resolve_reports_a_missing_value():
         resolve_sfreq(None, None, context="lag_seconds")
 
 
+def test_resolve_rejects_a_missing_required_value():
+    """The default required contract rejects two missing sources."""
+    with pytest.raises(ValueError, match="^sfreq is required$"):
+        resolve_sfreq(None, None)
+
+
 def test_resolve_can_allow_a_missing_value():
     """Optional sampling frequencies return None rather than raising."""
     assert resolve_sfreq(None, None, required=False) is None
 
 
-def test_resolve_still_validates():
-    """A single bad value is rejected as by check_sfreq."""
-    with pytest.raises(ValueError, match="positive, finite"):
-        resolve_sfreq(-1.0, None)
+@pytest.mark.parametrize(
+    "value",
+    [-1.0, np.nan, np.inf, True, "250"],
+)
+def test_resolve_rejects_invalid_declared_sfreq(value):
+    """The declared source uses the shared positive-real contract."""
+    error = TypeError if isinstance(value, (bool, str)) else ValueError
+    with pytest.raises(error, match="sfreq must be a positive, finite number"):
+        resolve_sfreq(value, None)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [-1.0, np.nan, np.inf, True, "250"],
+)
+def test_resolve_rejects_invalid_data_sfreq(value):
+    """Container metadata uses the same shared positive-real contract."""
+    error = TypeError if isinstance(value, (bool, str)) else ValueError
+    with pytest.raises(error, match="sfreq must be a positive, finite number"):
+        resolve_sfreq(None, value)
 
 
 # ---------------------------------------------------------------------------
@@ -246,16 +352,28 @@ def test_channel_layout_rejects_reordering():
 
 def test_channel_layout_rejects_a_count_mismatch():
     """Array input has no names, so the count is the only check."""
-    with pytest.raises(ValueError, match="X has 3 channels; fitted data had 2"):
+    with pytest.raises(ValueError, match="X: X has 3 channels; fitted data had 2"):
         check_channel_layout("X", n_channels=3, fitted_n_channels=2)
 
 
 def test_channel_layout_skips_names_for_arrays():
     """A fitted-on-array estimator does not demand names."""
+    check_channel_layout("X", n_channels=2, fitted_n_channels=2)
     check_channel_layout(
         "X",
         n_channels=2,
         fitted_n_channels=2,
         ch_names=("a", "b"),
         fitted_ch_names=None,
+    )
+
+
+def test_channel_layout_skips_names_when_input_names_are_missing():
+    """An array transform can use the fitted count without channel names."""
+    check_channel_layout(
+        "X",
+        n_channels=2,
+        fitted_n_channels=2,
+        ch_names=None,
+        fitted_ch_names=("a", "b"),
     )
