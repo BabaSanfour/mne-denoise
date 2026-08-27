@@ -40,6 +40,7 @@ from sklearn.utils.validation import check_is_fitted
 from .._data import epochs_to_continuous, extract_data_from_mne, reconstruct_mne_object
 from .._leadfield import resolve_leadfield
 from .._logging import logger, set_log_level_from_verbose
+from .._validation import check_option, check_positive_real
 
 
 def _noise_level(noise_filter: np.ndarray, cov: np.ndarray, n_times: int) -> float:
@@ -176,13 +177,13 @@ def _estimate_sigmas(
     here, since both entry points accept it unchanged.
     """
     n_channels, n_times = data.shape
-    if tol is not None and (
-        isinstance(tol, (bool, np.bool_))
-        or not isinstance(tol, Real)
-        or not np.isfinite(tol)
-        or tol <= 0
-    ):
-        raise ValueError(f"tol must be positive and finite or None, got {tol!r}.")
+    if tol is not None:
+        try:
+            tol = check_positive_real(tol, name="tol")
+        except (TypeError, ValueError) as err:
+            raise ValueError(
+                f"tol must be positive and finite or None, got {tol!r}."
+            ) from err
 
     rng = np.random.default_rng(random_state)
     llt = leadfield @ leadfield.T  # (n_channels, n_channels); spans the column space
@@ -578,14 +579,10 @@ class SOUND(BaseEstimator, TransformerMixin):
     def fit(self, X, y=None):
         """Estimate the SOUND cleaning operator from ``X``."""
         set_log_level_from_verbose(self.verbose)
-        if self.reference not in ("best", "average"):
-            raise ValueError(
-                f"reference must be 'best' or 'average', got {self.reference!r}."
-            )
-        if self.sigma_source not in ("evoked", "trials"):
-            raise ValueError(
-                f"sigma_source must be 'evoked' or 'trials', got {self.sigma_source!r}."
-            )
+        check_option(self.reference, name="reference", allowed=("best", "average"))
+        check_option(
+            self.sigma_source, name="sigma_source", allowed=("evoked", "trials")
+        )
         data, _, _, orig_inst, _, ch_names = extract_data_from_mne(X)
         n_channels = data.shape[-2]  # (..., n_channels, n_times)
         self.leadfield_ = resolve_leadfield(

@@ -43,7 +43,12 @@ except ImportError:
     _HAS_MNE = False
 
 from .._data import extract_data_from_mne, reconstruct_mne_object
-from .._validation import check_sfreq, resolve_sfreq
+from .._validation import (
+    check_matching_sfreq,
+    check_positive_real,
+    check_sfreq,
+    resolve_sfreq,
+)
 
 
 def interpolate_spectrum(
@@ -96,12 +101,8 @@ def interpolate_spectrum(
         raise ValueError("data must contain at least one time sample")
 
     sfreq = check_sfreq(sfreq)
-    bandwidth = float(bandwidth)
-    neighbour_width = float(neighbour_width)
-    if not np.isfinite(bandwidth) or bandwidth <= 0:
-        raise ValueError("bandwidth must be a positive, finite number")
-    if not np.isfinite(neighbour_width) or neighbour_width <= 0:
-        raise ValueError("neighbour_width must be a positive, finite number")
+    bandwidth = check_positive_real(bandwidth, name="bandwidth")
+    neighbour_width = check_positive_real(neighbour_width, name="neighbour_width")
 
     target_freqs = np.asarray(freqs, dtype=float).reshape(-1)
     if not np.all(np.isfinite(target_freqs)) or np.any(target_freqs <= 0):
@@ -220,12 +221,8 @@ class SpectrumInterpolation(BaseEstimator, TransformerMixin):
 
     def _target_freqs(self, sfreq: float) -> np.ndarray:
         nyquist = sfreq / 2.0
-        bandwidth = float(self.bandwidth)
-        neighbour_width = float(self.neighbour_width)
-        if not np.isfinite(bandwidth) or bandwidth <= 0:
-            raise ValueError("bandwidth must be a positive, finite number")
-        if not np.isfinite(neighbour_width) or neighbour_width <= 0:
-            raise ValueError("neighbour_width must be a positive, finite number")
+        check_positive_real(self.bandwidth, name="bandwidth")
+        check_positive_real(self.neighbour_width, name="neighbour_width")
 
         if np.asarray(self.line_freq).ndim == 0:
             if self.n_harmonics is not None and (
@@ -339,11 +336,7 @@ class SpectrumInterpolation(BaseEstimator, TransformerMixin):
                 ch_names=[X.ch_names[pick] for pick in data_picks],
                 auto_pick=False,
             )
-            if not np.isclose(float(sfreq), self.sfreq_):
-                raise ValueError(
-                    "The input sampling frequency does not match the fitted "
-                    f"sampling frequency ({sfreq} != {self.sfreq_})"
-                )
+            check_matching_sfreq(sfreq, self.sfreq_, name="SpectrumInterpolation")
             cleaned = self._apply(data)
             return reconstruct_mne_object(
                 cleaned, orig_inst, mne_type, picks=picks, verbose=False

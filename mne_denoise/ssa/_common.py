@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from numbers import Real
 from typing import Any
 
 import numpy as np
@@ -14,7 +13,9 @@ from .._logging import set_log_level_from_verbose
 from .._validation import (
     check_channel_first_data,
     check_channel_layout,
+    check_matching_sfreq,
     check_positive_integer,
+    check_positive_real,
     check_sfreq,
     resolve_sfreq,
 )
@@ -37,11 +38,7 @@ def _resolve_window_length(
     if window_length is not None and window_seconds is not None:
         raise ValueError("Specify only one of window_length and window_seconds")
     if window_seconds is not None:
-        if isinstance(window_seconds, bool) or not isinstance(window_seconds, Real):
-            raise TypeError("window_seconds must be a positive, finite number")
-        window_seconds = float(window_seconds)
-        if not np.isfinite(window_seconds) or window_seconds <= 0:
-            raise ValueError("window_seconds must be a positive, finite number")
+        window_seconds = check_positive_real(window_seconds, name="window_seconds")
         sfreq = check_sfreq(sfreq, context="window_seconds")
         resolved = int(np.floor(window_seconds * sfreq + 0.5))
     elif window_length is not None:
@@ -132,10 +129,7 @@ class _BaseSSATransformer(BaseEstimator, TransformerMixin):
             context=self._name,
             required=self._requires_sfreq,
         )
-        if self.sfreq_ is not None and not np.isclose(sfreq, self.sfreq_):
-            raise ValueError(
-                f"transform sfreq={sfreq} differs from fitted sfreq={self.sfreq_}"
-            )
+        check_matching_sfreq(sfreq, self.sfreq_, name=self._name)
         check_channel_layout(
             self._name,
             n_channels=data.shape[-2],

@@ -9,6 +9,10 @@ from mne_denoise._validation import (
     check_channel_first_data,
     check_channel_layout,
     check_chunk_size,
+    check_matching_sfreq,
+    check_option,
+    check_positive_integer,
+    check_positive_real,
     check_sfreq,
     resolve_sample_window,
     resolve_sfreq,
@@ -19,6 +23,106 @@ from mne_denoise._validation import (
 def rng():
     """Shared random generator."""
     return np.random.default_rng(0)
+
+
+# ---------------------------------------------------------------------------
+# check_positive_integer
+# ---------------------------------------------------------------------------
+
+
+def test_positive_integer_accepts_python_and_numpy_integers():
+    """Positive integer validation accepts and normalizes integer scalars."""
+    assert check_positive_integer(1, name="count") == 1
+    value = check_positive_integer(np.int64(2), name="count")
+    assert value == 2
+    assert isinstance(value, int)
+
+
+@pytest.mark.parametrize(
+    ("value", "error"),
+    [(True, TypeError), (1.5, TypeError), (0, ValueError), (-1, ValueError)],
+)
+def test_positive_integer_rejects_invalid_values(value, error):
+    """Booleans, non-integers, and non-positive values are rejected."""
+    with pytest.raises(error, match="count must be a positive integer"):
+        check_positive_integer(value, name="count")
+
+
+# ---------------------------------------------------------------------------
+# check_positive_real
+# ---------------------------------------------------------------------------
+
+
+def test_positive_real_returns_python_float():
+    """Valid real values are normalized to plain Python floats."""
+    for value, expected in [(1, 1.0), (1.5, 1.5), (np.float64(0.5), 0.5)]:
+        result = check_positive_real(value, name="width")
+        assert result == expected
+        assert isinstance(result, float)
+
+
+@pytest.mark.parametrize("value", [True, "1.0", None])
+def test_positive_real_rejects_invalid_types(value):
+    """Booleans and non-real values are rejected with a type error."""
+    with pytest.raises(TypeError, match="width must be a positive, finite number"):
+        check_positive_real(value, name="width")
+
+
+@pytest.mark.parametrize("value", [0, -1, np.nan, np.inf, -np.inf])
+def test_positive_real_rejects_invalid_values(value):
+    """Non-finite and non-positive values are rejected."""
+    with pytest.raises(ValueError, match="width must be a positive, finite number"):
+        check_positive_real(value, name="width")
+
+
+# ---------------------------------------------------------------------------
+# check_option
+# ---------------------------------------------------------------------------
+
+
+def test_option_accepts_an_allowed_value():
+    """Allowed categorical values pass unchanged."""
+    value = "auto"
+    assert check_option(value, name="blend", allowed=("auto", "constant")) is value
+
+
+def test_option_rejects_an_unallowed_value_with_context():
+    """The error identifies the parameter, choices, and received value."""
+    with pytest.raises(ValueError) as exc_info:
+        check_option("invalid", name="blend", allowed=("auto", "constant"))
+    message = str(exc_info.value)
+    assert all(part in message for part in ("blend", "auto", "constant"))
+    assert "received value" in message
+
+
+# ---------------------------------------------------------------------------
+# check_matching_sfreq
+# ---------------------------------------------------------------------------
+
+
+def test_matching_sfreq_accepts_exact_and_close_values():
+    """Exact and default-tolerance matches are accepted."""
+    check_matching_sfreq(250.0, 250.0, name="X")
+    check_matching_sfreq(250.0005, 250.0, name="X")
+
+
+def test_matching_sfreq_accepts_missing_metadata():
+    """Missing input or fitted metadata does not create a mismatch."""
+    check_matching_sfreq(None, 250.0, name="X")
+    check_matching_sfreq(250.0, None, name="X")
+
+
+def test_matching_sfreq_rejects_a_meaningful_mismatch():
+    """A mismatch reports the estimator and both frequencies."""
+    with pytest.raises(ValueError, match="X.*transform sfreq=251.*fitted sfreq=250"):
+        check_matching_sfreq(251.0, 250.0, name="X")
+
+
+def test_matching_sfreq_honours_strict_custom_tolerance():
+    """Caller-controlled tolerance supports strict fitted contracts."""
+    check_matching_sfreq(100.0 + 5e-13, 100.0, name="X", rtol=0.0, atol=1e-12)
+    with pytest.raises(ValueError, match="transform sfreq"):
+        check_matching_sfreq(100.0 + 2e-12, 100.0, name="X", rtol=0.0, atol=1e-12)
 
 
 # ---------------------------------------------------------------------------

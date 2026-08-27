@@ -44,6 +44,7 @@ from sklearn.utils.validation import check_is_fitted
 from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._leadfield import resolve_leadfield
 from .._logging import logger, set_log_level_from_verbose
+from .._validation import check_matching_sfreq, check_option, check_positive_real
 
 __all__ = ["SSPSIR", "compute_sir", "compute_sspsir"]
 
@@ -464,30 +465,11 @@ class SSPSIR(BaseEstimator, TransformerMixin):
                 "n_components must be set (number of artifact PCs to remove, or a "
                 "variance fraction in (0, 1))."
             )
-        if self.blend not in ("auto", "constant"):
-            raise ValueError(f"blend must be 'auto' or 'constant', got {self.blend!r}.")
-        if isinstance(self.high_pass, (bool, np.bool_)) or not isinstance(
-            self.high_pass, Real
-        ):
-            raise ValueError(
-                f"high_pass must be a positive finite number, got {self.high_pass!r}."
-            )
-        if not np.isfinite(self.high_pass) or self.high_pass <= 0.0:
-            raise ValueError(
-                f"high_pass must be a positive finite number, got {self.high_pass!r}."
-            )
-        if isinstance(self.smooth_length, (bool, np.bool_)) or not isinstance(
-            self.smooth_length, Real
-        ):
-            raise ValueError(
-                "smooth_length must be a positive finite number, got "
-                f"{self.smooth_length!r}."
-            )
-        if not np.isfinite(self.smooth_length) or self.smooth_length <= 0.0:
-            raise ValueError(
-                "smooth_length must be a positive finite number, got "
-                f"{self.smooth_length!r}."
-            )
+        check_option(self.blend, name="blend", allowed=("auto", "constant"))
+        self.high_pass = check_positive_real(self.high_pass, name="high_pass")
+        self.smooth_length = check_positive_real(
+            self.smooth_length, name="smooth_length"
+        )
         if isinstance(self.n_dipoles, (bool, np.bool_)) or not isinstance(
             self.n_dipoles, Integral
         ):
@@ -602,13 +584,13 @@ class SSPSIR(BaseEstimator, TransformerMixin):
                 "data; refit on this data, or use blend='constant' to apply the "
                 "projection uniformly over time."
             )
-        if sfreq is not None and not np.isclose(
-            float(sfreq), self.sfreq_, rtol=0.0, atol=1e-12
-        ):
-            raise ValueError(
-                f"SSPSIR was fitted at {self.sfreq_} Hz but got {float(sfreq)} Hz. "
-                "The crossfade kernel is tied to the fitted sampling frequency."
-            )
+        check_matching_sfreq(
+            sfreq,
+            self.sfreq_,
+            name="SSPSIR",
+            rtol=0.0,
+            atol=1e-12,
+        )
         times = getattr(orig_inst, "times", None)
         if times is not None and not np.allclose(
             np.asarray(times), self.times_, rtol=0.0, atol=1e-12

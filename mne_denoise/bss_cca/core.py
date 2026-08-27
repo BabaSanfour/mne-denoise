@@ -59,6 +59,8 @@ from .._spatial import (
 from .._validation import (
     check_channel_first_data,
     check_channel_layout,
+    check_matching_sfreq,
+    check_positive_real,
     check_sfreq,
     resolve_sfreq,
 )
@@ -606,11 +608,7 @@ def _resolve_blocking(
         raise ValueError("overlap must be finite and in [0, 1)")
     if segment_len is None:
         return None, None
-    if isinstance(segment_len, bool) or not isinstance(segment_len, Real):
-        raise TypeError("segment_len must be a positive number or None")
-    segment_len = float(segment_len)
-    if not np.isfinite(segment_len) or segment_len <= 0:
-        raise ValueError("segment_len must be finite and positive")
+    segment_len = check_positive_real(segment_len, name="segment_len")
     sfreq = check_sfreq(sfreq, context="segment_len")
     n_block = int(np.floor(segment_len * sfreq + 0.5))
     if n_block < 2:
@@ -866,15 +864,7 @@ class BSSCCA(BaseEstimator, TransformerMixin):
             X, ch_names=list(self.feature_names_in_) if self.feature_names_in_ else None
         )
         transform_sfreq = resolve_sfreq(self.sfreq, data_sfreq, required=False)
-        if (
-            self.sfreq_ is not None
-            and transform_sfreq is not None
-            and not np.isclose(self.sfreq_, float(transform_sfreq))
-        ):
-            raise ValueError(
-                f"transform sfreq={transform_sfreq} disagrees with fitted "
-                f"sfreq={self.sfreq_}"
-            )
+        check_matching_sfreq(transform_sfreq, self.sfreq_, name="BSS-CCA")
         data = check_channel_first_data(data, name="BSS-CCA")
         check_channel_layout(
             "BSS-CCA",

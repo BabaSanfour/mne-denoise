@@ -1,8 +1,8 @@
-"""Internal input validation shared by array-based algorithms.
+"""Package-wide shared validation primitives.
 
-These helpers centralize the preconditions that every channel-first denoiser
-checks at its public boundary, so error messages and accepted types stay
-consistent across the package.
+These helpers centralize generic data, scalar parameter, fitted-estimator, and
+metadata contracts used across ``mne_denoise``. Algorithm-specific scientific
+validation remains in the module that owns the corresponding method.
 """
 
 from __future__ import annotations
@@ -20,6 +20,24 @@ def check_positive_integer(value: int, *, name: str) -> int:
     if value < 1:
         raise ValueError(f"{name} must be a positive integer")
     return int(value)
+
+
+def check_positive_real(value: float, *, name: str) -> float:
+    """Validate a positive finite real parameter and return it as a float."""
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, Real):
+        raise TypeError(f"{name} must be a positive, finite number")
+    value = float(value)
+    if not np.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be a positive, finite number")
+    return value
+
+
+def check_option(value, *, name: str, allowed: Sequence[object]):
+    """Validate a categorical parameter against the supplied allowed values."""
+    allowed = tuple(allowed)
+    if value not in allowed:
+        raise ValueError(f"{name} must be one of {allowed!r}; received value {value!r}")
+    return value
 
 
 def check_channel_first_data(
@@ -105,6 +123,29 @@ def check_sfreq(sfreq: float | None, *, context: str | None = None) -> float:
     if not np.isfinite(sfreq) or sfreq <= 0:
         raise ValueError("sfreq must be a positive, finite number")
     return sfreq
+
+
+def check_matching_sfreq(
+    input_sfreq: float | None,
+    fitted_sfreq: float | None,
+    *,
+    name: str,
+    rtol: float = 1e-5,
+    atol: float = 1e-8,
+) -> None:
+    """Verify that input sampling frequency matches a fitted value.
+
+    A missing value is accepted because some array-based transforms do not
+    carry sampling-frequency metadata. Standalone validity checks belong to
+    :func:`check_sfreq`.
+    """
+    if input_sfreq is None or fitted_sfreq is None:
+        return
+    if not np.isclose(input_sfreq, fitted_sfreq, rtol=rtol, atol=atol):
+        raise ValueError(
+            f"{name}: transform sfreq={input_sfreq} does not match fitted "
+            f"sfreq={fitted_sfreq}; sampling frequency must match the fitted value"
+        )
 
 
 def resolve_sample_window(
