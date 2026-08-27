@@ -217,7 +217,6 @@ def _compute_icanclean_impl(
     reref_ref: bool | str = False,
     stats_segment_len: float | None = None,
     null_random_state: int | None = None,
-    verbose: bool | str | int | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     r"""Compute one iCanClean pass on continuous NumPy arrays.
 
@@ -287,9 +286,6 @@ def _compute_icanclean_impl(
         Average re-reference mode applied to reference channels for CCA only.
     stats_segment_len : float | None, default=None
         Broader stats-window duration in seconds for sliding mode.
-    verbose : bool | str | int | None
-        MNE-style logging level. The aggregate pass report is emitted at INFO;
-        per-window decisions are emitted at DEBUG.
 
     Returns
     -------
