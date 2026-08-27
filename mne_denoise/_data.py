@@ -212,8 +212,21 @@ def continuous_to_epochs(continuous: np.ndarray, shape: tuple[int, ...]) -> np.n
         return continuous
     if len(shape) != 3:
         raise ValueError(f"shape must have 2 or 3 entries, got {len(shape)}")
-    n_epochs, _n_channels, n_times = shape
-    return continuous.reshape(continuous.shape[0], n_epochs, n_times).transpose(1, 0, 2)
+    n_epochs, n_channels, n_times = shape
+    if continuous.ndim != 2:
+        raise ValueError(f"continuous must be 2D, got {continuous.ndim}D")
+    if continuous.shape[0] != n_channels:
+        raise ValueError(
+            f"continuous has {continuous.shape[0]} channels but target shape "
+            f"expects {n_channels}"
+        )
+    expected_samples = n_epochs * n_times
+    if continuous.shape[1] != expected_samples:
+        raise ValueError(
+            f"continuous has {continuous.shape[1]} samples but target shape "
+            f"expects {expected_samples}"
+        )
+    return continuous.reshape(n_channels, n_epochs, n_times).transpose(1, 0, 2)
 
 
 def extract_data_from_mne(

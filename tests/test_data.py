@@ -360,3 +360,27 @@ def test_continuous_to_epochs_rejects_other_shapes():
     """The target shape must describe continuous or epoched data."""
     with pytest.raises(ValueError, match="shape must have 2 or 3 entries"):
         continuous_to_epochs(np.ones((3, 10)), (2, 3, 4, 5))
+
+
+def test_continuous_to_epochs_rejects_channel_mismatch():
+    """The continuous channel count must match the target epoch shape."""
+    with pytest.raises(
+        ValueError,
+        match="continuous has 2 channels but target shape expects 3",
+    ):
+        continuous_to_epochs(np.ones((2, 30)), (3, 3, 10))
+
+
+def test_continuous_to_epochs_rejects_sample_count_mismatch():
+    """The continuous sample count must match all target epochs."""
+    with pytest.raises(
+        ValueError,
+        match="continuous has 29 samples but target shape expects 30",
+    ):
+        continuous_to_epochs(np.ones((2, 29)), (3, 2, 10))
+
+
+def test_continuous_to_epochs_rejects_non_2d_continuous_input():
+    """A 3-D target requires continuous channel-first input."""
+    with pytest.raises(ValueError, match="continuous must be 2D, got 3D"):
+        continuous_to_epochs(np.ones((3, 2, 10)), (3, 2, 10))

@@ -861,7 +861,10 @@ class IterativeDSS:
 
         # Reshape to original 3D if needed
         # (n_components, n_epochs * n_times) -> (n_epochs, n_components, n_times)
-        sources = continuous_to_epochs(sources, original_shape)
+        source_shape = original_shape
+        if data.ndim == 3:
+            source_shape = (original_shape[0], sources.shape[0], original_shape[2])
+        sources = continuous_to_epochs(sources, source_shape)
 
         return sources
 
