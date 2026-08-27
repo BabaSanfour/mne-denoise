@@ -158,6 +158,64 @@ def _resolve_mne_picks(
     return picks
 
 
+def epochs_to_continuous(data: np.ndarray) -> np.ndarray:
+    """Convert standard epoch-major data to continuous channel-first data.
+
+    Parameters
+    ----------
+    data : ndarray, shape (n_channels, n_times) | (n_epochs, n_channels, n_times)
+        Standard MNE-style data. Two-dimensional input has shape
+        ``(n_channels, n_times)`` and is returned unchanged. Three-dimensional
+        input has shape ``(n_epochs, n_channels, n_times)`` and is concatenated
+        epoch-by-epoch along time.
+
+    Returns
+    -------
+    continuous : ndarray, shape (n_channels, n_times) | (n_channels, n_epochs * n_times)
+        Continuous channel-first data.
+
+    See Also
+    --------
+    continuous_to_epochs : Inverse operation.
+    """
+    data = np.asarray(data)
+    if data.ndim == 2:
+        return data
+    if data.ndim != 3:
+        raise ValueError(f"data must be 2D or 3D, got {data.ndim}D")
+    return data.transpose(1, 0, 2).reshape(data.shape[1], -1)
+
+
+def continuous_to_epochs(continuous: np.ndarray, shape: tuple[int, ...]) -> np.ndarray:
+    """Convert continuous data to the original standard epoch-major shape.
+
+    Parameters
+    ----------
+    continuous : ndarray, shape (n_channels, n_epochs * n_times)
+        Continuous channel-first data, typically the output of
+        :func:`epochs_to_continuous`.
+    shape : tuple
+        Original shape. It must represent either ``(n_channels, n_times)`` or
+        ``(n_epochs, n_channels, n_times)``. A two-dimensional shape returns
+        ``continuous`` unchanged.
+
+    Returns
+    -------
+    epoched : ndarray, shape (n_epochs, n_channels, n_times)
+        Data reshaped to the original standard epoch-major representation.
+
+    See Also
+    --------
+    epochs_to_continuous : Forward operation.
+    """
+    if len(shape) == 2:
+        return continuous
+    if len(shape) != 3:
+        raise ValueError(f"shape must have 2 or 3 entries, got {len(shape)}")
+    n_epochs, _n_channels, n_times = shape
+    return continuous.reshape(continuous.shape[0], n_epochs, n_times).transpose(1, 0, 2)
+
+
 def extract_data_from_mne(
     X: Any,
     ch_names: list[str] | None = None,
@@ -266,7 +324,7 @@ def extract_data_from_mne(
             raise ValueError(f"Data must be 2D or 3D, got {data.ndim}D")
         raise TypeError(f"Unsupported input type: {type(X)}")
     if concatenate_epochs and data.ndim == 3:
-        data = np.transpose(data, (1, 0, 2)).reshape(data.shape[1], -1)
+        data = epochs_to_continuous(data)
     elif channel_first_epochs and mne_type == "epochs":
         data = np.transpose(data, (1, 2, 0))
 

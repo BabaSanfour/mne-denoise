@@ -18,9 +18,8 @@ from collections.abc import Callable
 
 import numpy as np
 
-from .._data import extract_data_from_mne
+from .._data import continuous_to_epochs, epochs_to_continuous, extract_data_from_mne
 from .._logging import set_log_level_from_verbose
-from .._spatial import continuous_to_epochs, epochs_to_continuous
 from .utils.whitening import whiten_from_data_covariance
 
 

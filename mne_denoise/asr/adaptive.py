@@ -27,9 +27,8 @@ from typing import Any
 
 import numpy as np
 
-from .._data import extract_data_from_mne, reconstruct_mne_object
+from .._data import continuous_to_epochs, extract_data_from_mne, reconstruct_mne_object
 from .._logging import set_log_level_from_verbose
-from .._spatial import continuous_to_epochs
 from ._covariance import (
     _adaptive_covariance_sqrt,
 )

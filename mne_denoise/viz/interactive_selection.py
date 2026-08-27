@@ -18,8 +18,12 @@ from matplotlib.colors import to_rgba
 from matplotlib.gridspec import GridSpec
 from mne.time_frequency import psd_array_welch
 
-from .._data import extract_data_from_mne, reconstruct_mne_object
-from .._spatial import continuous_to_epochs, epochs_to_continuous
+from .._data import (
+    continuous_to_epochs,
+    epochs_to_continuous,
+    extract_data_from_mne,
+    reconstruct_mne_object,
+)
 from ..dss.linear import DSS
 from ..dss.nonlinear import IterativeDSS
 from ..zapline.core import ZapLine
@@ -72,7 +76,7 @@ def _flatten_with_layout(
 
     Returns the flattened data, a tag naming the layout it came from, and
     the original shape, so :func:`_restore_layout` can invert it. Unlike
-    :func:`mne_denoise._spatial.epochs_to_continuous`, this also detects
+    :func:`mne_denoise._data.epochs_to_continuous`, this also detects
     which of three layouts it was handed and validates the channel count
     against the fitted estimator.
     """

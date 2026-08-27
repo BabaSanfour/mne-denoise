@@ -45,12 +45,15 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
 from .._cca import canonical_correlation
-from .._data import extract_data_from_mne, reconstruct_mne_object
+from .._data import (
+    continuous_to_epochs,
+    epochs_to_continuous,
+    extract_data_from_mne,
+    reconstruct_mne_object,
+)
 from .._logging import set_log_level_from_verbose
 from .._spatial import (
     apply_spatial_transform,
-    continuous_to_epochs,
-    epochs_to_continuous,
     fit_mixing_matrix,
 )
 from .._validation import (
