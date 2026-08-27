@@ -359,7 +359,9 @@ class TimeShiftDSS(BaseEstimator, TransformerMixin):
             # DSS fit is a numerical implementation detail.
             verbose="WARNING",
         )
-        self.dss_.fit(augmented, weights=weights)
+        # TimeShiftDSS owns the high-level report; the ordinary DSS fit is
+        # only the lag-space numerical implementation.
+        self.dss_.fit(augmented, weights=weights, verbose="WARNING")
         filters = self.dss_.filters_
         eigenvalues = self.dss_.eigenvalues_
         if filters.shape[0] < n_components:

@@ -146,10 +146,13 @@ def narrowband_scan(
 
     best_eigenvalue = -np.inf
     best_dss = None
+    best_index = None
 
     for i, freq in enumerate(frequencies):
         try:
             candidate_kws = dict(dss_kws)
+            # The scan owns the aggregate result; candidate DSS instances
+            # are hidden so each tested frequency does not emit INFO.
             candidate_kws["verbose"] = "WARNING"
             dss = narrowband_dss(
                 sfreq=sfreq,
@@ -158,7 +161,7 @@ def narrowband_scan(
                 n_components=n_components,
                 **candidate_kws,
             )
-            dss.fit(data)
+            dss.fit(data, verbose="WARNING")
             eigenvalues[i] = dss.eigenvalues_[0]
 
             logger.debug(
@@ -172,6 +175,7 @@ def narrowband_scan(
             if eigenvalues[i] > best_eigenvalue:
                 best_eigenvalue = eigenvalues[i]
                 best_dss = dss
+                best_index = i
 
         except Exception as exc:
             # Skip problematic frequencies
@@ -187,7 +191,6 @@ def narrowband_scan(
     if best_dss is None:
         raise RuntimeError("Failed to fit DSS at any frequency")
 
-    best_index = int(np.argmax(eigenvalues))
     logger.info(
         "Narrowband DSS scan: %.3g-%.3g Hz in %.3g Hz steps, "
         "bandwidth=%.3g Hz, best=%.3g Hz (eigenvalue=%.6g).",
@@ -196,7 +199,7 @@ def narrowband_scan(
         freq_step,
         bandwidth,
         frequencies[best_index],
-        eigenvalues[best_index],
+        best_eigenvalue,
     )
 
     return best_dss, frequencies, eigenvalues

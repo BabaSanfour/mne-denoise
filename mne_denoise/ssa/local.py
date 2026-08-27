@@ -20,14 +20,13 @@ References
 
 from __future__ import annotations
 
-import logging
 from numbers import Integral
 from typing import Any
 
 import numpy as np
 from sklearn.cluster import KMeans
 
-from .._logging import verbose
+from .._logging import logger, verbose
 from .._validation import (
     check_channel_first_data,
     check_positive_integer,
@@ -39,8 +38,6 @@ from ._common import (
     _resolve_window_length,
     _trajectory_matrix,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def _mdl_order(eigenvalues: np.ndarray, n_observations: int) -> tuple[int, np.ndarray]:
@@ -553,6 +550,8 @@ class LocalSingularSpectrumAnalysis(_BaseSSATransformer):
     def _compute_record(
         self, data: np.ndarray, sfreq: float | None
     ) -> tuple[np.ndarray, dict[str, Any]]:
+        # The estimator owns one aggregate SSA report; suppress the core's
+        # standalone summary for each record while retaining its computation.
         return compute_local_ssa(
             data,
             self.window_length,
@@ -576,7 +575,16 @@ class LocalSingularSpectrumAnalysis(_BaseSSATransformer):
         else:
             self.n_clusters_ = records[0]["n_clusters"]
             self.subspace_dimensions_ = records[0]["subspace_dimensions"]
+        dimensions = [
+            np.mean(values)
+            for record_dimensions in self.subspace_dimensions_
+            for values in record_dimensions
+        ]
         logger.info(
-            "Local SSA: used a mean of %.1f clusters/channel.",
+            "Local SSA: window=%s samples, channels=%d, mean clusters=%.1f, "
+            "mean subspace dimension=%.1f.",
+            records[0].get("window_length", self.window_length or "auto"),
+            self.n_channels_in_,
             float(np.mean(self.n_clusters_)),
+            float(np.mean(dimensions)),
         )

@@ -16,13 +16,12 @@ References
 
 from __future__ import annotations
 
-import logging
 from numbers import Real
 from typing import Any
 
 import numpy as np
 
-from .._logging import verbose
+from .._logging import logger, verbose
 from .._validation import (
     check_channel_first_data,
     check_positive_integer,
@@ -34,8 +33,6 @@ from ._common import (
     _resolve_window_length,
     _trajectory_matrix,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def ssa_decompose(
@@ -580,6 +577,8 @@ class SingularSpectrumAnalysis(_BaseSSATransformer):
     def _compute_record(
         self, data: np.ndarray, sfreq: float
     ) -> tuple[np.ndarray, dict[str, Any]]:
+        # The estimator owns one aggregate SSA report; suppress the core's
+        # standalone summary for each record while retaining its computation.
         return compute_basic_ssa(
             data,
             sfreq,
@@ -607,4 +606,12 @@ class SingularSpectrumAnalysis(_BaseSSATransformer):
             self.dropped_counts_ = records[0]["dropped_counts"]
             self.dropped_frequencies_ = records[0]["dropped_frequencies"]
             mean_count = float(np.mean(self.dropped_counts_))
-        logger.info("SSA: dropped a mean of %.1f components/channel.", mean_count)
+        window = records[0].get("window_length", self.window_length or "auto")
+        logger.info(
+            "Basic SSA: window=%s samples, channels=%d, dropped=%d component(s) "
+            "(mean %.1f/channel).",
+            window,
+            self.n_channels_in_,
+            int(np.sum(self.dropped_counts_)),
+            mean_count,
+        )

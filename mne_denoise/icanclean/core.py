@@ -51,7 +51,6 @@ References
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import numpy as np
@@ -62,15 +61,13 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from .._cca import canonical_correlation
 from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._filtering import _filter_channels
-from .._logging import verbose
+from .._logging import logger, verbose
 
 # Optional MNE support
 try:
     import mne
 except ImportError:
     mne = None
-
-logger = logging.getLogger(__name__)
 
 #: Default number of circular-shift surrogates for ``threshold='null'``. 20 is
 #: the floor at which the default alpha's quantile is even defined; 100 gives
@@ -206,8 +203,7 @@ def null_r2_threshold(
     return float(np.quantile(maxima, 1.0 - alpha))
 
 
-@verbose
-def compute_icanclean(
+def _compute_icanclean_impl(
     X_primary: np.ndarray,
     X_ref: np.ndarray,
     sfreq: float,
@@ -576,22 +572,102 @@ def compute_icanclean(
         ),
     }
 
-    total_removed = qc["n_removed_"].sum()
+    return cleaned_primary.astype(np.float64), qc
+
+
+def _log_icanclean_summary(
+    mode: str,
+    qc: dict[str, Any],
+    *,
+    n_primary: int,
+    n_ref: int,
+    n_epochs: int | None = None,
+) -> None:
+    """Emit one aggregate iCanClean report from already-computed QC state."""
+    epoch_prefix = f"{n_epochs} epochs, " if n_epochs is not None else ""
+    if mode == "hybrid":
+        global_removed = np.asarray(qc["global_n_removed_"], dtype=int)
+        sliding_removed = np.asarray(qc["sliding_n_removed_"], dtype=int)
+        n_sliding = sliding_removed.size
+        pct_sliding = (
+            100.0 * np.count_nonzero(sliding_removed > 0) / n_sliding
+            if n_sliding
+            else 0.0
+        )
+        mean_sliding = float(np.mean(sliding_removed)) if n_sliding else 0.0
+        logger.info(
+            "iCanClean: mode=hybrid, %sglobal removed=%d component(s); "
+            "sliding=%d windows, %d primary / %d reference channels, "
+            "%.1f%% windows had removals, mean removed=%.1f component(s).",
+            epoch_prefix,
+            int(np.sum(global_removed)),
+            n_sliding,
+            n_primary,
+            n_ref,
+            pct_sliding,
+            mean_sliding,
+        )
+        return
+
+    removed = np.asarray(qc["n_removed_"], dtype=int)
+    n_windows = removed.size
     pct_windows = (
-        (qc["n_removed_"] > 0).sum() / qc["n_windows_"] * 100
-        if qc["n_windows_"] > 0
-        else 0
+        100.0 * np.count_nonzero(removed > 0) / n_windows if n_windows else 0.0
     )
+    mean_removed = float(np.mean(removed)) if n_windows else 0.0
     logger.info(
-        "ICanClean: mode=%s, %d windows, %.1f%% had removals, "
-        "%.1f components removed on average.",
+        "iCanClean: mode=%s, %s%d windows, %d primary / %d reference channels, "
+        "%.1f%% windows had removals, mean removed=%.1f component(s).",
         mode,
-        qc["n_windows_"],
+        epoch_prefix,
+        n_windows,
+        n_primary,
+        n_ref,
         pct_windows,
-        total_removed / max(qc["n_windows_"], 1),
+        mean_removed,
     )
 
-    return cleaned_primary.astype(np.float64), qc
+
+@verbose
+def compute_icanclean(
+    X_primary: np.ndarray,
+    X_ref: np.ndarray,
+    sfreq: float,
+    mode: str = "sliding",
+    clean_with: str = "X",
+    segment_len: float = 2.0,
+    overlap: float = 0.0,
+    threshold: float | str = 0.7,
+    max_reject_fraction: float = 0.5,
+    reref_primary: bool | str = False,
+    reref_ref: bool | str = False,
+    stats_segment_len: float | None = None,
+    null_random_state: int | None = None,
+    verbose: bool | str | int | None = None,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Compute one iCanClean pass and emit one aggregate INFO summary."""
+    cleaned, qc = _compute_icanclean_impl(
+        X_primary,
+        X_ref,
+        sfreq,
+        mode=mode,
+        clean_with=clean_with,
+        segment_len=segment_len,
+        overlap=overlap,
+        threshold=threshold,
+        max_reject_fraction=max_reject_fraction,
+        reref_primary=reref_primary,
+        reref_ref=reref_ref,
+        stats_segment_len=stats_segment_len,
+        null_random_state=null_random_state,
+    )
+    _log_icanclean_summary(
+        mode,
+        qc,
+        n_primary=np.asarray(X_primary).shape[0],
+        n_ref=np.asarray(X_ref).shape[0],
+    )
+    return cleaned, qc
 
 
 class ICanClean(BaseEstimator, TransformerMixin):
@@ -930,6 +1006,22 @@ class ICanClean(BaseEstimator, TransformerMixin):
             cleaned = self._transform_epochs(data, sfreq, primary_idx, ref_idx)
         else:
             cleaned = self._clean_continuous(data, sfreq, primary_idx, ref_idx)
+
+        summary_qc = {"n_removed_": self.n_removed_}
+        if self.mode == "hybrid":
+            summary_qc.update(
+                {
+                    "global_n_removed_": self.global_n_removed_,
+                    "sliding_n_removed_": self.sliding_n_removed_,
+                }
+            )
+        _log_icanclean_summary(
+            self.mode,
+            summary_qc,
+            n_primary=primary_idx.size,
+            n_ref=ref_idx.size,
+            n_epochs=data.shape[0] if mne_type == "epochs" else None,
+        )
 
         if n_orig is not None:
             # Drop the pseudo-reference rows appended above so the output has
@@ -1300,7 +1392,7 @@ class ICanClean(BaseEstimator, TransformerMixin):
     ) -> tuple[np.ndarray, dict[str, Any]]:
         """Compute cleaned primary channels and QC without mutating state."""
         if self.mode == "hybrid":
-            cleaned_after_global, qc_global = compute_icanclean(
+            cleaned_after_global, qc_global = _compute_icanclean_impl(
                 data[primary_idx, :],
                 data[ref_idx, :],
                 sfreq=sfreq,
@@ -1314,9 +1406,8 @@ class ICanClean(BaseEstimator, TransformerMixin):
                 reref_ref=self.reref_ref,
                 stats_segment_len=None,
                 null_random_state=self.null_random_state,
-                verbose=self.verbose,
             )
-            cleaned_primary, qc = compute_icanclean(
+            cleaned_primary, qc = _compute_icanclean_impl(
                 cleaned_after_global,
                 data[ref_idx, :],
                 sfreq=sfreq,
@@ -1330,7 +1421,6 @@ class ICanClean(BaseEstimator, TransformerMixin):
                 reref_ref=self.reref_ref,
                 stats_segment_len=self.stats_segment_len,
                 null_random_state=self.null_random_state,
-                verbose=self.verbose,
             )
             qc["global_correlations_"] = qc_global["correlations_"]
             qc["global_n_removed_"] = qc_global["n_removed_"]
@@ -1339,7 +1429,7 @@ class ICanClean(BaseEstimator, TransformerMixin):
             qc["global_patterns_"] = qc_global["patterns_"]
             qc["global_n_windows_"] = qc_global["n_windows_"]
         else:
-            cleaned_primary, qc = compute_icanclean(
+            cleaned_primary, qc = _compute_icanclean_impl(
                 data[primary_idx, :],
                 data[ref_idx, :],
                 sfreq=sfreq,
@@ -1353,7 +1443,6 @@ class ICanClean(BaseEstimator, TransformerMixin):
                 reref_ref=self.reref_ref,
                 stats_segment_len=self.stats_segment_len,
                 null_random_state=self.null_random_state,
-                verbose=self.verbose,
             )
         if self.mode == "hybrid":
             qc["sliding_correlations_"] = qc["correlations_"].copy()

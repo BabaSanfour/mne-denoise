@@ -15,7 +15,6 @@ References
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 
 import numpy as np
@@ -37,11 +36,14 @@ from .._data import (
     extract_data_from_mne,
     reconstruct_mne_object,
 )
-from .._logging import verbose
+from .._logging import logger, verbose
 from .._spatial import apply_spatial_transform
 from ..blending import overlap_add_combine
 from .denoisers import LinearDenoiser
-from .denoisers.temporal import SmoothingBias
+from .denoisers.averaging import AverageBias
+from .denoisers.periodic import CombFilterBias, PeakFilterBias
+from .denoisers.spectral import BandpassBias, LineNoiseBias
+from .denoisers.temporal import LagAverageBias, SmoothingBias
 from .utils.segmentation import CovarianceSegmenter, FixedWindowSegmenter
 from .utils.selection import auto_select_components_robust
 from .utils.whitening import (
@@ -50,8 +52,6 @@ from .utils.whitening import (
     compute_mne_sensor_whitener,
     map_spatial_matrices_to_sensor_space,
 )
-
-logger = logging.getLogger(__name__)
 
 _COMPONENT_ACTIONS = frozenset({"extract", "retain", "subtract"})
 
@@ -272,9 +272,35 @@ def _as_smoother(smooth: LinearDenoiser | int | None) -> LinearDenoiser | None:
 
 
 def _bias_name(bias: object) -> str:
-    """Return a concise, stable name for a DSS bias in log messages."""
+    """Return a concise scientific description of a DSS bias."""
     if bias is None:
         return "None"
+    if isinstance(bias, CombFilterBias):
+        return (
+            f"CombFilterBias(f0={float(bias.fundamental_freq):.3g} Hz, "
+            f"harmonics={int(bias.n_harmonics)})"
+        )
+    if isinstance(bias, BandpassBias):
+        low, high = bias.freq_band
+        return f"BandpassBias({float(low):.3g}-{float(high):.3g} Hz)"
+    if isinstance(bias, SmoothingBias):
+        return f"SmoothingBias(window={int(bias.window)})"
+    if isinstance(bias, AverageBias):
+        return f"AverageBias(axis={bias.axis})"
+    if isinstance(bias, LineNoiseBias):
+        harmonics = (
+            f", harmonics={int(bias.n_harmonics)}"
+            if bias.n_harmonics is not None
+            else ""
+        )
+        return (
+            f"LineNoiseBias(freq={float(bias.freq):.3g} Hz, "
+            f"method={bias.method}{harmonics})"
+        )
+    if isinstance(bias, PeakFilterBias):
+        return f"PeakFilterBias(freq={float(bias.freq):.3g} Hz)"
+    if isinstance(bias, LagAverageBias):
+        return f"LagAverageBias(lags={bias.lags})"
     if isinstance(bias, LinearDenoiser):
         return type(bias).__name__
     return getattr(bias, "__name__", type(bias).__name__)
@@ -1322,7 +1348,9 @@ class DSS(BaseEstimator, TransformerMixin):
         # describes all of the data. Per-segment results are kept separately in
         # segment_results_.
         global_est = self._make_segment_estimator()
-        global_est.fit(data_cont)
+        # Adaptive DSS owns the aggregate INFO record; hide the global helper
+        # fit so one operation does not report its internal DSS twice.
+        global_est.fit(data_cont, verbose="WARNING")
         self.filters_ = global_est.filters_
         self.patterns_ = global_est.patterns_
         self.mixing_ = global_est.patterns_
@@ -1532,6 +1560,8 @@ class DSS(BaseEstimator, TransformerMixin):
             min_select=0,
             # A dict rank is an MNE-object concept; segments are plain arrays.
             rank=self.rank if isinstance(self.rank, int | type(None)) else None,
+            # The adaptive parent owns the aggregate report; segment clones
+            # are numerical helpers and must not emit duplicate DSS INFO.
             verbose="WARNING",
         )
         return est
@@ -1563,7 +1593,9 @@ class DSS(BaseEstimator, TransformerMixin):
         """
         n_channels = chunk.shape[0]
         seg_dss = self._make_segment_estimator()
-        seg_dss.fit(chunk)
+        # Adaptive DSS owns the aggregate INFO record; segment DSS fits are
+        # implementation details rather than separate user-facing results.
+        seg_dss.fit(chunk, verbose="WARNING")
         n_sel = seg_dss.n_selected_ if seg_dss.n_selected_ is not None else 0
 
         # Apply caps

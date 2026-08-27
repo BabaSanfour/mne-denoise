@@ -320,9 +320,11 @@ def compute_sound(
         ) from err
     operator = ((llt * w[None, :]) @ inv) * w[None, :]
     logger.info(
-        "SOUND: %d iteration(s), final max relative sigma change %.2e, "
-        "reference=average",
+        "SOUND: %d iteration(s), channels=%d, sources=%d, "
+        "final max relative sigma change %.2e, reference=average",
         convergence.size,
+        n_channels,
+        leadfield.shape[1],
         convergence[-1] if convergence.size else float("nan"),
     )
     return operator, sigmas, convergence
@@ -463,9 +465,11 @@ def compute_sound_ref_best(
         ) from err
     operator = cross * w[None, :] @ reconstruction
     logger.info(
-        "SOUND: %d iteration(s), final max relative sigma change %.2e, "
-        "reference=best channel %d",
+        "SOUND: %d iteration(s), channels=%d, sources=%d, "
+        "final max relative sigma change %.2e, reference=best channel %d",
         convergence.size,
+        n_channels,
+        leadfield.shape[1],
         convergence[-1] if convergence.size else float("nan"),
         best,
     )

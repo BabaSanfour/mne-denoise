@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import logging
 import warnings
 from typing import Any
 
 import numpy as np
 
 from . import _mne
-
-logger = logging.getLogger(__name__)
+from ._logging import logger
 
 
 def _mne_instance_types() -> tuple[type, ...]:

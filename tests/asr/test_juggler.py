@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pytest
 from sklearn.cluster import DBSCAN
@@ -106,6 +108,32 @@ def _inject_bursts(
         )
         mask[start:stop] = True
     return contaminated, mask
+
+
+def test_juggler_summary_identifies_strategy_and_fit_state(caplog):
+    """JugglerASR INFO includes strategy and the fitted operating point."""
+    data = _make_synthetic_eeg(sfreq=SFREQ, duration_s=15.0, n_channels=8)
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        JugglerASR(
+            sfreq=SFREQ,
+            cutoff=20.0,
+            strategy="dbscan",
+            random_state=42,
+            verbose=False,
+        ).fit(data, verbose=True)
+    summaries = [
+        record for record in caplog.records if record.message.startswith("JugglerASR:")
+    ]
+    assert len(summaries) == 1
+    for token in (
+        "strategy=dbscan",
+        "method=",
+        "channels=",
+        "sfreq=",
+        "cutoff=",
+        "rank=",
+    ):
+        assert token in summaries[0].message
 
 
 def test_juggler_clean_input_keeps_most_samples():

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 
 import mne
@@ -256,6 +257,21 @@ def test_zapline_n_remove_fixed(minimal_data):
 
     assert est.n_removed_ == 2
     check_presence.assert_not_called()
+
+
+def test_zapline_standard_summary_is_aggregate(minimal_data, caplog):
+    """Standard ZapLine reports frequency and removals once."""
+    data = minimal_data["data"]
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        ZapLine(
+            line_freq=minimal_data["line_freq"],
+            sfreq=minimal_data["sfreq"],
+            n_select=2,
+        ).fit(data, verbose=True)
+    summaries = [r for r in caplog.records if r.message.startswith("ZapLine:")]
+    assert len(summaries) == 1
+    assert "frequency=" in summaries[0].message
+    assert "removed=" in summaries[0].message
 
 
 def test_zapline_n_remove_auto(minimal_data):

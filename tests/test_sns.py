@@ -608,3 +608,18 @@ def test_sns_verbose_uses_package_logging(rng):
         assert package_logger.level == previous
     finally:
         package_logger.setLevel(previous)
+
+
+def test_sns_emits_one_aggregate_summary(rng, caplog):
+    """The SNS core owns one summary that includes learned neighbours."""
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        compute_sns(
+            rng.standard_normal((5, 300)),
+            n_neighbors=2,
+            n_iter=2,
+            verbose=True,
+        )
+    summaries = [r for r in caplog.records if r.message.startswith("SNS:")]
+    assert len(summaries) == 1
+    assert "neighbours each" in summaries[0].message
+    assert "iteration(s)" in summaries[0].message

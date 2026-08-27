@@ -1,4 +1,4 @@
-"""Tests for the verbose-to-logging wiring (mne_denoise._logging)."""
+"""Tests for the scoped verbose-to-logging contract."""
 
 from __future__ import annotations
 
@@ -7,7 +7,15 @@ import logging
 import numpy as np
 import pytest
 
-from mne_denoise.asr import ASR, AdaptiveASR, JugglerASR
+from mne_denoise._logging import (
+    _UNSET,
+    _active_verbose_scope,
+    _level_from_verbose,
+    logger,
+    use_log_level,
+    verbose,
+)
+from mne_denoise.asr import ASR
 
 SFREQ = 200.0
 
@@ -17,79 +25,234 @@ def _data(seed: int = 0) -> np.ndarray:
     return np.random.default_rng(seed).standard_normal((6, 2000))
 
 
-def test_verbose_true_emits_info(caplog):
-    """verbose=True surfaces an INFO calibration message on the asr logger."""
-    with caplog.at_level(logging.INFO, logger="mne_denoise"):
-        ASR(sfreq=SFREQ, cutoff=20.0, picks=None, verbose=True).fit_transform(_data())
-    assert any("ASR calibrated" in rec.message for rec in caplog.records)
+def test_level_from_verbose_values():
+    """MNE-style values resolve to standard logging levels."""
+    assert _level_from_verbose(True) == logging.INFO
+    assert _level_from_verbose(False) == logging.WARNING
+    assert _level_from_verbose("debug") == logging.DEBUG
+    assert _level_from_verbose(logging.ERROR) == logging.ERROR
 
 
-def test_verbose_false_is_quiet(caplog):
-    """verbose=False raises the asr logger to WARNING, so no INFO is emitted."""
-    with caplog.at_level(logging.INFO, logger="mne_denoise"):
-        ASR(sfreq=SFREQ, cutoff=20.0, picks=None, verbose=False).fit_transform(_data())
-    infos = [
-        rec
-        for rec in caplog.records
-        if rec.levelno >= logging.INFO and "ASR calibrated" in rec.message
-    ]
-    assert not infos
+def test_level_from_verbose_invalid_values():
+    """Invalid values fail with useful exception types."""
+    with pytest.raises(ValueError, match="Unknown logging level"):
+        _level_from_verbose("not-a-level")
+    with pytest.raises(TypeError, match="verbose must be"):
+        _level_from_verbose(object())
 
 
-@pytest.mark.parametrize("estimator_cls", [AdaptiveASR, JugglerASR])
-def test_variants_honor_verbose_without_error(estimator_cls, caplog):
-    """AdaptiveASR / JugglerASR accept verbose and run cleanly under it."""
-    with caplog.at_level(logging.INFO, logger="mne_denoise"):
-        est = estimator_cls(sfreq=SFREQ, cutoff=20.0, picks=None, verbose=True)
-        cleaned = est.fit_transform(_data())
-    assert np.asarray(cleaned).shape == (6, 2000)
+def test_use_log_level_none_inherits_without_mutating_logger():
+    """None is an active inheritance scope but does not change the level."""
+    previous = logger.level
+    assert _active_verbose_scope.get() is _UNSET
+    with use_log_level(None):
+        assert logger.level == previous
+        assert _active_verbose_scope.get() is None
+    assert logger.level == previous
+    assert _active_verbose_scope.get() is _UNSET
 
 
-def test_verbose_none():
-    from mne_denoise._logging import logger, set_log_level_from_verbose
-
-    prev = logger.level
-    set_log_level_from_verbose(None)
-    assert logger.level == prev
-
-
-def test_verbose_str():
-    from mne_denoise._logging import logger, set_log_level_from_verbose
-
+def test_use_log_level_restores_after_success_and_exception():
+    """Concrete scopes restore the logger even when their body raises."""
     previous = logger.level
     try:
-        set_log_level_from_verbose("debug")
+        with use_log_level("DEBUG"):
+            assert logger.level == logging.DEBUG
+        assert logger.level == previous
+
+        with pytest.raises(RuntimeError, match="expected"):
+            with use_log_level(True):
+                assert logger.level == logging.INFO
+                raise RuntimeError("expected")
+        assert logger.level == previous
+    finally:
+        logger.setLevel(previous)
+
+
+def test_nested_explicit_scopes_restore_in_order():
+    """An explicit inner scope temporarily supersedes an outer scope."""
+    previous = logger.level
+    with use_log_level("DEBUG"):
         assert logger.level == logging.DEBUG
-    finally:
-        logger.setLevel(previous)
+        with use_log_level(False):
+            assert logger.level == logging.WARNING
+        assert logger.level == logging.DEBUG
+    assert logger.level == previous
 
 
-def test_verbose_int():
-    from mne_denoise._logging import logger, set_log_level_from_verbose
-
-    previous = logger.level
-    try:
-        set_log_level_from_verbose(logging.ERROR)
-        assert logger.level == logging.ERROR
-    finally:
-        logger.setLevel(previous)
-
-
-def test_verbose_decorator_restores_on_success_and_error():
-    """A scoped per-call override must restore the prior level always."""
-    from mne_denoise._logging import logger, verbose
+def test_decorated_nested_call_inherits_outer_scope():
+    """An omitted inner override inherits the active outer scope."""
 
     @verbose
-    def operation(*, verbose=None, fail=False):
-        if fail:
-            raise RuntimeError("expected")
+    def inner(*, verbose=None):
+        return logger.level
+
+    @verbose
+    def outer(*, verbose=None):
+        return inner()
+
+    assert outer(verbose="DEBUG") == logging.DEBUG
+
+
+def test_decorated_nested_explicit_override_restores_outer_scope():
+    """An explicit inner override returns control to its outer scope."""
+
+    @verbose
+    def inner(*, verbose=None):
+        return logger.level
+
+    @verbose
+    def outer(*, verbose=None):
+        inner_level = inner(verbose=False)
+        return inner_level, logger.level
+
+    assert outer(verbose="DEBUG") == (logging.WARNING, logging.DEBUG)
+
+
+def test_estimator_fallback_only_without_explicit_or_outer_scope():
+    """Constructor verbosity is the last internal fallback."""
+
+    class Estimator:
+        def __init__(self, value):
+            self.verbose = value
+
+        @verbose
+        def operation(self, *, verbose=None):
+            return logger.level
 
     previous = logger.level
     try:
-        operation(verbose="DEBUG")
-        assert logger.level == previous
-        with pytest.raises(RuntimeError, match="expected"):
-            operation(verbose=True, fail=True)
-        assert logger.level == previous
+        estimator = Estimator(True)
+        assert estimator.operation() == logging.INFO
+        assert estimator.operation(verbose=False) == logging.WARNING
+
+        estimator.verbose = False
+        with use_log_level("DEBUG"):
+            assert estimator.operation() == logging.DEBUG
+    finally:
+        logger.setLevel(previous)
+
+
+def test_standalone_explicit_verbose_is_resolved():
+    """Standalone decorated functions honor their explicit override."""
+
+    @verbose
+    def operation(*, verbose=None):
+        return logger.level
+
+    assert operation(verbose="debug") == logging.DEBUG
+
+
+def test_explicit_none_differs_from_omitted_verbose():
+    """Explicit None inherits external configuration instead of self.verbose."""
+
+    class Estimator:
+        def __init__(self):
+            self.verbose = True
+
+        @verbose
+        def operation(self, *, verbose=None):
+            return logger.level
+
+    previous = logger.level
+    try:
+        logger.setLevel(logging.ERROR)
+        estimator = Estimator()
+        assert estimator.operation(verbose=None) == logging.ERROR
+        assert estimator.operation() == logging.INFO
+    finally:
+        logger.setLevel(previous)
+
+
+def test_unsupported_verbose_is_not_swallowed():
+    """Decorating a function does not silently expand its signature."""
+
+    @verbose
+    def operation():
+        return None
+
+    with pytest.raises(TypeError):
+        operation(verbose=True)
+
+
+def test_verbose_is_not_top_level_public_api():
+    """The shared logging decorator remains package-internal."""
+    import mne_denoise
+
+    assert "verbose" not in mne_denoise.__all__
+    assert not hasattr(mne_denoise, "verbose")
+
+
+def test_asr_call_level_debug_overrides_constructor_false(caplog):
+    """A fit_transform call-level DEBUG controls nested fit and transform."""
+    estimator = ASR(
+        sfreq=SFREQ,
+        cutoff=20.0,
+        picks=None,
+        calibration="manual",
+        filter_kind="none",
+        verbose=False,
+    )
+    with caplog.at_level(logging.DEBUG, logger="mne_denoise"):
+        estimator.fit_transform(_data(), verbose="DEBUG")
+
+    package_records = [
+        record for record in caplog.records if record.name == "mne_denoise"
+    ]
+    assert any(record.levelno == logging.DEBUG for record in package_records)
+    calibration = next(
+        record for record in package_records if "calibrated:" in record.message
+    )
+    assert any(record.levelno == logging.INFO for record in package_records)
+    for token in (
+        "method=",
+        "channels=",
+        "sfreq=",
+        "cutoff=",
+        "rank=",
+        "clean calibration windows=",
+    ):
+        assert token in calibration.message
+
+
+def test_asr_call_level_false_overrides_constructor_true(caplog):
+    """A fit_transform call-level False suppresses nested normal reports."""
+    estimator = ASR(
+        sfreq=SFREQ,
+        cutoff=20.0,
+        picks=None,
+        calibration="manual",
+        filter_kind="none",
+        verbose=True,
+    )
+    with caplog.at_level(logging.DEBUG, logger="mne_denoise"):
+        estimator.fit_transform(_data(), verbose=False)
+
+    assert not any(
+        record.name == "mne_denoise" and record.levelno < logging.WARNING
+        for record in caplog.records
+    )
+
+
+def test_asr_explicit_none_inherits_external_error_level(caplog):
+    """An explicit None prevents constructor verbosity from taking over."""
+    estimator = ASR(
+        sfreq=SFREQ,
+        cutoff=20.0,
+        picks=None,
+        calibration="manual",
+        filter_kind="none",
+        verbose=True,
+    )
+    previous = logger.level
+    try:
+        logger.setLevel(logging.ERROR)
+        with caplog.at_level(logging.DEBUG):
+            estimator.fit(_data(), verbose=None)
+        assert logger.level == logging.ERROR
+        assert not any(
+            record.name == "mne_denoise" and record.levelno < logging.ERROR
+            for record in caplog.records
+        )
     finally:
         logger.setLevel(previous)

@@ -362,10 +362,14 @@ class AdaptiveASR(ASR):
             "sfreq": self.sfreq_,
         }
         logger.info(
-            "AdaptiveASR: variant=%s, channels=%d, rank=%d, "
+            "AdaptiveASR: variant=%s, method=%s, channels=%d, sfreq=%.3g Hz, "
+            "cutoff=%.3g, rank=%d, "
             "clean calibration windows=%d/%d.",
             self.variant,
+            self.method,
             self.n_channels_,
+            self.sfreq_,
+            self.cutoff,
             self.rank_,
             cal_info.get("n_clean_windows", 0),
             cal_info.get("n_calibration_windows", 0),

@@ -431,10 +431,16 @@ class ASR(BaseEstimator, TransformerMixin):
         self.calibration_mask_kind_ = "window"
         self.calibration_info_ = cal_info
         logger.info(
-            "ASR calibrated: method=%s, %d channels, rank %d.",
+            "%s calibrated: method=%s, channels=%d, sfreq=%.3g Hz, "
+            "cutoff=%.3g, rank=%d, clean calibration windows=%d/%d.",
+            type(self).__name__,
             self.method,
             self.n_channels_,
+            self.sfreq_,
+            self.cutoff,
             self.rank_,
+            cal_info.get("n_clean_windows", 0),
+            cal_info.get("n_calibration_windows", 0),
         )
         self.history_ = {
             "method": self.method,

@@ -10,7 +10,16 @@ import pytest
 from numpy.testing import assert_allclose
 
 from mne_denoise.dss import DSS, compute_dss
-from mne_denoise.dss.denoisers.spectral import LineNoiseBias
+from mne_denoise.dss.denoisers import (
+    AverageBias,
+    BandpassBias,
+    CombFilterBias,
+    LagAverageBias,
+    LineNoiseBias,
+    PeakFilterBias,
+    SmoothingBias,
+)
+from mne_denoise.dss.linear import _bias_name
 from mne_denoise.dss.utils.segmentation import CovarianceSegmenter, FixedWindowSegmenter
 
 # =============================================================================
@@ -33,6 +42,26 @@ def test_compute_dss_shape():
     assert filters.shape == (5, n_channels)
     assert patterns.shape == (n_channels, 5)
     assert eigenvalues.shape == (5,)
+
+
+@pytest.mark.parametrize(
+    ("bias", "expected"),
+    [
+        (AverageBias(axis="epochs"), "AverageBias(axis=epochs)"),
+        (BandpassBias(freq_band=(9.0, 11.0), sfreq=100.0), "BandpassBias(9-11 Hz)"),
+        (LineNoiseBias(freq=50.0, sfreq=500.0, n_harmonics=3), "freq=50 Hz"),
+        (PeakFilterBias(freq=12.0, sfreq=100.0), "PeakFilterBias(freq=12 Hz)"),
+        (
+            CombFilterBias(fundamental_freq=12.0, sfreq=100.0, n_harmonics=3),
+            "CombFilterBias(f0=12 Hz, harmonics=3)",
+        ),
+        (LagAverageBias(lags=4), "LagAverageBias(lags=4)"),
+        (SmoothingBias(window=10), "SmoothingBias(window=10)"),
+    ],
+)
+def test_dss_bias_description_includes_scientific_configuration(bias, expected):
+    """DSS's stable bias description exposes the meaningful parameters."""
+    assert expected in _bias_name(bias)
 
 
 def test_compute_dss_identity_bias():
@@ -1368,7 +1397,7 @@ def test_compute_dss_warns_on_heavy_rank_reduction(caplog):
     cov = Q @ np.diag(eigvals) @ Q.T
     cov = (cov + cov.T) / 2
 
-    with caplog.at_level(logging.WARNING, logger="mne_denoise.dss.linear"):
+    with caplog.at_level(logging.WARNING, logger="mne_denoise"):
         compute_dss(cov, cov)
 
     assert any(

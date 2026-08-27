@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import mne
 import numpy as np
 import pytest
@@ -344,12 +346,19 @@ def test_sound_array_forward_channel_mismatch_raises(forward):
 
 def test_sound_verbose_logs_fit_summary(noisy_raw, caplog):
     """The package logging convention reports the iteration outcome."""
-    import logging
-
     raw, _ = noisy_raw
     with caplog.at_level(logging.INFO, logger="mne_denoise"):
         SOUND(n_iter=2, random_state=0, verbose=True).fit(raw)
-    assert any("SOUND: 2 iteration(s)" in r.message for r in caplog.records)
+    summaries = [r for r in caplog.records if r.message.startswith("SOUND:")]
+    assert len(summaries) == 1
+    for token in (
+        "2 iteration(s)",
+        "channels=",
+        "sources=",
+        "final max relative sigma change",
+        "reference=",
+    ):
+        assert token in summaries[0].message
 
 
 def test_sound_ref_best_channel_mismatch_raises():

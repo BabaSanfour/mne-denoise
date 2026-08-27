@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import mne
 import numpy as np
 import pytest
@@ -112,6 +114,27 @@ def test_spectrum_interpolation_removes_harmonics():
     assert np.array_equal(si.freqs_, np.array([60.0, 120.0, 180.0]))
     for h in (60.0, 120.0, 180.0):
         assert _band_power(clean, h, sfreq) / _band_power(data, h, sfreq) < 0.01
+
+
+def test_spectrum_interpolation_summary_names_targets_unambiguously(caplog):
+    """The summary reports exact targets rather than an ambiguous harmonic count."""
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        SpectrumInterpolation(
+            sfreq=1000.0,
+            line_freq=60.0,
+            n_harmonics=3,
+            bandwidth=1.5,
+        ).fit(np.zeros((2, 1000)), verbose=True)
+    summaries = [
+        r for r in caplog.records if r.message.startswith("Spectrum interpolation:")
+    ]
+    assert len(summaries) == 1
+    for token in (
+        "target frequencies=[ 60.",
+        "targets=3",
+        "bandwidth=1.5",
+    ):
+        assert token in summaries[0].message
 
 
 def test_spectrum_interpolation_default_harmonics_reach_nyquist():

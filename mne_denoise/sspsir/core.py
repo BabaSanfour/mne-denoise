@@ -560,8 +560,9 @@ class SSPSIR(BaseEstimator, TransformerMixin):
             else []
         )
         logger.info(
-            "SSP-SIR: removed %d artifact component(s), SIR truncation M=%d "
-            "(data rank %d), blend=%s",
+            "SSP-SIR: channels=%d, removed %d artifact component(s), "
+            "SIR truncation M=%d (data rank %d), blend=%s",
+            n_channels,
             self.n_components_,
             self.M_,
             data_rank,

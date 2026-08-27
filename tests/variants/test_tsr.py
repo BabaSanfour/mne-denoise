@@ -1,3 +1,5 @@
+import logging
+
 import mne
 import numpy as np
 import pytest
@@ -92,6 +94,31 @@ def test_smooth_dss_evoked(slow_data_generator):
 
     corr = np.abs(np.corrcoef(src[0], slow)[0, 1])
     assert corr > 0.8
+
+
+def test_smooth_dss_fit_summary_describes_window(slow_data_generator, caplog):
+    """The parent DSS summary identifies the smoothing window."""
+    data, _slow = slow_data_generator((3, 500))
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        smooth_dss(window=20, n_components=1).fit(data, verbose=True)
+    summaries = [r for r in caplog.records if r.message.startswith("DSS:")]
+    assert len(summaries) == 1
+    assert "SmoothingBias(window=20)" in summaries[0].message
+
+
+def test_timeshift_dss_owns_one_high_level_summary(caplog):
+    """Nested ordinary DSS is hidden behind one TimeShiftDSS report."""
+    data = _data(shape=(3, 80, 8))
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        _estimator(lag_samples=[0, 1], n_components=2, rank=2).fit(data, verbose=True)
+    summaries = [
+        record
+        for record in caplog.records
+        if record.message.startswith("TimeShiftDSS:")
+    ]
+    assert len(summaries) == 1
+    for token in ("lags=", "rank=", "components="):
+        assert token in summaries[0].message
 
 
 def test_tsr_3d_bias_unit():

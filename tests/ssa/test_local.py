@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pytest
 from sklearn.base import clone
@@ -96,7 +98,7 @@ def test_local_ssa_rejects_invalid_parameters(kwargs):
         compute_local_ssa(np.ones((1, 100)), window_length=20, **kwargs)
 
 
-def test_local_estimator_contract_and_mne_roundtrip(drift_data):
+def test_local_estimator_contract_and_mne_roundtrip(drift_data, caplog):
     """Local SSA clones, records fit state, and preserves an MNE Raw container."""
     mne = pytest.importorskip("mne")
     X, sfreq = drift_data
@@ -107,9 +109,16 @@ def test_local_estimator_contract_and_mne_roundtrip(drift_data):
     )
     with pytest.raises(NotFittedError):
         estimator.transform(raw)
-    cleaned = estimator.fit_transform(raw)
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        cleaned = estimator.fit_transform(raw)
     assert clone(estimator).get_params() == estimator.get_params()
     assert cleaned is not raw
     assert cleaned.first_samp == raw.first_samp
     assert estimator.n_channels_in_ == 2
     assert estimator.n_clusters_.shape == (2,)
+    summaries = [
+        record for record in caplog.records if record.message.startswith("Local SSA:")
+    ]
+    assert len(summaries) == 1
+    for token in ("window=", "channels=", "mean clusters=", "mean subspace dimension="):
+        assert token in summaries[0].message

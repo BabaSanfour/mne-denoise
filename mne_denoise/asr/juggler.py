@@ -520,10 +520,13 @@ class JugglerASR(ASR):
             "sfreq": self.sfreq_,
         }
         logger.info(
-            "JugglerASR: strategy=%s, channels=%d, rank=%d, retained %.1f%% "
-            "reference samples.",
+            "JugglerASR: strategy=%s, method=%s, channels=%d, sfreq=%.3g Hz, "
+            "cutoff=%.3g, rank=%d, retained %.1f%% reference samples.",
             self.strategy,
+            self.method,
             self.n_channels_,
+            self.sfreq_,
+            self.cutoff,
             self.rank_,
             100.0 * reference_info["reference_selected_fraction"],
         )

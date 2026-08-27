@@ -250,6 +250,30 @@ def test_iterative_dss_debug_logging(caplog):
     assert "IterativeDSS component" in caplog.text
 
 
+@pytest.mark.parametrize("verbosity", [True, "DEBUG"])
+def test_iterative_dss_uses_logging_not_stdout(verbosity, caplog, capsys):
+    """INFO and DEBUG iterative reports never write processing output to stdout."""
+    rng = np.random.default_rng(43)
+    data = rng.standard_normal((4, 300))
+    with caplog.at_level(logging.DEBUG, logger="mne_denoise"):
+        iterative_dss(
+            data,
+            KurtosisDenoiser(),
+            n_components=1,
+            max_iter=3,
+            verbose=verbosity,
+        )
+    assert capsys.readouterr().out == ""
+    summaries = [
+        record
+        for record in caplog.records
+        if record.message.startswith("Iterative DSS:")
+    ]
+    assert len(summaries) == 1
+    for token in ("method=", "denoiser=KurtosisDenoiser", "converged=", "iterations="):
+        assert token in summaries[0].message
+
+
 def test_iterative_dss_symmetric_debug_logging(caplog):
     """iterative_dss symmetric should report progress at DEBUG."""
     rng = np.random.default_rng(42)

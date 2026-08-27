@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose
@@ -55,6 +57,37 @@ def _make_synthetic(
         temporal = rng.standard_normal(stop - start)
         data[:, start:stop] += 7.0 * np.outer(spatial, temporal)
     return data
+
+
+@pytest.mark.parametrize("variant", ["psp", "psw", "mw"])
+def test_adaptive_summary_identifies_variant_and_fit_state(variant, caplog):
+    """AdaptiveASR INFO includes the variant and fitted operating point."""
+    data = _make_synthetic(n_samples=4000, seed=101)
+    kwargs = {"mw_window_length": 20.0} if variant == "mw" else {}
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        AdaptiveASR(
+            sfreq=SFREQ,
+            cutoff=20.0,
+            variant=variant,
+            verbose=False,
+            **kwargs,
+        ).fit(data, verbose=True)
+    summaries = [
+        record
+        for record in caplog.records
+        if record.message.startswith("AdaptiveASR:")
+        and "clean calibration windows=" in record.message
+    ]
+    assert len(summaries) == 1
+    for token in (
+        f"variant={variant}",
+        "method=",
+        "channels=",
+        "sfreq=",
+        "cutoff=",
+        "rank=",
+    ):
+        assert token in summaries[0].message
 
 
 def test_mw_single_window_equals_psp():

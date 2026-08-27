@@ -22,7 +22,6 @@ References
 
 from __future__ import annotations
 
-import logging
 from numbers import Integral
 from typing import Any
 
@@ -44,14 +43,12 @@ except ImportError:
     _HAS_MNE = False
 
 from .._data import extract_data_from_mne, reconstruct_mne_object
-from .._logging import verbose
+from .._logging import logger, verbose
 from .._validation import (
     check_matching_sfreq,
     check_positive_real,
     resolve_sfreq,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def interpolate_spectrum(
@@ -310,12 +307,12 @@ class SpectrumInterpolation(BaseEstimator, TransformerMixin):
         self.sfreq_ = sfreq
         self.freqs_ = self._target_freqs(sfreq)
         logger.info(
-            "Spectrum interpolation: frequencies=%s Hz, bandwidth=%.3g Hz, "
-            "neighbour width=%.3g Hz, harmonics=%d.",
+            "Spectrum interpolation: target frequencies=%s Hz, targets=%d, "
+            "bandwidth=%.3g Hz, neighbour width=%.3g Hz.",
             np.array2string(self.freqs_, precision=4, separator=", "),
+            self.freqs_.size,
             self.bandwidth,
             self.neighbour_width,
-            max(0, self.freqs_.size - 1) if np.asarray(self.line_freq).ndim == 0 else 0,
         )
         return self
 

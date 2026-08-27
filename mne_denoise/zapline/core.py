@@ -36,7 +36,6 @@ References
 
 from __future__ import annotations
 
-import logging
 import warnings
 
 import numpy as np
@@ -47,7 +46,7 @@ from .._data import (
     extract_data_from_mne,
     reconstruct_mne_object,
 )
-from .._logging import verbose
+from .._logging import logger, verbose
 from .._spatial import apply_spatial_transform
 
 # Inherit from DSS
@@ -66,8 +65,6 @@ from .adaptive import (
     find_fine_peak,
     find_noise_freqs,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class ZapLine(DSS):
@@ -295,7 +292,7 @@ class ZapLine(DSS):
             knee_min_ratio=knee_min_ratio,
             whiten=whiten,
             noise_cov=noise_cov,
-            verbose=self.verbose,
+            verbose=verbose,
         )
 
         self.n_removed_ = None
@@ -1076,6 +1073,8 @@ class ZapLine(DSS):
                 }
             )
 
+            # Adaptive ZapLine owns the segment-level aggregate report; hide
+            # each retry's nested DSS fit from the user-facing INFO stream.
             est.fit(chunk)
             res_cleaned = est.transform(chunk)
             res_n_removed = est.n_removed_
@@ -1094,6 +1093,7 @@ class ZapLine(DSS):
                     knee_rel_floor=self.knee_rel_floor,
                     knee_min_ratio=self.knee_min_ratio,
                     adaptive=False,
+                    # The outer adaptive operation owns the aggregate report.
                     verbose="WARNING",
                 )
                 est.fit(chunk)

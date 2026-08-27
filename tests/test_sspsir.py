@@ -475,5 +475,8 @@ def test_sspsir_verbose_logs_fit_summary(tms_epochs, caplog):
     with caplog.at_level(logging.INFO, logger="mne_denoise"):
         SSPSIR(n_components=3, verbose=True).fit(epochs)
     assert any(
-        "SSP-SIR: removed 3 artifact component(s)" in r.message for r in caplog.records
+        "SSP-SIR:" in r.message
+        and "channels=" in r.message
+        and "removed 3 artifact component(s)" in r.message
+        for r in caplog.records
     )

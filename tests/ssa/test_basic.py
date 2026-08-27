@@ -431,6 +431,11 @@ def test_ssa_mne_evoked_preserves_metadata_and_stim_channel(drift_data):
 def test_ssa_verbose_reports_dropped_component_summary(drift_data, caplog):
     """Opt-in logging emits the descriptive fitted-run summary."""
     X, sfreq = drift_data
-    with caplog.at_level(logging.INFO, logger="mne_denoise.ssa.basic"):
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
         SingularSpectrumAnalysis(sfreq=sfreq, verbose=True).fit_transform(X[:2])
-    assert "SSA: dropped a mean" in caplog.text
+    summaries = [
+        record for record in caplog.records if record.message.startswith("Basic SSA:")
+    ]
+    assert len(summaries) == 1
+    for token in ("window=", "channels=", "dropped="):
+        assert token in summaries[0].message

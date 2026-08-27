@@ -70,7 +70,6 @@ from . import (
     zapline,
 )
 from ._covariance import compute_covariance
-from ._logging import verbose
 from .overcorrection import quantify_overcorrection
 
 __version__ = "0.0.1"
@@ -89,5 +88,4 @@ __all__ = [
     "sns",
     "sspsir",
     "zapline",
-    "verbose",
 ]

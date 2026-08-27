@@ -19,7 +19,6 @@ References
 
 from __future__ import annotations
 
-import logging
 from numbers import Integral, Real
 from typing import Any
 
@@ -34,15 +33,13 @@ from .._data import (
     extract_data_from_mne,
     reconstruct_mne_object,
 )
-from .._logging import verbose
+from .._logging import logger, verbose
 from .._spatial import apply_spatial_transform
 from .._validation import (
     check_channel_first_data,
     check_channel_layout,
     check_chunk_size,
 )
-
-logger = logging.getLogger(__name__)
 
 _DEFAULT_RCOND = 1e-12
 

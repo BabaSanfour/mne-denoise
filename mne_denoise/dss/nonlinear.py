@@ -869,7 +869,6 @@ class IterativeDSS:
             reg=self.reg,
             max_iter=self.max_iter,
             tol=self.tol,
-            verbose=self.verbose,
             alpha=self.alpha,
             beta=self.beta,
             gamma=self.gamma,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pytest
 
@@ -94,6 +96,128 @@ def test_compute_icanclean_basic_cleaning_and_qc(synthetic_dual_layer):
     residual_before = np.var(data[primary_idx] - truth["brain"])
     residual_after = np.var(cleaned_primary - truth["brain"])
     assert residual_after < residual_before
+
+
+def test_icanclean_logging_ownership_and_precedence(synthetic_dual_layer, caplog):
+    """Standalone and estimator paths each own one aggregate INFO record."""
+    data, primary_idx, ref_idx, sfreq, _ = synthetic_dual_layer
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        compute_icanclean(
+            data[primary_idx],
+            data[ref_idx],
+            sfreq=sfreq,
+            segment_len=2.0,
+            threshold=0.5,
+            verbose=True,
+        )
+        standalone = [
+            record for record in caplog.records if record.name == "mne_denoise"
+        ]
+        assert (
+            len([record for record in standalone if "iCanClean:" in record.message])
+            == 1
+        )
+
+        caplog.clear()
+        continuous = ICanClean(
+            sfreq=sfreq,
+            ref_channels=ref_idx,
+            primary_channels=primary_idx,
+            segment_len=2.0,
+            threshold=0.5,
+            verbose=True,
+        )
+        continuous.fit_transform(data)
+        assert (
+            len([record for record in caplog.records if "iCanClean:" in record.message])
+            == 1
+        )
+
+        caplog.clear()
+        hybrid = ICanClean(
+            sfreq=sfreq,
+            ref_channels=ref_idx,
+            primary_channels=primary_idx,
+            mode="hybrid",
+            segment_len=2.0,
+            threshold=0.5,
+            global_threshold=0.8,
+            global_clean_with="Y",
+            global_max_reject_fraction=0.5,
+            verbose=True,
+        )
+        hybrid.transform(data)
+        hybrid_records = [
+            record for record in caplog.records if "iCanClean:" in record.message
+        ]
+        assert len(hybrid_records) == 1
+        assert "mode=hybrid" in hybrid_records[0].message
+
+
+def test_icanclean_epoch_and_debug_logging(synthetic_dual_layer, caplog):
+    """Epochs have one aggregate report while windows remain DEBUG detail."""
+    mne = pytest.importorskip("mne")
+    data, primary_idx, ref_idx, sfreq, _ = synthetic_dual_layer
+    epochs_data = np.stack([data, data], axis=0)
+    info = mne.create_info(
+        [f"EEG{idx}" for idx in primary_idx]
+        + [f"REF{idx}" for idx in range(len(ref_idx))],
+        sfreq,
+        ["eeg"] * data.shape[0],
+    )
+    epochs = mne.EpochsArray(epochs_data, info, verbose=False)
+    estimator = ICanClean(
+        sfreq=sfreq,
+        ref_channels=ref_idx,
+        primary_channels=primary_idx,
+        segment_len=2.0,
+        threshold=0.5,
+        verbose="DEBUG",
+    )
+    with caplog.at_level(logging.DEBUG, logger="mne_denoise"):
+        cleaned = estimator.transform(epochs)
+    assert cleaned.get_data().shape == epochs_data.shape
+    summaries = [record for record in caplog.records if "iCanClean:" in record.message]
+    assert len(summaries) == 1
+    assert "2 epochs" in summaries[0].message
+    assert any(
+        record.levelno == logging.DEBUG and "iCanClean window" in record.message
+        for record in caplog.records
+    )
+
+
+def test_icanclean_call_level_verbose_overrides_constructor(
+    synthetic_dual_layer, caplog
+):
+    """Estimator call-level verbosity controls the complete transform."""
+    data, primary_idx, ref_idx, sfreq, _ = synthetic_dual_layer
+    estimator = ICanClean(
+        sfreq=sfreq,
+        ref_channels=ref_idx,
+        primary_channels=primary_idx,
+        segment_len=2.0,
+        threshold=0.5,
+        verbose=False,
+    )
+    with caplog.at_level(logging.INFO, logger="mne_denoise"):
+        estimator.transform(data, verbose=True)
+    assert any("iCanClean:" in record.message for record in caplog.records)
+
+    estimator = ICanClean(
+        sfreq=sfreq,
+        ref_channels=ref_idx,
+        primary_channels=primary_idx,
+        segment_len=2.0,
+        threshold=0.5,
+        verbose=True,
+    )
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="mne_denoise"):
+        estimator.transform(data, verbose=False)
+    assert not any(
+        record.name == "mne_denoise" and record.levelno < logging.WARNING
+        for record in caplog.records
+    )
 
 
 def test_compute_icanclean_matches_estimator_output(synthetic_dual_layer):

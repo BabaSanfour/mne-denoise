@@ -36,7 +36,6 @@ References
 
 from __future__ import annotations
 
-import logging
 from numbers import Integral, Real
 from typing import Any
 
@@ -51,7 +50,7 @@ from .._data import (
     extract_data_from_mne,
     reconstruct_mne_object,
 )
-from .._logging import verbose
+from .._logging import logger, verbose
 from .._spatial import (
     apply_spatial_transform,
     fit_mixing_matrix,
@@ -64,8 +63,6 @@ from .._validation import (
     resolve_sfreq,
 )
 from ..blending import overlap_add_combine
-
-logger = logging.getLogger(__name__)
 
 #: Warn when the number of lagged pairs falls below this multiple of the
 #: channel count; canonical correlations saturate toward 1 as the ratio drops.
@@ -574,6 +571,10 @@ def compute_bss_cca(
         "overlap": float(overlap),
         "preserve_mean": preserve_mean,
         "n_channels": int(X.shape[-2]),
+        "reject": reject,
+        "threshold_on": threshold_on,
+        "n_remove": n_remove,
+        "rho_threshold": rho_threshold,
         # Minimal records needed to re-apply the fitted operators; consumed by
         # BSSCCA.fit so the estimator never re-derives them.
         "operators": tuple(
@@ -584,10 +585,18 @@ def compute_bss_cca(
             for op in operators
         ),
     }
+    if n_remove is not None:
+        selection = f"reject={reject}, n_remove={n_remove}"
+    else:
+        selection = (
+            f"reject={reject}, threshold_on={threshold_on}, "
+            f"rho_threshold={rho_threshold:.4g}"
+        )
     logger.info(
-        "BSS-CCA: lag=%d sample(s), %d block(s), removed %s of %s components.",
+        "BSS-CCA: lag=%d sample(s), %d block(s), %s, removed %s of %s components.",
         lag,
         len(operators),
+        selection,
         info["n_removed"],
         info["input_rank"],
     )
@@ -828,7 +837,6 @@ class BSSCCA(BaseEstimator, TransformerMixin):
             segment_len=self.segment_len,
             overlap=self.overlap,
             preserve_mean=self.preserve_mean,
-            verbose=self.verbose,
         )
         self.cleaning_matrix_ = info["cleaning_matrix"]
         self.filters_ = info["filters"]
