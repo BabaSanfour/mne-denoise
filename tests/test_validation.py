@@ -352,16 +352,28 @@ def test_channel_layout_rejects_reordering():
 
 def test_channel_layout_rejects_a_count_mismatch():
     """Array input has no names, so the count is the only check."""
-    with pytest.raises(ValueError, match="X has 3 channels; fitted data had 2"):
+    with pytest.raises(ValueError, match="X: X has 3 channels; fitted data had 2"):
         check_channel_layout("X", n_channels=3, fitted_n_channels=2)
 
 
 def test_channel_layout_skips_names_for_arrays():
     """A fitted-on-array estimator does not demand names."""
+    check_channel_layout("X", n_channels=2, fitted_n_channels=2)
     check_channel_layout(
         "X",
         n_channels=2,
         fitted_n_channels=2,
         ch_names=("a", "b"),
         fitted_ch_names=None,
+    )
+
+
+def test_channel_layout_skips_names_when_input_names_are_missing():
+    """An array transform can use the fitted count without channel names."""
+    check_channel_layout(
+        "X",
+        n_channels=2,
+        fitted_n_channels=2,
+        ch_names=None,
+        fitted_ch_names=("a", "b"),
     )

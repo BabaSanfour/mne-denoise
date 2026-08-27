@@ -29,6 +29,7 @@ import numpy as np
 
 from .._data import continuous_to_epochs, extract_data_from_mne, reconstruct_mne_object
 from .._logging import set_log_level_from_verbose
+from .._validation import check_channel_layout
 from ._covariance import (
     _adaptive_covariance_sqrt,
 )
@@ -41,7 +42,6 @@ from ._learner import _AdaptiveSimilarityMatcher, _build_adaptive_learner
 from ._reconstruction import _process_adaptive_chunk
 from ._types import ASRState, _copy_asr_state, _copy_process_state
 from ._validation import (
-    _check_transform_channels,
     _round_half_up,
     _validate_adaptive_params,
     _validate_array_2d,
@@ -416,11 +416,12 @@ class AdaptiveASR(ASR):
             raise ValueError(
                 f"Input sfreq {sfreq} does not match fitted sfreq {self.sfreq_}"
             )
-        _check_transform_channels(
-            self.n_channels_,
-            self.ch_names_,
-            data.shape[0],
-            ch_names,
+        check_channel_layout(
+            "AdaptiveASR",
+            n_channels=data.shape[0],
+            fitted_n_channels=self.n_channels_,
+            ch_names=ch_names,
+            fitted_ch_names=self.ch_names_,
         )
         self._warn_preprocessing_state(orig_inst, mne_type)
         data_2d = np.asarray(data, dtype=np.float64)
@@ -500,11 +501,12 @@ class AdaptiveASR(ASR):
             raise ValueError(
                 f"Input sfreq {sfreq} does not match fitted sfreq {self.sfreq_}"
             )
-        _check_transform_channels(
-            self.n_channels_,
-            self.ch_names_,
-            data.shape[1] if mne_type == "epochs" else data.shape[0],
-            ch_names,
+        check_channel_layout(
+            "AdaptiveASR",
+            n_channels=data.shape[1] if mne_type == "epochs" else data.shape[0],
+            fitted_n_channels=self.n_channels_,
+            ch_names=ch_names,
+            fitted_ch_names=self.ch_names_,
         )
         self._warn_preprocessing_state(orig_inst, mne_type)
 

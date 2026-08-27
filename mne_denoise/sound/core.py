@@ -40,7 +40,7 @@ from sklearn.utils.validation import check_is_fitted
 from .._data import epochs_to_continuous, extract_data_from_mne, reconstruct_mne_object
 from .._leadfield import resolve_leadfield
 from .._logging import logger, set_log_level_from_verbose
-from .._validation import check_option, check_positive_real
+from .._validation import check_channel_layout, check_option, check_positive_real
 
 
 def _noise_level(noise_filter: np.ndarray, cov: np.ndarray, n_times: int) -> float:
@@ -631,23 +631,19 @@ class SOUND(BaseEstimator, TransformerMixin):
         )
         return self
 
-    def _check_n_channels(self, data):
-        """Reject data whose channel count cannot meet the fitted operator."""
-        n_channels = data.shape[-2]
-        if n_channels != self.operator_.shape[1]:
-            raise ValueError(
-                f"SOUND was fitted on {self.operator_.shape[1]} channels but "
-                f"got {n_channels}. The operator and its lead field are tied "
-                "to the fitted montage; refit on this data."
-            )
-
     def transform(self, X):
         """Apply the fitted SOUND operator to ``X``."""
         check_is_fitted(self, attributes=["operator_"])
-        data, _, mne_type, orig_inst, picks, _ = extract_data_from_mne(
+        data, _, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
             X, ch_names=getattr(self, "_mne_ch_names_", None)
         )
-        self._check_n_channels(data)
+        check_channel_layout(
+            "SOUND",
+            n_channels=data.shape[-2],
+            fitted_n_channels=self.operator_.shape[1],
+            ch_names=ch_names,
+            fitted_ch_names=getattr(self, "_mne_ch_names_", None),
+        )
         # matmul broadcasts the (n_channels, n_channels) operator over any
         # leading epoch axis, so 2D and 3D share one BLAS-backed path.
         cleaned = self.operator_ @ data

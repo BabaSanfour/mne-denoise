@@ -309,5 +309,5 @@ def check_channel_layout(
         )
     if n_channels != fitted_n_channels:
         raise ValueError(
-            f"X has {n_channels} channels; fitted data had {fitted_n_channels}"
+            f"{name}: X has {n_channels} channels; fitted data had {fitted_n_channels}"
         )

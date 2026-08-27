@@ -616,6 +616,11 @@ def test_adaptive_edge_cases():
 
     asr.fit(data)
 
+    with pytest.raises(
+        ValueError, match="AdaptiveASR: X has 7 channels; fitted data had 8"
+    ):
+        asr.transform(data[:-1])
+
     asr2 = AdaptiveASR(sfreq=sfreq, variant="psp", verbose=False)
     asr2.partial_fit(data)
 

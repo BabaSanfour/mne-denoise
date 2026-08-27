@@ -132,6 +132,16 @@ def test_sspsir_transform_length_mismatch_raises(tms_epochs):
         ss.transform(epochs.get_data()[:, :, :100])
 
 
+def test_sspsir_transform_channel_count_mismatch_raises(tms_epochs):
+    """SSP-SIR rejects data with a different fitted channel count."""
+    epochs = tms_epochs[0]
+    ss = SSPSIR(n_components=2).fit(epochs)
+    with pytest.raises(
+        ValueError, match="SSPSIR: X has 23 channels; fitted data had 24"
+    ):
+        ss.transform(epochs.get_data()[:, :-1, :])
+
+
 def test_sspsir_constant_blend_survives_length_change(tms_epochs):
     """blend='constant' is time-invariant, so any length transforms fine."""
     epochs = tms_epochs[0]

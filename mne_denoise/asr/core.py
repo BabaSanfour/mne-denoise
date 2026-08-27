@@ -26,6 +26,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._logging import logger, set_log_level_from_verbose
+from .._validation import check_channel_layout
 from ._annotations import (
     _calibration_annotations,
     _rejection_annotations,
@@ -34,7 +35,6 @@ from ._annotations import (
 from ._calibration import calibrate_asr
 from ._reconstruction import process_asr
 from ._validation import (
-    _check_transform_channels,
     _validate_backend_params,
     _validate_common_params,
 )
@@ -519,11 +519,12 @@ class ASR(BaseEstimator, TransformerMixin):
             raise ValueError(
                 f"Input sfreq {sfreq} does not match fitted sfreq {self.sfreq_}"
             )
-        _check_transform_channels(
-            self.n_channels_,
-            self.ch_names_,
-            data.shape[1] if mne_type == "epochs" else data.shape[0],
-            ch_names,
+        check_channel_layout(
+            type(self).__name__,
+            n_channels=data.shape[1] if mne_type == "epochs" else data.shape[0],
+            fitted_n_channels=self.n_channels_,
+            ch_names=ch_names,
+            fitted_ch_names=self.ch_names_,
         )
         self._warn_preprocessing_state(orig_inst, mne_type)
 

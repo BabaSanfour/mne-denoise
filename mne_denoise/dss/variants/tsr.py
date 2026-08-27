@@ -28,7 +28,7 @@ from ..._cca import canonical_correlation
 from ..._data import extract_data_from_mne, reconstruct_mne_object
 from ..._logging import set_log_level_from_verbose
 from ..._spatial import fit_mixing_matrix
-from ..._validation import check_positive_integer, resolve_sfreq
+from ..._validation import check_channel_layout, check_positive_integer, resolve_sfreq
 from ..denoisers import AverageBias, SmoothingBias
 from ..linear import DSS
 
@@ -291,11 +291,13 @@ class TimeShiftDSS(BaseEstimator, TransformerMixin):
         else:
             if self.sfreq_ is not None and data_sfreq is not None:
                 resolve_sfreq(self.sfreq_, data_sfreq)
-            if data.shape[0] != self.n_features_in_:
-                raise ValueError(
-                    f"X has {data.shape[0]} channels; fitted data had "
-                    f"{self.n_features_in_}"
-                )
+            check_channel_layout(
+                "TimeShiftDSS",
+                n_channels=data.shape[0],
+                fitted_n_channels=self.n_features_in_,
+                ch_names=ch_names,
+                fitted_ch_names=self._mne_ch_names_,
+            )
         return data, data_sfreq, mne_type, orig, picks
 
     def fit(

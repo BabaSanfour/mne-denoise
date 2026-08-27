@@ -44,7 +44,12 @@ from sklearn.utils.validation import check_is_fitted
 from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._leadfield import resolve_leadfield
 from .._logging import logger, set_log_level_from_verbose
-from .._validation import check_matching_sfreq, check_option, check_positive_real
+from .._validation import (
+    check_channel_layout,
+    check_matching_sfreq,
+    check_option,
+    check_positive_real,
+)
 
 __all__ = ["SSPSIR", "compute_sir", "compute_sspsir"]
 
@@ -560,16 +565,16 @@ class SSPSIR(BaseEstimator, TransformerMixin):
     def transform(self, X):
         """Apply the fitted SSP-SIR operators to ``X``."""
         check_is_fitted(self, attributes=["operator_", "operator_orig_", "kernel_"])
-        data, sfreq, mne_type, orig_inst, picks, _ = extract_data_from_mne(
+        data, sfreq, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
             X, ch_names=getattr(self, "_mne_ch_names_", None)
         )
-        n_channels = data.shape[-2]
-        if n_channels != self.operator_.shape[1]:
-            raise ValueError(
-                f"SSPSIR was fitted on {self.operator_.shape[1]} channels but "
-                f"got {n_channels}. The operators and their lead field are "
-                "tied to the fitted montage; refit on this data."
-            )
+        check_channel_layout(
+            "SSPSIR",
+            n_channels=data.shape[-2],
+            fitted_n_channels=self.operator_.shape[1],
+            ch_names=ch_names,
+            fitted_ch_names=getattr(self, "_mne_ch_names_", None),
+        )
         n_times = data.shape[-1]
         if self.blend == "constant":
             # This branch is spatially and temporally invariant.

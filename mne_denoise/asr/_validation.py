@@ -278,39 +278,6 @@ def _validate_backend_params(
         raise ValueError("window_criterion must be numeric or None")
 
 
-def _check_transform_channels(
-    fitted_n_channels: int,
-    fitted_ch_names: list[str] | None,
-    input_n_channels: int,
-    input_ch_names: list[str] | None,
-) -> None:
-    """Verify input data channels match the fitted ASR state.
-
-    Parameters
-    ----------
-    fitted_n_channels : int
-        The number of channels the ASR object was calibrated on.
-    fitted_ch_names : list of str | None
-        The names of the channels the ASR object was calibrated on.
-    input_n_channels : int
-        The number of channels in the incoming data.
-    input_ch_names : list of str | None
-        The names of the channels in the incoming data.
-
-    Raises
-    ------
-    ValueError
-        If the channel counts or names do not match.
-    """
-    if input_n_channels != fitted_n_channels:
-        raise ValueError(
-            "Input channel count does not match fitted ASR state: "
-            f"{input_n_channels} vs {fitted_n_channels}"
-        )
-    if fitted_ch_names is not None and input_ch_names != fitted_ch_names:
-        raise ValueError("Input channel names/order do not match fitted ASR state")
-
-
 def _validate_adaptive_params(
     variant: str,
     update_window_length: float,
