@@ -16,7 +16,6 @@ from .._validation import (
     check_matching_sfreq,
     check_positive_integer,
     check_positive_real,
-    check_sfreq,
     resolve_sfreq,
 )
 
@@ -39,12 +38,14 @@ def _resolve_window_length(
         raise ValueError("Specify only one of window_length and window_seconds")
     if window_seconds is not None:
         window_seconds = check_positive_real(window_seconds, name="window_seconds")
-        sfreq = check_sfreq(sfreq, context="window_seconds")
+        if sfreq is None:
+            raise ValueError("sfreq is required when window_seconds is used")
+        sfreq = check_positive_real(sfreq, name="sfreq")
         resolved = int(np.floor(window_seconds * sfreq + 0.5))
     elif window_length is not None:
         resolved = check_positive_integer(window_length, name="window_length")
     elif sfreq is not None:
-        sfreq = check_sfreq(sfreq)
+        sfreq = check_positive_real(sfreq, name="sfreq")
         resolved = min(int(np.floor(0.5 * sfreq + 0.5)), max_window, (n_times + 1) // 2)
     else:
         resolved = min(n_times // 2, max_window)

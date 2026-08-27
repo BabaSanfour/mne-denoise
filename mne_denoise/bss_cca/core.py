@@ -61,7 +61,6 @@ from .._validation import (
     check_channel_layout,
     check_matching_sfreq,
     check_positive_real,
-    check_sfreq,
     resolve_sfreq,
 )
 from ..blending import overlap_add_combine
@@ -99,7 +98,9 @@ def _resolve_lag_samples(
             raise TypeError("lag_seconds must be a finite number")
         if lag_seconds <= 0:
             raise ValueError("lag_seconds must be positive")
-        sfreq = check_sfreq(sfreq, context="lag_seconds")
+        if sfreq is None:
+            raise ValueError("sfreq is required when lag_seconds is used")
+        sfreq = check_positive_real(sfreq, name="sfreq")
         resolved = int(np.floor(lag_seconds * sfreq + 0.5))
         if resolved < 1:
             raise ValueError(
@@ -609,7 +610,9 @@ def _resolve_blocking(
     if segment_len is None:
         return None, None
     segment_len = check_positive_real(segment_len, name="segment_len")
-    sfreq = check_sfreq(sfreq, context="segment_len")
+    if sfreq is None:
+        raise ValueError("sfreq is required when segment_len is used")
+    sfreq = check_positive_real(sfreq, name="sfreq")
     n_block = int(np.floor(segment_len * sfreq + 0.5))
     if n_block < 2:
         raise ValueError(

@@ -22,7 +22,11 @@ from typing import Any
 
 import numpy as np
 
-from .._validation import check_channel_first_data, check_positive_integer, check_sfreq
+from .._validation import (
+    check_channel_first_data,
+    check_positive_integer,
+    check_positive_real,
+)
 from ._common import (
     _BaseSSATransformer,
     _diagonal_average,
@@ -204,7 +208,7 @@ def _check_frequency_parameters(
     n_check: int | None,
 ) -> tuple[float, float, tuple[float, float] | None, int | None]:
     """Validate the package-specific Basic SSA grouping rule."""
-    sfreq = check_sfreq(sfreq)
+    sfreq = check_positive_real(sfreq, name="sfreq")
     if isinstance(drop_freq_max, bool) or not isinstance(drop_freq_max, Real):
         raise TypeError("drop_freq_max must be a finite number")
     drop_freq_max = float(drop_freq_max)

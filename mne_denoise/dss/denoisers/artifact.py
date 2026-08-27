@@ -13,7 +13,7 @@ import numpy as np
 
 from ..._validation import (
     check_positive_integer,
-    check_sfreq,
+    check_positive_real,
     resolve_sample_window,
 )
 from .base import LinearDenoiser
@@ -243,9 +243,7 @@ class CycleAverageBias(LinearDenoiser):
         self.window_input = tuple(window)
         self.window_unit = window_unit
         self.sfreq = (
-            check_sfreq(sfreq, context="window_unit='seconds'")
-            if sfreq is not None or window_unit == "seconds"
-            else None
+            check_positive_real(sfreq, name="sfreq") if sfreq is not None else None
         )
         self.event_origin = event_origin
         self.event_samples, self.first_samp, self.event_samples_data_ = _prepare_events(

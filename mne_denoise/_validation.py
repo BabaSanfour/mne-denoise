@@ -91,40 +91,6 @@ def check_channel_first_data(
     return X
 
 
-def check_sfreq(sfreq: float | None, *, context: str | None = None) -> float:
-    """Validate a sampling frequency and return it as a float.
-
-    Parameters
-    ----------
-    sfreq : float | None
-        Candidate sampling frequency.
-    context : str | None, default=None
-        What requires the value, used to explain a missing one, e.g.
-        ``"lag_seconds"`` produces "sfreq is required when lag_seconds is used".
-
-    Returns
-    -------
-    sfreq : float
-        The validated sampling frequency.
-
-    Raises
-    ------
-    TypeError
-        If ``sfreq`` is a bool or not a real number.
-    ValueError
-        If ``sfreq`` is None, non-finite, or not positive.
-    """
-    if sfreq is None:
-        where = f" when {context} is used" if context else ""
-        raise ValueError(f"sfreq is required{where}")
-    if isinstance(sfreq, bool) or not isinstance(sfreq, Real):
-        raise TypeError("sfreq must be a real number")
-    sfreq = float(sfreq)
-    if not np.isfinite(sfreq) or sfreq <= 0:
-        raise ValueError("sfreq must be a positive, finite number")
-    return sfreq
-
-
 def check_matching_sfreq(
     input_sfreq: float | None,
     fitted_sfreq: float | None,
@@ -137,7 +103,7 @@ def check_matching_sfreq(
 
     A missing value is accepted because some array-based transforms do not
     carry sampling-frequency metadata. Standalone validity checks belong to
-    :func:`check_sfreq`.
+    :func:`check_positive_real`.
     """
     if input_sfreq is None or fitted_sfreq is None:
         return
@@ -201,10 +167,12 @@ def resolve_sample_window(
                 f"{name} boundaries must be integers when {name}_unit='samples'."
             )
         if sfreq is not None:
-            check_sfreq(sfreq)
+            check_positive_real(sfreq, name="sfreq")
         resolved = [int(value) for value in normalized]
     else:
-        sfreq = check_sfreq(sfreq, context=f"{name}_unit='seconds'")
+        if sfreq is None:
+            raise ValueError(f"sfreq is required when {name}_unit='seconds' is used")
+        sfreq = check_positive_real(sfreq, name="sfreq")
         scaled = [float(value) * sfreq for value in normalized]
         if not np.all(np.isfinite(scaled)):
             raise ValueError(
@@ -286,16 +254,23 @@ def resolve_sfreq(
     ValueError
         If the two sources disagree, or if none is available and ``required``.
     """
+    if declared is not None:
+        declared = check_positive_real(declared, name="sfreq")
+    if data_sfreq is not None:
+        data_sfreq = check_positive_real(data_sfreq, name="sfreq")
     if (
         declared is not None
         and data_sfreq is not None
-        and not np.isclose(float(declared), float(data_sfreq))
+        and not np.isclose(declared, data_sfreq)
     ):
         raise ValueError(f"sfreq={declared} disagrees with MNE info sfreq={data_sfreq}")
     value = data_sfreq if data_sfreq is not None else declared
     if value is None and not required:
         return None
-    return check_sfreq(value, context=context)
+    if value is None:
+        where = f" when {context} is used" if context else ""
+        raise ValueError(f"sfreq is required{where}")
+    return value
 
 
 def check_channel_layout(

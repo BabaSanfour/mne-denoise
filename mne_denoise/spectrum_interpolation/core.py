@@ -46,7 +46,6 @@ from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._validation import (
     check_matching_sfreq,
     check_positive_real,
-    check_sfreq,
     resolve_sfreq,
 )
 
@@ -100,7 +99,7 @@ def interpolate_spectrum(
     if data.shape[1] == 0:
         raise ValueError("data must contain at least one time sample")
 
-    sfreq = check_sfreq(sfreq)
+    sfreq = check_positive_real(sfreq, name="sfreq")
     bandwidth = check_positive_real(bandwidth, name="bandwidth")
     neighbour_width = check_positive_real(neighbour_width, name="neighbour_width")
 

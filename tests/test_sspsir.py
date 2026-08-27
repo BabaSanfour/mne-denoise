@@ -263,6 +263,16 @@ def test_sspsir_requires_n_components(tms_epochs):
         SSPSIR().fit(epochs)
 
 
+def test_sspsir_fit_preserves_constructor_parameters(tms_epochs):
+    """Validation during fit does not normalize constructor parameters."""
+    model = SSPSIR(n_components=2, high_pass=100, smooth_length=1)
+    model.fit(tms_epochs[0])
+    assert model.high_pass == 100
+    assert model.smooth_length == 1
+    assert type(model.high_pass) is int
+    assert type(model.smooth_length) is int
+
+
 @pytest.mark.parametrize(
     "kwargs, match",
     [

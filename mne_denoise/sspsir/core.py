@@ -466,10 +466,8 @@ class SSPSIR(BaseEstimator, TransformerMixin):
                 "variance fraction in (0, 1))."
             )
         check_option(self.blend, name="blend", allowed=("auto", "constant"))
-        self.high_pass = check_positive_real(self.high_pass, name="high_pass")
-        self.smooth_length = check_positive_real(
-            self.smooth_length, name="smooth_length"
-        )
+        check_positive_real(self.high_pass, name="high_pass")
+        check_positive_real(self.smooth_length, name="smooth_length")
         if isinstance(self.n_dipoles, (bool, np.bool_)) or not isinstance(
             self.n_dipoles, Integral
         ):

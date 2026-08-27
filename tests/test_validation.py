@@ -13,7 +13,6 @@ from mne_denoise._validation import (
     check_option,
     check_positive_integer,
     check_positive_real,
-    check_sfreq,
     resolve_sample_window,
     resolve_sfreq,
 )
@@ -192,40 +191,6 @@ def test_empty_epoch_axis_is_rejected():
 
 
 # ---------------------------------------------------------------------------
-# check_sfreq
-# ---------------------------------------------------------------------------
-
-
-def test_returns_float():
-    """Valid values are returned as plain floats."""
-    assert check_sfreq(250) == 250.0
-    assert isinstance(check_sfreq(np.float64(250.0)), float)
-    assert check_sfreq(np.int64(500)) == 500.0
-
-
-def test_missing_sfreq_reports_the_context():
-    """The message explains what needed the value."""
-    with pytest.raises(ValueError, match="sfreq is required when lag_seconds is used"):
-        check_sfreq(None, context="lag_seconds")
-    with pytest.raises(ValueError, match="^sfreq is required$"):
-        check_sfreq(None)
-
-
-@pytest.mark.parametrize("value", [True, False, "250", None])
-def test_rejects_non_numeric(value):
-    """Booleans and non-numbers are not sampling frequencies."""
-    with pytest.raises((TypeError, ValueError)):
-        check_sfreq(value)
-
-
-@pytest.mark.parametrize("value", [0.0, -1.0, np.nan, np.inf, -np.inf])
-def test_rejects_non_positive_or_non_finite(value):
-    """A sampling frequency must be finite and strictly positive."""
-    with pytest.raises(ValueError, match="sfreq must be a positive, finite number"):
-        check_sfreq(value)
-
-
-# ---------------------------------------------------------------------------
 # resolve_sample_window
 # ---------------------------------------------------------------------------
 
@@ -237,6 +202,13 @@ def test_sample_window_resolves_samples_and_seconds():
         -2,
         2,
     )
+
+
+@pytest.mark.parametrize("sfreq", [0.0, -1.0, np.nan, np.inf])
+def test_sample_window_rejects_invalid_sfreq(sfreq):
+    """A supplied sampling frequency must be positive and finite."""
+    with pytest.raises(ValueError, match="sfreq must be a positive, finite number"):
+        resolve_sample_window((0, 1), unit="samples", sfreq=sfreq)
 
 
 @pytest.mark.parametrize(
@@ -290,11 +262,19 @@ def test_chunk_size_rejects_invalid(value, error):
 # ---------------------------------------------------------------------------
 
 
-def test_resolve_prefers_the_container_when_they_agree():
-    """Agreeing sources collapse to one value."""
-    assert resolve_sfreq(250.0, 250.0) == 250.0
-    assert resolve_sfreq(None, 250.0) == 250.0
+def test_resolve_returns_declared_value_when_it_is_the_only_source():
+    """A declared value is returned when container metadata is absent."""
     assert resolve_sfreq(250.0, None) == 250.0
+
+
+def test_resolve_returns_container_value_when_it_is_the_only_source():
+    """Container metadata is used when no value was declared."""
+    assert resolve_sfreq(None, 250.0) == 250.0
+
+
+def test_resolve_returns_the_container_value_when_both_sources_agree():
+    """Agreeing sources collapse to one effective value."""
+    assert resolve_sfreq(250.0, 250.0) == 250.0
 
 
 def test_resolve_rejects_disagreement():
@@ -309,15 +289,37 @@ def test_resolve_reports_a_missing_value():
         resolve_sfreq(None, None, context="lag_seconds")
 
 
+def test_resolve_rejects_a_missing_required_value():
+    """The default required contract rejects two missing sources."""
+    with pytest.raises(ValueError, match="^sfreq is required$"):
+        resolve_sfreq(None, None)
+
+
 def test_resolve_can_allow_a_missing_value():
     """Optional sampling frequencies return None rather than raising."""
     assert resolve_sfreq(None, None, required=False) is None
 
 
-def test_resolve_still_validates():
-    """A single bad value is rejected as by check_sfreq."""
-    with pytest.raises(ValueError, match="positive, finite"):
-        resolve_sfreq(-1.0, None)
+@pytest.mark.parametrize(
+    "value",
+    [-1.0, np.nan, np.inf, True, "250"],
+)
+def test_resolve_rejects_invalid_declared_sfreq(value):
+    """The declared source uses the shared positive-real contract."""
+    error = TypeError if isinstance(value, (bool, str)) else ValueError
+    with pytest.raises(error, match="sfreq must be a positive, finite number"):
+        resolve_sfreq(value, None)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [-1.0, np.nan, np.inf, True, "250"],
+)
+def test_resolve_rejects_invalid_data_sfreq(value):
+    """Container metadata uses the same shared positive-real contract."""
+    error = TypeError if isinstance(value, (bool, str)) else ValueError
+    with pytest.raises(error, match="sfreq must be a positive, finite number"):
+        resolve_sfreq(None, value)
 
 
 # ---------------------------------------------------------------------------

@@ -27,7 +27,11 @@ from typing import Any
 import numpy as np
 from sklearn.cluster import KMeans
 
-from .._validation import check_channel_first_data, check_positive_integer, check_sfreq
+from .._validation import (
+    check_channel_first_data,
+    check_positive_integer,
+    check_positive_real,
+)
 from ._common import (
     _BaseSSATransformer,
     _diagonal_average,
@@ -250,7 +254,7 @@ def local_ssa_clean_channel(
     if not isinstance(return_info, bool):
         raise TypeError("return_info must be a bool")
     if sfreq is not None:
-        sfreq = check_sfreq(sfreq)
+        sfreq = check_positive_real(sfreq, name="sfreq")
     x = np.asarray(x, dtype=np.float64)
     if x.ndim != 1:
         raise ValueError("x must be one-dimensional")
