@@ -41,8 +41,9 @@ from scipy.special import expit
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
+from .. import _mne
 from .._data import extract_data_from_mne, reconstruct_mne_object
-from .._leadfield import resolve_leadfield
+from .._leadfield import _validate_leadfield, resolve_leadfield
 from .._logging import logger, verbose
 from .._validation import (
     check_channel_layout,
@@ -78,20 +79,6 @@ def _truncated_svd(
         )
     rank = min(requested_rank, numerical_rank)
     return u[:, :rank], s[:rank], vt[:rank]
-
-
-def _validate_leadfield(leadfield: np.ndarray) -> np.ndarray:
-    """Return a finite, non-empty two-dimensional lead field."""
-    leadfield = np.asarray(leadfield, dtype=float)
-    if leadfield.ndim != 2:
-        raise ValueError(f"leadfield must be 2D, got shape {leadfield.shape}.")
-    if 0 in leadfield.shape:
-        raise ValueError(
-            "leadfield must contain at least one channel and one source column."
-        )
-    if not np.isfinite(leadfield).all():
-        raise ValueError("leadfield must contain only finite values.")
-    return leadfield
 
 
 def _artifact_subspace(
@@ -236,10 +223,10 @@ def _as_mne_projections(topographies: np.ndarray, ch_names: list[str]) -> list:
     ``mne.viz.plot_projs_topomap(ssp.projs_, raw.info)`` -- worth doing for a
     method whose main failure mode is removing too much.
     """
-    import mne
+    _mne.require_mne("SSP-SIR artifact projections")
 
     return [
-        mne.Projection(
+        _mne.mne.Projection(
             data={
                 "data": topographies[:, i : i + 1].T,
                 "col_names": list(ch_names),

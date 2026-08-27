@@ -53,6 +53,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from . import _mne
+
 if TYPE_CHECKING:
     import mne
 
@@ -148,14 +150,27 @@ def _average_reference(leadfield: np.ndarray) -> np.ndarray:
     return leadfield - leadfield.mean(axis=0, keepdims=True)
 
 
+def _validate_leadfield(
+    leadfield: np.ndarray, *, what: str = "leadfield"
+) -> np.ndarray:
+    """Return a finite, non-empty two-dimensional leadfield matrix."""
+    leadfield = np.asarray(leadfield, dtype=float)
+    if leadfield.ndim != 2:
+        raise ValueError(f"{what} must be 2D, got shape {leadfield.shape}.")
+    if 0 in leadfield.shape:
+        raise ValueError(
+            f"{what} must contain at least one channel and one source column."
+        )
+    if not np.isfinite(leadfield).all():
+        raise ValueError(f"{what} must contain only finite values.")
+    return leadfield
+
+
 def _forward_gain(forward: mne.Forward) -> np.ndarray:
     """Extract and validate the gain matrix of a forward solution."""
-    gain = np.asarray(forward["sol"]["data"], dtype=float)
-    if gain.ndim != 2 or 0 in gain.shape or not np.isfinite(gain).all():
-        raise ValueError(
-            "The supplied forward must contain a non-empty, finite 2D gain matrix."
-        )
-    return gain
+    return _validate_leadfield(
+        forward["sol"]["data"], what="The supplied forward gain matrix"
+    )
 
 
 def _leadfield_from_forward(forward: mne.Forward, info: mne.Info) -> np.ndarray:
@@ -276,15 +291,14 @@ def make_spherical_leadfield(
     from such a draw — inside that sampling spread, while being exactly
     repeatable.
     """
-    import mne
-
     if (
         isinstance(n_dipoles, (bool, np.bool_))
         or not isinstance(n_dipoles, Integral)
         or n_dipoles < 1
     ):
         raise ValueError(f"n_dipoles must be a positive integer, got {n_dipoles!r}.")
-    eeg_picks = mne.pick_types(info, meg=False, eeg=True, exclude=())
+    _mne.require_mne("automatic spherical lead-field construction")
+    eeg_picks = _mne.mne.pick_types(info, meg=False, eeg=True, exclude=())
     if len(eeg_picks) != len(info["ch_names"]):
         raise ValueError(
             "Automatic spherical lead-field construction supports EEG channels "
@@ -296,7 +310,7 @@ def make_spherical_leadfield(
         # for partial or idealised montages; harmless for spanning the
         # topography subspace that SOUND and SSP-SIR rely on.
         warnings.filterwarnings("ignore", message=".*from head frame origin.*")
-        sphere = mne.make_sphere_model(
+        sphere = _mne.mne.make_sphere_model(
             r0="auto",
             head_radius="auto",
             info=info,
@@ -312,13 +326,13 @@ def make_spherical_leadfield(
             directions * (head_model.dipole_relative_radius * head_radius)
             + sphere["r0"]
         )
-        src = mne.setup_volume_source_space(
+        src = _mne.mne.setup_volume_source_space(
             pos={"rr": positions, "nn": directions}, sphere_units="m", verbose=verbose
         )
-        fwd = mne.make_forward_solution(
+        fwd = _mne.mne.make_forward_solution(
             info, trans=None, src=src, bem=sphere, eeg=True, meg=False, verbose=verbose
         )
-        fwd = mne.convert_forward_solution(
+        fwd = _mne.mne.convert_forward_solution(
             fwd, force_fixed=True, use_cps=False, verbose=verbose
         )
     return _average_reference(np.asarray(fwd["sol"]["data"], dtype=float))
@@ -394,6 +408,7 @@ def resolve_leadfield(
     make_spherical_leadfield : The fallback this dispatches to.
     """
     if inst is not None:
+        _mne.require_mne("MNE lead-field resolution")
         info = inst.copy().pick(ch_names).info
         if forward is not None:
             return _leadfield_from_forward(forward, info)
