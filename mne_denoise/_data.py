@@ -96,7 +96,7 @@ def _get_homogeneous_picks(
     if best_picks is None or len(best_picks) == len(inst.ch_names):
         return None
 
-    logger.info(
+    logger.debug(
         "Auto-picking %d/%d %s channels and preserving other channels.",
         len(best_picks),
         len(inst.ch_names),

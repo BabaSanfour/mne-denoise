@@ -26,7 +26,7 @@ except ImportError:  # pragma: no cover - MNE is a required dependency
 
 from ..._cca import canonical_correlation
 from ..._data import extract_data_from_mne, reconstruct_mne_object
-from ..._logging import set_log_level_from_verbose
+from ..._logging import logger, verbose
 from ..._spatial import fit_mixing_matrix
 from ..._validation import check_channel_layout, check_positive_integer, resolve_sfreq
 from ..denoisers import AverageBias, SmoothingBias
@@ -300,16 +300,17 @@ class TimeShiftDSS(BaseEstimator, TransformerMixin):
             )
         return data, data_sfreq, mne_type, orig, picks
 
+    @verbose
     def fit(
         self,
         X: BaseEpochs | np.ndarray,
         y: None = None,
         *,
         sample_weight: np.ndarray | None = None,
+        verbose: bool | str | int | None = None,
     ) -> TimeShiftDSS:
         """Fit lag-augmented repeated-trial DSS filters."""
         del y
-        set_log_level_from_verbose(self.verbose)
         self._validate_parameters()
         data, data_sfreq, _, _, _ = self._prepare_epochs(X, fitting=True)
         effective_sfreq = resolve_sfreq(
@@ -354,7 +355,9 @@ class TimeShiftDSS(BaseEstimator, TransformerMixin):
             center=self.center,
             cov_method="empirical",
             component_action="extract",
-            verbose=self.verbose,
+            # TimeShiftDSS owns the user-facing report.  The nested ordinary
+            # DSS fit is a numerical implementation detail.
+            verbose="WARNING",
         )
         self.dss_.fit(augmented, weights=weights)
         filters = self.dss_.filters_
@@ -434,6 +437,16 @@ class TimeShiftDSS(BaseEstimator, TransformerMixin):
         self.positive_weight_observations_ = int(np.count_nonzero(weight_flat > 0))
         self.effective_observations_ = float(effective_observations)
         self.valid_slice_ = slice(start, stop)
+        logger.info(
+            "TimeShiftDSS: lags=%s sample(s), rank=%d, components=%d, "
+            "action=%s, distortion_control=%s, effective observations=%.1f.",
+            self.lag_samples_,
+            rank,
+            self.filters_.shape[0],
+            self.component_action,
+            self.distortion_control or "none",
+            self.effective_observations_,
+        )
         return self
 
     def _sources(self, data: np.ndarray) -> tuple[np.ndarray, int, int]:
@@ -487,7 +500,13 @@ class TimeShiftDSS(BaseEstimator, TransformerMixin):
         )
         return evoked_power / total_power if total_power > 0 else 0.0
 
-    def transform(self, X: BaseEpochs | np.ndarray) -> BaseEpochs | np.ndarray:
+    @verbose
+    def transform(
+        self,
+        X: BaseEpochs | np.ndarray,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> BaseEpochs | np.ndarray:
         """Extract components or apply the fitted sensor-space operation."""
         check_is_fitted(self, "dss_")
         self._validate_parameters()

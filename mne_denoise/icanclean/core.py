@@ -62,7 +62,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from .._cca import canonical_correlation
 from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._filtering import _filter_channels
-from .._logging import set_log_level_from_verbose
+from .._logging import verbose
 
 # Optional MNE support
 try:
@@ -206,6 +206,7 @@ def null_r2_threshold(
     return float(np.quantile(maxima, 1.0 - alpha))
 
 
+@verbose
 def compute_icanclean(
     X_primary: np.ndarray,
     X_ref: np.ndarray,
@@ -220,7 +221,7 @@ def compute_icanclean(
     reref_ref: bool | str = False,
     stats_segment_len: float | None = None,
     null_random_state: int | None = None,
-    verbose: bool = True,
+    verbose: bool | str | int | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     r"""Compute one iCanClean pass on continuous NumPy arrays.
 
@@ -290,8 +291,9 @@ def compute_icanclean(
         Average re-reference mode applied to reference channels for CCA only.
     stats_segment_len : float | None, default=None
         Broader stats-window duration in seconds for sliding mode.
-    verbose : bool, default=True
-        Whether to log progress information.
+    verbose : bool | str | int | None
+        MNE-style logging level. The aggregate pass report is emitted at INFO;
+        per-window decisions are emitted at DEBUG.
 
     Returns
     -------
@@ -518,6 +520,15 @@ def compute_icanclean(
         all_removed_idx.append(bad_idx)
         all_filters.append(A)
         all_patterns.append(B)
+        logger.debug(
+            "iCanClean window %d/%d: threshold=%.3f, max R^2=%.3f, "
+            "removed=%d component(s).",
+            len(all_corr),
+            len(starts),
+            thr,
+            window_max_r2[-1],
+            bad_idx.size,
+        )
 
         if bad_idx.size > 0:
             if mode == "calibrated":
@@ -565,20 +576,20 @@ def compute_icanclean(
         ),
     }
 
-    if verbose:
-        total_removed = qc["n_removed_"].sum()
-        pct_windows = (
-            (qc["n_removed_"] > 0).sum() / qc["n_windows_"] * 100
-            if qc["n_windows_"] > 0
-            else 0
-        )
-        logger.info(
-            "ICanClean: %d windows, %.1f%% had removals, "
-            "%.1f components removed on average",
-            qc["n_windows_"],
-            pct_windows,
-            total_removed / max(qc["n_windows_"], 1),
-        )
+    total_removed = qc["n_removed_"].sum()
+    pct_windows = (
+        (qc["n_removed_"] > 0).sum() / qc["n_windows_"] * 100
+        if qc["n_windows_"] > 0
+        else 0
+    )
+    logger.info(
+        "ICanClean: mode=%s, %d windows, %.1f%% had removals, "
+        "%.1f components removed on average.",
+        mode,
+        qc["n_windows_"],
+        pct_windows,
+        total_removed / max(qc["n_windows_"], 1),
+    )
 
     return cleaned_primary.astype(np.float64), qc
 
@@ -677,8 +688,9 @@ class ICanClean(BaseEstimator, TransformerMixin):
         Noise basis for the explicit global pass in ``mode='hybrid'``.
     global_max_reject_fraction : float | None, default=None
         Reject cap for the explicit global pass in ``mode='hybrid'``.
-    verbose : bool, default=True
-        Whether to log progress information.
+    verbose : bool | str | int | None, default=None
+        MNE-style logging level. The aggregate iCanClean report is emitted at
+        INFO; per-window CCA decisions are emitted at DEBUG.
 
     Attributes
     ----------
@@ -846,9 +858,15 @@ class ICanClean(BaseEstimator, TransformerMixin):
         self.global_clean_with = global_clean_with
         self.global_max_reject_fraction = global_max_reject_fraction
         self.verbose = verbose
-        set_log_level_from_verbose(self.verbose)
 
-    def fit(self, X: Any, y=None) -> ICanClean:
+    @verbose
+    def fit(
+        self,
+        X: Any,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> ICanClean:
         """Fit is a no-op; included for sklearn compatibility.
 
         The actual computation happens in :meth:`transform` since ICanClean
@@ -866,10 +884,16 @@ class ICanClean(BaseEstimator, TransformerMixin):
         -------
         self : ICanClean
         """
-        set_log_level_from_verbose(self.verbose)
         return self
 
-    def transform(self, X: Any, y=None) -> Any:
+    @verbose
+    def transform(
+        self,
+        X: Any,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> Any:
         """Apply ICanClean artifact removal.
 
         Parameters
@@ -890,7 +914,6 @@ class ICanClean(BaseEstimator, TransformerMixin):
         X_clean : Raw | Epochs | ndarray
             Cleaned data in the same format as the input.
         """
-        set_log_level_from_verbose(self.verbose)
         self._reset_qc_attrs()
 
         data, sfreq_data, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(
@@ -969,7 +992,15 @@ class ICanClean(BaseEstimator, TransformerMixin):
             data[:, ref_idx, :] = filtered
         return data, ref_idx, None
 
-    def fit_transform(self, X: Any, y=None, **fit_params) -> Any:
+    @verbose
+    def fit_transform(
+        self,
+        X: Any,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+        **fit_params,
+    ) -> Any:
         """Fit and apply ICanClean in one step.
 
         Parameters

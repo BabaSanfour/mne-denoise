@@ -22,6 +22,7 @@ References
 
 from __future__ import annotations
 
+import logging
 from numbers import Integral
 from typing import Any
 
@@ -43,11 +44,14 @@ except ImportError:
     _HAS_MNE = False
 
 from .._data import extract_data_from_mne, reconstruct_mne_object
+from .._logging import verbose
 from .._validation import (
     check_matching_sfreq,
     check_positive_real,
     resolve_sfreq,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def interpolate_spectrum(
@@ -211,12 +215,14 @@ class SpectrumInterpolation(BaseEstimator, TransformerMixin):
         n_harmonics: int | None = None,
         bandwidth: float = 1.0,
         neighbour_width: float = 2.0,
+        verbose: bool | str | int | None = None,
     ) -> None:
         self.sfreq = sfreq
         self.line_freq = line_freq
         self.n_harmonics = n_harmonics
         self.bandwidth = bandwidth
         self.neighbour_width = neighbour_width
+        self.verbose = verbose
 
     def _target_freqs(self, sfreq: float) -> np.ndarray:
         nyquist = sfreq / 2.0
@@ -269,7 +275,14 @@ class SpectrumInterpolation(BaseEstimator, TransformerMixin):
             ).reshape(data.shape)
         raise ValueError(f"data must be 2D or 3D, got {data.ndim}D")
 
-    def fit(self, X: Any, y: Any = None) -> SpectrumInterpolation:
+    @verbose
+    def fit(
+        self,
+        X: Any,
+        y: Any = None,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> SpectrumInterpolation:
         """Resolve the sampling rate and target frequencies.
 
         Parameters
@@ -296,9 +309,23 @@ class SpectrumInterpolation(BaseEstimator, TransformerMixin):
                 raise ValueError(f"data must be 2D or 3D, got {data.ndim}D")
         self.sfreq_ = sfreq
         self.freqs_ = self._target_freqs(sfreq)
+        logger.info(
+            "Spectrum interpolation: frequencies=%s Hz, bandwidth=%.3g Hz, "
+            "neighbour width=%.3g Hz, harmonics=%d.",
+            np.array2string(self.freqs_, precision=4, separator=", "),
+            self.bandwidth,
+            self.neighbour_width,
+            max(0, self.freqs_.size - 1) if np.asarray(self.line_freq).ndim == 0 else 0,
+        )
         return self
 
-    def transform(self, X: Any) -> Any:
+    @verbose
+    def transform(
+        self,
+        X: Any,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> Any:
         """Apply spectrum interpolation to ``X``.
 
         Parameters
@@ -343,7 +370,15 @@ class SpectrumInterpolation(BaseEstimator, TransformerMixin):
 
         return self._apply(np.asarray(X, dtype=float))
 
-    def fit_transform(self, X: Any, y: Any = None, **fit_params: Any) -> Any:
+    @verbose
+    def fit_transform(
+        self,
+        X: Any,
+        y: Any = None,
+        *,
+        verbose: bool | str | int | None = None,
+        **fit_params: Any,
+    ) -> Any:
         """Fit then transform ``X`` in one step.
 
         Parameters

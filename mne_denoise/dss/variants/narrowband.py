@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..._logging import logger, verbose
 from ..denoisers.spectral import BandpassBias
 from ..linear import DSS
 
@@ -58,6 +59,7 @@ def narrowband_dss(
     return DSS(bias=bias, n_components=n_components, **dss_kws)
 
 
+@verbose
 def narrowband_scan(
     data: np.ndarray,
     sfreq: float,
@@ -66,6 +68,7 @@ def narrowband_scan(
     freq_step: float = 1.0,
     bandwidth: float = 2.0,
     n_components: int = 1,
+    verbose: bool | str | int | None = None,
     **dss_kws,
 ) -> tuple[DSS, np.ndarray, np.ndarray]:
     """Scan frequencies to find optimal narrowband DSS components.
@@ -88,6 +91,9 @@ def narrowband_scan(
         Bandwidth of bandpass filter at each frequency. Default 2.0.
     n_components : int
         Number of DSS components to compute at each frequency. Default 1.
+    verbose : bool | str | int | None
+        MNE-style logging level. Per-frequency DSS fits are reported through
+        this scan's aggregate result.
     **dss_kws
         Additional keyword arguments passed to `DSS`.
 
@@ -143,25 +149,54 @@ def narrowband_scan(
 
     for i, freq in enumerate(frequencies):
         try:
+            candidate_kws = dict(dss_kws)
+            candidate_kws["verbose"] = "WARNING"
             dss = narrowband_dss(
                 sfreq=sfreq,
                 freq=freq,
                 bandwidth=bandwidth,
                 n_components=n_components,
-                **dss_kws,
+                **candidate_kws,
             )
             dss.fit(data)
             eigenvalues[i] = dss.eigenvalues_[0]
+
+            logger.debug(
+                "Narrowband DSS scan %d/%d: %.3g Hz eigenvalue=%.6g.",
+                i + 1,
+                n_freqs,
+                freq,
+                eigenvalues[i],
+            )
 
             if eigenvalues[i] > best_eigenvalue:
                 best_eigenvalue = eigenvalues[i]
                 best_dss = dss
 
-        except Exception:
+        except Exception as exc:
             # Skip problematic frequencies
+            logger.debug(
+                "Narrowband DSS scan %d/%d: %.3g Hz failed: %s.",
+                i + 1,
+                n_freqs,
+                freq,
+                exc,
+            )
             continue
 
     if best_dss is None:
         raise RuntimeError("Failed to fit DSS at any frequency")
+
+    best_index = int(np.argmax(eigenvalues))
+    logger.info(
+        "Narrowband DSS scan: %.3g-%.3g Hz in %.3g Hz steps, "
+        "bandwidth=%.3g Hz, best=%.3g Hz (eigenvalue=%.6g).",
+        min_freq,
+        max_freq,
+        freq_step,
+        bandwidth,
+        frequencies[best_index],
+        eigenvalues[best_index],
+    )
 
     return best_dss, frequencies, eigenvalues

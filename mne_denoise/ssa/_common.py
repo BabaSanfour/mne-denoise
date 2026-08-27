@@ -9,7 +9,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
 from .._data import extract_data_from_mne, reconstruct_mne_object
-from .._logging import set_log_level_from_verbose
+from .._logging import verbose
 from .._validation import (
     check_channel_first_data,
     check_channel_layout,
@@ -92,9 +92,9 @@ class _BaseSSATransformer(BaseEstimator, TransformerMixin):
     ) -> tuple[np.ndarray, dict[str, Any]]:
         raise NotImplementedError
 
+    @verbose
     def fit(self, X: Any, y=None):
         """Validate the operating point and record the fitted channel layout."""
-        set_log_level_from_verbose(self.verbose)
         data, data_sfreq, _kind, _orig, _picks, names = extract_data_from_mne(
             X, auto_pick=True
         )
@@ -114,10 +114,10 @@ class _BaseSSATransformer(BaseEstimator, TransformerMixin):
         self.is_fitted_ = True
         return self
 
+    @verbose
     def transform(self, X: Any, y=None) -> Any:
         """Apply the transductive SSA decomposition to the supplied records."""
         check_is_fitted(self, "is_fitted_")
-        set_log_level_from_verbose(self.verbose)
         data, data_sfreq, kind, original, picks, names = extract_data_from_mne(
             X, auto_pick=True
         )

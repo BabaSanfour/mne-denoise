@@ -591,16 +591,16 @@ def test_fit_reports_the_resolved_operating_point(rng, caplog):
 
 
 @pytest.mark.parametrize(
-    ("verbose", "expected"),
-    [("ERROR", logging.ERROR), (True, logging.INFO), (False, logging.WARNING)],
+    "verbose",
+    ["ERROR", True, False],
 )
-def test_verbose_sets_the_package_logger_level(rng, verbose, expected):
-    """MNE-style verbosity routes through the shared level helper."""
+def test_verbose_temporarily_sets_the_package_logger_level(rng, verbose):
+    """MNE-style verbosity is scoped to the operation and then restored."""
     package_logger = logging.getLogger("mne_denoise")
     previous = package_logger.level
     try:
         BSSCCA(n_remove=1, verbose=verbose).fit(rng.standard_normal((5, 500)))
-        assert package_logger.level == expected
+        assert package_logger.level == previous
     finally:
         package_logger.setLevel(previous)
 

@@ -43,7 +43,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from .._data import extract_data_from_mne, reconstruct_mne_object
 from .._leadfield import resolve_leadfield
-from .._logging import logger, set_log_level_from_verbose
+from .._logging import logger, verbose
 from .._validation import (
     check_channel_layout,
     check_matching_sfreq,
@@ -308,8 +308,9 @@ class SSPSIR(BaseEstimator, TransformerMixin):
         Sampling frequency, required only for plain-array input.
     n_dipoles : int
         Number of dipoles for the spherical lead field.
-    verbose : bool, default=True
-        Whether to log progress information.
+    verbose : bool | str | int | None, default=None
+        MNE-style logging level. The fitted SSP-SIR summary is emitted at
+        INFO; numerical reconstruction helpers remain silent.
 
     Attributes
     ----------
@@ -394,7 +395,7 @@ class SSPSIR(BaseEstimator, TransformerMixin):
         smooth_length: float = _SMOOTH_LENGTH,
         sfreq=None,
         n_dipoles: int = 5000,
-        verbose: bool | str | int | None = True,
+        verbose: bool | str | int | None = None,
     ):
         self.n_components = n_components
         self.forward = forward
@@ -463,7 +464,14 @@ class SSPSIR(BaseEstimator, TransformerMixin):
         kernel = np.sqrt(kernel / kernel.max()) if kernel.max() > 0 else kernel
         return kernel[None, :] * data_high, kernel
 
-    def fit(self, X, y=None):
+    @verbose
+    def fit(
+        self,
+        X,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+    ):
         """Estimate the SSP-SIR cleaning operators from ``X``."""
         if self.n_components is None:
             raise ValueError(
@@ -504,7 +512,6 @@ class SSPSIR(BaseEstimator, TransformerMixin):
                 raise ValueError(
                     f"art_window must satisfy tmin < tmax, got {self.art_window}."
                 )
-        set_log_level_from_verbose(self.verbose)
         data, sfreq, _, orig_inst, _, ch_names = extract_data_from_mne(X)
         sfreq = self._resolve_sfreq(sfreq)
         times = getattr(orig_inst, "times", None)
@@ -562,7 +569,13 @@ class SSPSIR(BaseEstimator, TransformerMixin):
         )
         return self
 
-    def transform(self, X):
+    @verbose
+    def transform(
+        self,
+        X,
+        *,
+        verbose: bool | str | int | None = None,
+    ):
         """Apply the fitted SSP-SIR operators to ``X``."""
         check_is_fitted(self, attributes=["operator_", "operator_orig_", "kernel_"])
         data, sfreq, mne_type, orig_inst, picks, ch_names = extract_data_from_mne(

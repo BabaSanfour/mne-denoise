@@ -34,6 +34,7 @@ from typing import Any
 import numpy as np
 
 from .._data import extract_data_from_mne
+from .._logging import logger, verbose
 from ._covariance import (
     _covariance_stack_bytes,
     _process_memory_info,
@@ -58,6 +59,7 @@ _EXPERIMENTAL_DISCLAIMER = (
 )
 
 
+@verbose
 def process_guided_asr(
     X: np.ndarray,
     sfreq: float,
@@ -75,6 +77,7 @@ def process_guided_asr(
     max_mem_mb: int | None = 512,
     lookahead: float | None = None,
     stepsize: int | None = None,
+    verbose: bool | str | int | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Apply a calibrated ASR state with guided soft reconstruction.
@@ -124,6 +127,9 @@ def process_guided_asr(
     stepsize : int | None
         Samples between reconstruction-matrix updates. ``None`` uses half a
         window.
+    verbose : bool | str | int | None
+        MNE-style logging level. Guided reconstruction details are emitted at
+        DEBUG; the estimator owns the user-facing INFO report.
 
     Returns
     -------
@@ -220,6 +226,11 @@ def process_guided_asr(
                 used_memory_bound=False,
             )
         )
+        logger.debug(
+            "GuidedASR reconstruction details: mode=%s, identity path, %d sample(s).",
+            reconstruction,
+            n_times,
+        )
         return X.copy(), diagnostics
 
     assert prepared.data_stream is not None
@@ -285,6 +296,13 @@ def process_guided_asr(
             chunk_samples=win_len if use_rolling_covariance else n_stream_input,
             used_memory_bound=use_rolling_covariance,
         )
+    )
+    logger.debug(
+        "GuidedASR reconstruction details: mode=%s, %d window(s), "
+        "mean component keep weight=%.3f.",
+        reconstruction,
+        diagnostics["n_windows"],
+        diagnostics["mean_soft_weight"],
     )
     return X_clean, diagnostics
 
@@ -486,6 +504,7 @@ class GuidedASR(ASR):
 
     # -- fit ---------------------------------------------------------------
 
+    @verbose
     def fit(
         self,
         X,
@@ -493,6 +512,7 @@ class GuidedASR(ASR):
         *,
         calibration=None,
         calibration_mask=None,
+        verbose: bool | str | int | None = None,
     ) -> GuidedASR:
         """
         Calibrate ASR and fit the optional guidance covariances.
@@ -595,6 +615,14 @@ class GuidedASR(ASR):
                 "guidance_strength": self.guidance_strength,
                 "experimental": self.reconstruction == "soft",
             }
+        )
+        logger.info(
+            "GuidedASR: reconstruction=%s, guidance strength=%.3g, "
+            "artifact biases=%d, preserve biases=%d.",
+            self.reconstruction,
+            self.guidance_strength,
+            len(self.artifact_biases or ()),
+            len(self.preserve_biases or ()),
         )
         return self
 

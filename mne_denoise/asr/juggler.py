@@ -24,7 +24,7 @@ import numpy as np
 from scipy import spatial, stats
 
 from .._data import extract_data_from_mne
-from .._logging import set_log_level_from_verbose
+from .._logging import logger, verbose
 from ._calibration import calibrate_asr
 from ._filters import _design_statistics_filter, _lfilter_channels
 from ._validation import (
@@ -46,6 +46,7 @@ except ImportError:  # pragma: no cover
     BaseRaw = Any
 
 
+@verbose
 def select_juggler_reference_samples(
     X: np.ndarray,
     sfreq: float,
@@ -56,6 +57,7 @@ def select_juggler_reference_samples(
     dbscan_min_samples: int | float | str = "auto",
     gev_grid_size: int = 2048,
     min_reference_fraction: float = 0.05,
+    verbose: bool | str | int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     """Select calibration samples using Juggler's ASR rules.
 
@@ -84,6 +86,9 @@ def select_juggler_reference_samples(
     min_reference_fraction : float
         Minimum acceptable retained fraction. Smaller retained sets are treated
         as calibration failures.
+    verbose : bool | str | int | None
+        MNE-style logging level. Selection diagnostics are emitted at DEBUG;
+        the owning estimator reports the fitted result at INFO.
 
     Returns
     -------
@@ -173,6 +178,13 @@ def select_juggler_reference_samples(
             "reference_candidate_samples": int(X.shape[1]),
             "reference_selected_fraction": keep_fraction,
         }
+    )
+    logger.debug(
+        "Juggler reference selection: strategy=%s, retained %d/%d samples (%.1f%%).",
+        strategy,
+        selected_samples,
+        sample_mask.size,
+        100.0 * keep_fraction,
     )
     return X_ref, sample_mask, diagnostics
 
@@ -341,12 +353,15 @@ class JugglerASR(ASR):
         self.gev_grid_size = gev_grid_size
         self.min_reference_fraction = min_reference_fraction
 
+    @verbose
     def fit(
         self,
         X: BaseRaw | BaseEpochs | np.ndarray,
         y=None,
         calibration: BaseRaw | BaseEpochs | np.ndarray | None = None,
         calibration_mask: np.ndarray | None = None,
+        *,
+        verbose: bool | str | int | None = None,
     ) -> JugglerASR:
         """Fit JugglerASR from a contaminated or clean calibration stream.
 
@@ -371,7 +386,6 @@ class JugglerASR(ASR):
             The fitted instance.
         """
         del y
-        set_log_level_from_verbose(self.verbose)
         _validate_backend_params(
             method=self.method,
             experimental=self.experimental,
@@ -505,6 +519,14 @@ class JugglerASR(ASR):
             "n_channels": self.n_channels_,
             "sfreq": self.sfreq_,
         }
+        logger.info(
+            "JugglerASR: strategy=%s, channels=%d, rank=%d, retained %.1f%% "
+            "reference samples.",
+            self.strategy,
+            self.n_channels_,
+            self.rank_,
+            100.0 * reference_info["reference_selected_fraction"],
+        )
         return self
 
     def get_calibration_mask(self) -> np.ndarray:

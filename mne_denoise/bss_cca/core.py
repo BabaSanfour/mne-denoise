@@ -51,7 +51,7 @@ from .._data import (
     extract_data_from_mne,
     reconstruct_mne_object,
 )
-from .._logging import set_log_level_from_verbose
+from .._logging import verbose
 from .._spatial import (
     apply_spatial_transform,
     fit_mixing_matrix,
@@ -377,6 +377,7 @@ def _segment_bounds(
     return bounds
 
 
+@verbose
 def compute_bss_cca(
     X: np.ndarray,
     *,
@@ -497,7 +498,6 @@ def compute_bss_cca(
            artifact removal. Epilepsia, 48(5), 950-958.
            https://doi.org/10.1111/j.1528-1167.2007.01031.x
     """
-    set_log_level_from_verbose(verbose)
     X = check_channel_first_data(X, name="BSS-CCA")
     if not isinstance(preserve_mean, bool):
         raise TypeError("preserve_mean must be a bool")
@@ -620,7 +620,7 @@ def _resolve_blocking(
             f"sfreq={sfreq}; use a longer block"
         )
     if n_block >= n_times:
-        logger.info(
+        logger.debug(
             "BSS-CCA: segment_len covers the whole recording; learning one operator."
         )
     hop = max(1, n_block - int(np.floor(overlap * n_block + 0.5)))
@@ -789,7 +789,14 @@ class BSSCCA(BaseEstimator, TransformerMixin):
         self.preserve_mean = preserve_mean
         self.verbose = verbose
 
-    def fit(self, X: Any, y=None) -> BSSCCA:
+    @verbose
+    def fit(
+        self,
+        X: Any,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> BSSCCA:
         """Learn the BSS-CCA operators.
 
         Parameters
@@ -805,7 +812,6 @@ class BSSCCA(BaseEstimator, TransformerMixin):
             Fitted estimator.
         """
         del y
-        set_log_level_from_verbose(self.verbose)
         data, data_sfreq, _mne_type, _orig, _picks, names = extract_data_from_mne(
             X, auto_pick=True
         )
@@ -845,7 +851,14 @@ class BSSCCA(BaseEstimator, TransformerMixin):
         self._operators = list(info["operators"])
         return self
 
-    def transform(self, X: Any, y=None) -> Any:
+    @verbose
+    def transform(
+        self,
+        X: Any,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+    ) -> Any:
         """Apply the fitted operators to new data.
 
         Parameters
@@ -862,7 +875,6 @@ class BSSCCA(BaseEstimator, TransformerMixin):
         """
         del y
         check_is_fitted(self, ("cleaning_matrix_", "training_mean_"))
-        set_log_level_from_verbose(self.verbose)
         data, data_sfreq, mne_type, orig_inst, picks, names = extract_data_from_mne(
             X, ch_names=list(self.feature_names_in_) if self.feature_names_in_ else None
         )
@@ -886,7 +898,15 @@ class BSSCCA(BaseEstimator, TransformerMixin):
         )
         return reconstruct_mne_object(cleaned, orig_inst, mne_type, picks=picks)
 
-    def fit_transform(self, X: Any, y=None, **fit_params) -> Any:
+    @verbose
+    def fit_transform(
+        self,
+        X: Any,
+        y=None,
+        *,
+        verbose: bool | str | int | None = None,
+        **fit_params,
+    ) -> Any:
         """Fit on ``X`` and apply the fitted operators to ``X``.
 
         Parameters

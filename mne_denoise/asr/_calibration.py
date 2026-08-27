@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from .._logging import logger, verbose
 from ._covariance import _aggregate_block_covariances
 from ._distribution import fit_rms_distribution
 from ._filters import _design_statistics_filter, _lfilter_channels
@@ -40,6 +41,7 @@ from ._windowing import (
 )
 
 
+@verbose
 def calibrate_asr(
     X: np.ndarray,
     sfreq: float,
@@ -59,6 +61,7 @@ def calibrate_asr(
     filter_kind: str = "none",
     method: str = "standard",
     max_mem_mb: int | None = 512,
+    verbose: bool | str | int | None = None,
 ) -> tuple[ASRState, dict[str, Any]]:
     """Calibrate a standard ASR model from continuous data.
 
@@ -103,6 +106,9 @@ def calibrate_asr(
         high-pass filter, and ``'none'`` avoids implicit filtering.
     max_mem_mb : int | None
         Reserved memory limit for future chunking. Present for API stability.
+    verbose : bool | str | int | None
+        MNE-style logging level. Calibration details are emitted at DEBUG;
+        the owning estimator reports the user-facing calibration result.
 
     Returns
     -------
@@ -266,6 +272,16 @@ def calibrate_asr(
     }
     diagnostics.update(memory_info)
     diagnostics.update(riemannian_info)
+    logger.debug(
+        "ASR calibration details: method=%s, clean windows=%d/%d, "
+        "calibration samples=%d, rank=%d, filter=%s.",
+        method,
+        diagnostics["n_clean_windows"],
+        diagnostics["n_calibration_windows"],
+        diagnostics["calibration_samples"],
+        rank,
+        filter_kind,
+    )
     return state, diagnostics
 
 

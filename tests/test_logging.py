@@ -56,12 +56,40 @@ def test_verbose_none():
 def test_verbose_str():
     from mne_denoise._logging import logger, set_log_level_from_verbose
 
-    set_log_level_from_verbose("debug")
-    assert logger.level == logging.DEBUG
+    previous = logger.level
+    try:
+        set_log_level_from_verbose("debug")
+        assert logger.level == logging.DEBUG
+    finally:
+        logger.setLevel(previous)
 
 
 def test_verbose_int():
     from mne_denoise._logging import logger, set_log_level_from_verbose
 
-    set_log_level_from_verbose(logging.ERROR)
-    assert logger.level == logging.ERROR
+    previous = logger.level
+    try:
+        set_log_level_from_verbose(logging.ERROR)
+        assert logger.level == logging.ERROR
+    finally:
+        logger.setLevel(previous)
+
+
+def test_verbose_decorator_restores_on_success_and_error():
+    """A scoped per-call override must restore the prior level always."""
+    from mne_denoise._logging import logger, verbose
+
+    @verbose
+    def operation(*, verbose=None, fail=False):
+        if fail:
+            raise RuntimeError("expected")
+
+    previous = logger.level
+    try:
+        operation(verbose="DEBUG")
+        assert logger.level == previous
+        with pytest.raises(RuntimeError, match="expected"):
+            operation(verbose=True, fail=True)
+        assert logger.level == previous
+    finally:
+        logger.setLevel(previous)
