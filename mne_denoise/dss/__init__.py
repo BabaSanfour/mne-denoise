@@ -7,7 +7,6 @@ This module contains:
 For ZapLine, see `mne_denoise.zapline`.
 """
 
-# Core
 # Denoisers & Biases (Flat API)
 from .denoisers import (
     AverageBias,
@@ -30,6 +29,7 @@ from .denoisers import (
     SpectrogramBias,
     SpectrogramDenoiser,
     TanhMaskDenoiser,
+    VarianceMaskDenoiser,
     WienerMaskDenoiser,
     beta_gauss,
     beta_pow3,
@@ -38,60 +38,53 @@ from .denoisers import (
 from .linear import DSS, compute_dss
 from .nonlinear import IterativeDSS, iterative_dss, iterative_dss_one
 
-# Utils (exposed for convenience if needed)
-from .utils import convergence, whitening
-from .utils.segmentation import CovarianceSegmenter, FixedWindowSegmenter
-from .utils.selection import (
-    auto_select_components,
-    auto_select_components_robust,
-    detect_eigenvalue_knee,
-    iterative_outlier_removal,
+# Segmentation strategies (exposed for convenience)
+from .segmentation import CovarianceSegmenter, FixedWindowSegmenter
+
+# Variants (exposed for convenience)
+from .variants import (
+    TimeShiftDSS,
+    narrowband_dss,
+    narrowband_scan,
+    smooth_dss,
+    ssvep_dss,
 )
-
-# Variants (Modules)
-from .variants import narrowband, ssvep, tsr
-from .variants.narrowband import narrowband_dss, narrowband_scan
-from .variants.ssvep import ssvep_dss
-
-# Variants (Direct Access)
-from .variants.tsr import TimeShiftDSS, smooth_dss
 
 __all__ = [
     # Core
     "compute_dss",
     "DSS",
-    "TimeShiftDSS",
+    "IterativeDSS",
     "iterative_dss",
     "iterative_dss_one",
-    "IterativeDSS",
-    # Variants modules
-    "tsr",
-    "ssvep",
-    "narrowband",
-    # Variants functions
+    # Variants
+    "TimeShiftDSS",
     "smooth_dss",
     "ssvep_dss",
     "narrowband_scan",
     "narrowband_dss",
-    # Utils
-    "whitening",
-    "convergence",
+    # Segmentation
+    "CovarianceSegmenter",
+    "FixedWindowSegmenter",
     # Denoisers (from .denoisers)
     "LinearDenoiser",
     "NonlinearDenoiser",
     "AverageBias",
+    "CycleAverageBias",
     "BandpassBias",
     "LineNoiseBias",
     "PeakFilterBias",
     "CombFilterBias",
-    "CycleAverageBias",
+    "LagAverageBias",
+    "SmoothingBias",
+    "SpectrogramBias",
+    "VarianceMaskDenoiser",
     "WienerMaskDenoiser",
     "TanhMaskDenoiser",
     "RobustTanhDenoiser",
     "GaussDenoiser",
     "SkewDenoiser",
     "DCTDenoiser",
-    "SpectrogramBias",
     "SpectrogramDenoiser",
     "QuasiPeriodicDenoiser",
     "KurtosisDenoiser",
@@ -99,6 +92,4 @@ __all__ = [
     "beta_tanh",
     "beta_pow3",
     "beta_gauss",
-    "LagAverageBias",
-    "SmoothingBias",
 ]

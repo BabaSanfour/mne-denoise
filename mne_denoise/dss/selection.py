@@ -11,15 +11,23 @@ from __future__ import annotations
 
 import numpy as np
 
+__all__ = [
+    "auto_select_components",
+    "auto_select_components_robust",
+    "detect_eigenvalue_knee",
+    "iterative_outlier_removal",
+]
+
 
 def iterative_outlier_removal(scores: np.ndarray, sigma: float = 3.0) -> int:
     """Detect outliers iteratively using mean + sigma threshold.
 
     This algorithm iteratively identifies values that exceed `mean + sigma * std`,
     removes them from consideration, and repeats until no more outliers are found.
-    It follows NoiseTools' ``nt_dss``-style outlier rule, which ZapLine-plus
-    (Klug & Kloosterman, 2022, §2.4 "Detection of noise components") adopts to
-    automatically choose how many spatial components to remove: outliers in the
+    It follows NoiseTools' ``nt_dss``-style outlier rule [2]_, which
+    ZapLine-plus (Klug & Kloosterman, 2022, §2.4 "Detection of noise
+    components") [1]_ adopts to automatically choose how many spatial
+    components to remove: outliers in the
     component scores are flagged with a ``mean + sigma * SD`` threshold and
     removed, the mean/SD are recomputed across the remaining components, and the
     loop repeats until none are left; the count of removed outliers is taken as
@@ -51,7 +59,7 @@ def iterative_outlier_removal(scores: np.ndarray, sigma: float = 3.0) -> int:
 
     Examples
     --------
-    >>> from mne_denoise.dss.utils import iterative_outlier_removal
+    >>> from mne_denoise.dss.selection import iterative_outlier_removal
     >>> scores = np.array([0.9, 0.8, 0.2, 0.15, 0.1, 0.08])
     >>> n_significant = iterative_outlier_removal(scores, sigma=2.0)
     >>> print(f"Found {n_significant} significant components")
