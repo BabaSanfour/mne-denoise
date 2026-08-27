@@ -519,6 +519,11 @@ class ASR(BaseEstimator, TransformerMixin):
             raise ValueError(
                 f"Input sfreq {sfreq} does not match fitted sfreq {self.sfreq_}"
             )
+        if self.ch_names_ is not None and ch_names is None:
+            raise ValueError(
+                "ASR was fitted with named channels; transform input must provide "
+                "channel names so their order can be verified."
+            )
         check_channel_layout(
             type(self).__name__,
             n_channels=data.shape[1] if mne_type == "epochs" else data.shape[0],

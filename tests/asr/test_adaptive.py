@@ -621,6 +621,14 @@ def test_adaptive_edge_cases():
     ):
         asr.transform(data[:-1])
 
+    named_asr = AdaptiveASR(sfreq=sfreq, variant="psp", verbose=False).fit(
+        mne.io.RawArray(data, info, verbose=False)
+    )
+    with pytest.raises(ValueError, match="ASR was fitted with named channels"):
+        named_asr.transform(data)
+    with pytest.raises(ValueError, match="ASR was fitted with named channels"):
+        named_asr.partial_fit(data)
+
     asr2 = AdaptiveASR(sfreq=sfreq, variant="psp", verbose=False)
     asr2.partial_fit(data)
 

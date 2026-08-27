@@ -86,7 +86,7 @@ def test_asr_mne_raw_preserves_non_picked_channels(synthetic_burst_data):
 
 
 def test_asr_transform_checks_fitted_channel_layout(synthetic_burst_data):
-    """ASR rejects changed counts and MNE channel order after fitting."""
+    """ASR preserves named-fit safety and rejects changed layouts."""
     mne = pytest.importorskip("mne")
     data, _, _, sfreq = synthetic_burst_data
     names = [f"EEG{idx}" for idx in range(data.shape[0])]
@@ -94,10 +94,16 @@ def test_asr_transform_checks_fitted_channel_layout(synthetic_burst_data):
     asr = ASR(cutoff=3.0, filter_kind="none", verbose=False).fit(raw)
 
     asr.transform(raw)
+    with pytest.raises(ValueError, match="ASR was fitted with named channels"):
+        asr.transform(data)
     with pytest.raises(ValueError, match="MNE channel names/order differ from fit"):
         asr.transform(raw.copy().reorder_channels(names[::-1]))
+
+    array_asr = ASR(sfreq=sfreq, cutoff=3.0, filter_kind="none", verbose=False).fit(
+        data
+    )
     with pytest.raises(ValueError, match="ASR: X has 7 channels; fitted data had 8"):
-        asr.transform(data[:-1])
+        array_asr.transform(data[:-1])
 
 
 def test_asr_mne_raw_low_memory_preserves_metadata(synthetic_burst_data):
