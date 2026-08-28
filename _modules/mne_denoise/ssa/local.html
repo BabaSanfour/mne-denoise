@@ -1,0 +1,1171 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mne_denoise.ssa.local &#8212; mne-denoise 0.0.1 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sg_gallery.css?v=fd6457a4" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sg_gallery-binder.css?v=f4aeca0c" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sg_gallery-dataframe.css?v=2082cf3c" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sg_gallery-rendered-html.css?v=1277b6f3" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../../../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../../../_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/sg-tags.js?v=d80f6fa4"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/mne_denoise/ssa/local';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.0.1" />
+  
+    
+    <script src="../../../_static/searchtools.js"></script>
+    <script src="../../../_static/language_data.js"></script>
+    <script src="../../../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">mne-denoise 0.0.1 documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../getting-started.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../dss.html">
+    DSS Module Documentation
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../time_shift_dss.html">
+    TimeShiftDSS
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../asr.html">
+    Artifact Subspace Reconstruction
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../bss_cca.html">
+    Reference-free BSS-CCA
+  </a>
+</li>
+
+            <li class="nav-item dropdown">
+                <button class="btn dropdown-toggle nav-item" type="button"
+                data-bs-toggle="dropdown" aria-expanded="false"
+                aria-controls="pst-nav-more-links">
+                    More
+                </button>
+                <ul id="pst-nav-more-links" class="dropdown-menu">
+                    
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../../sns.html">
+    Sensor Noise Suppression (SNS)
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../../ssa.html">
+    Singular Spectrum Analysis
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../../icanclean.html">
+    iCanClean
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../../auto_examples/index.html">
+    Examples Gallery
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../../api.html">
+    API reference
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../../development.html">
+    Development workflow
+  </a>
+</li>
+
+                </ul>
+            </li>
+            
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/mne-tools/mne-denoise" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar hide-on-wide">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../getting-started.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../dss.html">
+    DSS Module Documentation
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../time_shift_dss.html">
+    TimeShiftDSS
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../asr.html">
+    Artifact Subspace Reconstruction
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../bss_cca.html">
+    Reference-free BSS-CCA
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../sns.html">
+    Sensor Noise Suppression (SNS)
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../ssa.html">
+    Singular Spectrum Analysis
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../icanclean.html">
+    iCanClean
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../auto_examples/index.html">
+    Examples Gallery
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../api.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../../development.html">
+    Development workflow
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/mne-tools/mne-denoise" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">mne_denoise.ssa.local</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for mne_denoise.ssa.local</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Local Singular Spectrum Analysis for high-amplitude artifact removal.</span>
+
+<span class="sd">Local SSA embeds a scalar series as overlapping delay vectors, partitions those</span>
+<span class="sd">vectors into locally similar states, and estimates a separate principal</span>
+<span class="sd">subspace in every cluster. Minimum-description-length model selection controls</span>
+<span class="sd">the local subspace dimensions. Reversing the clustering and applying</span>
+<span class="sd">anti-diagonal averaging yields a coherent, high-energy reconstruction that is</span>
+<span class="sd">treated as artifact and subtracted from the observation [1]_.</span>
+
+<span class="sd">This signal interpretation is method-specific: genuine high-amplitude neural</span>
+<span class="sd">activity can also occupy the leading local subspaces and be attenuated.</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">.. [1] Teixeira, A. R., Tome, A. M., Lang, E. W., Gruber, P., &amp; Martins da</span>
+<span class="sd">       Silva, A. (2006). Automatic removal of high-amplitude artefacts from</span>
+<span class="sd">       single-channel electroencephalograms. Computer Methods and Programs in</span>
+<span class="sd">       Biomedicine, 83, 125-138. https://doi.org/10.1016/j.cmpb.2006.06.003</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">numbers</span><span class="w"> </span><span class="kn">import</span> <span class="n">Integral</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.cluster</span><span class="w"> </span><span class="kn">import</span> <span class="n">KMeans</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.._logging</span><span class="w"> </span><span class="kn">import</span> <span class="n">logger</span><span class="p">,</span> <span class="n">verbose</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.._validation</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">check_channel_first_data</span><span class="p">,</span>
+    <span class="n">check_positive_integer</span><span class="p">,</span>
+    <span class="n">check_positive_real</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">_BaseSSATransformer</span><span class="p">,</span>
+    <span class="n">_diagonal_average</span><span class="p">,</span>
+    <span class="n">_resolve_window_length</span><span class="p">,</span>
+    <span class="n">_trajectory_matrix</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_mdl_order</span><span class="p">(</span><span class="n">eigenvalues</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">n_observations</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Select a local PCA dimension using Teixeira et al. Eqs. (4)-(6).</span>
+
+<span class="sd">    The likelihood term compares the geometric and arithmetic means of the</span>
+<span class="sd">    discarded covariance eigenvalues. The complexity penalty increases with</span>
+<span class="sd">    the candidate subspace dimension.</span>
+<span class="sd">    """</span>
+    <span class="n">eigenvalues</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">eigenvalues</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="n">n_dimensions</span> <span class="o">=</span> <span class="n">eigenvalues</span><span class="o">.</span><span class="n">size</span>
+    <span class="k">if</span> <span class="n">n_dimensions</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">eigenvalues</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">n_dimensions</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+    <span class="n">tiny</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">tiny</span>
+    <span class="n">scores</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n_dimensions</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">order</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_dimensions</span><span class="p">)):</span>
+        <span class="n">discarded</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">eigenvalues</span><span class="p">[</span><span class="n">order</span><span class="p">:],</span> <span class="n">tiny</span><span class="p">)</span>
+        <span class="n">log_ratio</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">discarded</span><span class="p">))</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">discarded</span><span class="p">))</span>
+        <span class="n">negative_log_likelihood</span> <span class="o">=</span> <span class="o">-</span><span class="n">n_observations</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_dimensions</span> <span class="o">-</span> <span class="n">order</span><span class="p">)</span> <span class="o">*</span> <span class="n">log_ratio</span>
+        <span class="n">degrees</span> <span class="o">=</span> <span class="n">order</span> <span class="o">*</span> <span class="n">n_dimensions</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">order</span> <span class="o">*</span> <span class="p">(</span><span class="n">order</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1.0</span>
+        <span class="n">scores</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">=</span> <span class="n">negative_log_likelihood</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">degrees</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">n_observations</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">scores</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span> <span class="n">scores</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_fit_local_clusters</span><span class="p">(</span>
+    <span class="n">trajectory</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">n_clusters</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">max_clusters</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">random_state</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]:</span>
+<span class="w">    </span><span class="sd">"""Cluster delay vectors and fit the local PCA/MDL models.</span>
+
+<span class="sd">    Automatic selection searches from the largest admissible cluster count</span>
+<span class="sd">    downward. A clustering is admissible when every cluster contains at least</span>
+<span class="sd">    one observation per embedding dimension; its MDL result is considered</span>
+<span class="sd">    reliable when no selected local dimension exceeds half the embedding</span>
+<span class="sd">    dimension. Explicit cluster counts retain the MDL result after enforcing</span>
+<span class="sd">    only the observation-count condition.</span>
+<span class="sd">    """</span>
+    <span class="n">window_length</span><span class="p">,</span> <span class="n">n_vectors</span> <span class="o">=</span> <span class="n">trajectory</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">if</span> <span class="n">n_clusters</span> <span class="o">==</span> <span class="s2">"auto"</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">trajectory</span> <span class="o">==</span> <span class="n">trajectory</span><span class="p">[:,</span> <span class="p">:</span><span class="mi">1</span><span class="p">]):</span>
+        <span class="n">n_clusters</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="n">n_clusters</span> <span class="o">==</span> <span class="s2">"auto"</span><span class="p">:</span>
+        <span class="n">first</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">max_clusters</span><span class="p">,</span> <span class="n">n_vectors</span> <span class="o">//</span> <span class="n">window_length</span><span class="p">)</span>
+        <span class="n">candidates</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="n">first</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">candidates</span> <span class="o">=</span> <span class="p">(</span><span class="n">n_clusters</span><span class="p">,)</span>
+    <span class="n">last_reason</span> <span class="o">=</span> <span class="s2">""</span>
+    <span class="k">for</span> <span class="n">candidate</span> <span class="ow">in</span> <span class="n">candidates</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">candidate</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">labels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_vectors</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">labels</span> <span class="o">=</span> <span class="n">KMeans</span><span class="p">(</span>
+                <span class="n">n_clusters</span><span class="o">=</span><span class="n">candidate</span><span class="p">,</span>
+                <span class="n">n_init</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+                <span class="n">random_state</span><span class="o">=</span><span class="n">random_state</span><span class="p">,</span>
+            <span class="p">)</span><span class="o">.</span><span class="n">fit_predict</span><span class="p">(</span><span class="n">trajectory</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+        <span class="n">sizes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="n">minlength</span><span class="o">=</span><span class="n">candidate</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">sizes</span> <span class="o">&lt;</span> <span class="n">window_length</span><span class="p">):</span>
+            <span class="n">last_reason</span> <span class="o">=</span> <span class="s2">"each cluster must contain at least window_length vectors"</span>
+            <span class="k">continue</span>
+        <span class="n">models</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">reliable</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">for</span> <span class="n">cluster</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">candidate</span><span class="p">):</span>
+            <span class="n">indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">labels</span> <span class="o">==</span> <span class="n">cluster</span><span class="p">)</span>
+            <span class="n">values</span> <span class="o">=</span> <span class="n">trajectory</span><span class="p">[:,</span> <span class="n">indices</span><span class="p">]</span>
+            <span class="n">mean</span> <span class="o">=</span> <span class="n">values</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">centered</span> <span class="o">=</span> <span class="n">values</span> <span class="o">-</span> <span class="n">mean</span>
+            <span class="n">covariance</span> <span class="o">=</span> <span class="n">centered</span> <span class="o">@</span> <span class="n">centered</span><span class="o">.</span><span class="n">T</span> <span class="o">/</span> <span class="n">indices</span><span class="o">.</span><span class="n">size</span>
+            <span class="n">eigenvalues</span><span class="p">,</span> <span class="n">eigenvectors</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigh</span><span class="p">(</span><span class="n">covariance</span><span class="p">)</span>
+            <span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">eigenvalues</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">eigenvalues</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">eigenvalues</span><span class="p">[</span><span class="n">order</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">)</span>
+            <span class="n">eigenvectors</span> <span class="o">=</span> <span class="n">eigenvectors</span><span class="p">[:,</span> <span class="n">order</span><span class="p">]</span>
+            <span class="n">dimension</span><span class="p">,</span> <span class="n">scores</span> <span class="o">=</span> <span class="n">_mdl_order</span><span class="p">(</span><span class="n">eigenvalues</span><span class="p">,</span> <span class="n">indices</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">dimension</span> <span class="o">&gt;</span> <span class="n">window_length</span> <span class="o">//</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">reliable</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">models</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">"indices"</span><span class="p">:</span> <span class="n">indices</span><span class="p">,</span>
+                    <span class="s2">"mean"</span><span class="p">:</span> <span class="n">mean</span><span class="p">,</span>
+                    <span class="s2">"eigenvalues"</span><span class="p">:</span> <span class="n">eigenvalues</span><span class="p">,</span>
+                    <span class="s2">"eigenvectors"</span><span class="p">:</span> <span class="n">eigenvectors</span><span class="p">,</span>
+                    <span class="s2">"dimension"</span><span class="p">:</span> <span class="n">dimension</span><span class="p">,</span>
+                    <span class="s2">"mdl_scores"</span><span class="p">:</span> <span class="n">scores</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">reliable</span> <span class="ow">or</span> <span class="n">n_clusters</span> <span class="o">!=</span> <span class="s2">"auto"</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">labels</span><span class="p">,</span> <span class="n">models</span>
+        <span class="n">last_reason</span> <span class="o">=</span> <span class="s2">"MDL selected more than half the embedding dimensions"</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"No reliable local SSA clustering was found; "</span> <span class="o">+</span> <span class="n">last_reason</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_check_local_parameters</span><span class="p">(</span>
+    <span class="n">n_clusters</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">max_clusters</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">random_state</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Validate local SSA clustering parameters."""</span>
+    <span class="k">if</span> <span class="n">n_clusters</span> <span class="o">!=</span> <span class="s2">"auto"</span><span class="p">:</span>
+        <span class="n">n_clusters</span> <span class="o">=</span> <span class="n">check_positive_integer</span><span class="p">(</span><span class="n">n_clusters</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"n_clusters"</span><span class="p">)</span>
+    <span class="n">max_clusters</span> <span class="o">=</span> <span class="n">check_positive_integer</span><span class="p">(</span><span class="n">max_clusters</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"max_clusters"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">random_state</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">random_state</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">random_state</span><span class="p">,</span> <span class="n">Integral</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"random_state must be an integer or None"</span><span class="p">)</span>
+        <span class="n">random_state</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">random_state</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">n_clusters</span><span class="p">,</span> <span class="n">max_clusters</span><span class="p">,</span> <span class="n">random_state</span>
+
+
+<div class="viewcode-block" id="local_ssa_clean_channel">
+<a class="viewcode-back" href="../../../generated/mne_denoise.ssa.local_ssa_clean_channel.html#mne_denoise.ssa.local_ssa_clean_channel">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">local_ssa_clean_channel</span><span class="p">(</span>
+    <span class="n">x</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">window_length</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">window_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">sfreq</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">n_clusters</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"auto"</span><span class="p">,</span>
+    <span class="n">max_clusters</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">max_window</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+    <span class="n">random_state</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="n">return_info</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Remove a locally reconstructed high-energy artifact from one channel.</span>
+
+<span class="sd">    Delay vectors are clustered, projected onto cluster-specific subspaces</span>
+<span class="sd">    selected by MDL, returned to their temporal positions, and averaged along</span>
+<span class="sd">    trajectory-matrix anti-diagonals.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : array-like, shape (n_times,)</span>
+<span class="sd">        Finite scalar time series.</span>
+<span class="sd">    window_length : int | None, default=None</span>
+<span class="sd">        Delay-vector dimension in samples. It must satisfy the canonical SSA</span>
+<span class="sd">        orientation and is mutually exclusive with ``window_seconds``.</span>
+<span class="sd">    window_seconds : float | None, default=None</span>
+<span class="sd">        Delay-vector duration in seconds. It requires ``sfreq`` and is mutually</span>
+<span class="sd">        exclusive with ``window_length``.</span>
+<span class="sd">    sfreq : float | None, default=None</span>
+<span class="sd">        Sampling frequency in Hz. Required for ``window_seconds`` and used by</span>
+<span class="sd">        automatic window selection when available.</span>
+<span class="sd">    n_clusters : int | "auto", default="auto"</span>
+<span class="sd">        Number of delay-vector clusters. ``"auto"`` searches downward from the</span>
+<span class="sd">        largest admissible value until the reliability conditions are met.</span>
+<span class="sd">    max_clusters : int, default=10</span>
+<span class="sd">        Upper bound for automatic cluster-count selection. The source does not</span>
+<span class="sd">        prescribe this computational bound.</span>
+<span class="sd">    max_window : int, default=100</span>
+<span class="sd">        Maximum delay-vector dimension used by automatic window selection.</span>
+<span class="sd">    random_state : int | None, default=0</span>
+<span class="sd">        Random seed passed to k-means. None permits nondeterministic</span>
+<span class="sd">        initialization.</span>
+<span class="sd">    return_info : bool, default=False</span>
+<span class="sd">        If True, also return clustering, eigenspectrum, MDL, and reconstructed</span>
+<span class="sd">        artifact diagnostics.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    x_clean : ndarray, shape (n_times,)</span>
+<span class="sd">        Residual after subtracting the local-subspace reconstruction.</span>
+<span class="sd">    info : dict</span>
+<span class="sd">        Returned only when ``return_info=True``. Contains the artifact,</span>
+<span class="sd">        trajectory shape, cluster labels and sizes, covariance eigenvalues, MDL</span>
+<span class="sd">        scores, and selected subspace dimensions.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TypeError</span>
+<span class="sd">        If a scalar parameter has an invalid type.</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``x``, the embedding, or the requested clustering is invalid, or no</span>
+<span class="sd">        reliable automatic clustering can be found.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    compute_local_ssa : Apply local SSA independently across channels.</span>
+<span class="sd">    LocalSingularSpectrumAnalysis : MNE/scikit-learn estimator interface.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The method assumes that coherent, high-energy structure belongs to the</span>
+<span class="sd">    artifact and that desired EEG is represented more strongly in the residual</span>
+<span class="sd">    subspace. This assumption can fail for genuine rhythmic neural activity.</span>
+<span class="sd">    K-means initialization, the maximum cluster count, and zero-eigenvalue</span>
+<span class="sd">    regularization are explicit numerical choices because the source does not</span>
+<span class="sd">    uniquely specify them [1]_.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [1] Teixeira, A. R., Tome, A. M., Lang, E. W., Gruber, P., &amp; Martins da</span>
+<span class="sd">           Silva, A. (2006). Automatic removal of high-amplitude artefacts from</span>
+<span class="sd">           single-channel electroencephalograms. Computer Methods and Programs</span>
+<span class="sd">           in Biomedicine, 83, 125-138.</span>
+<span class="sd">           https://doi.org/10.1016/j.cmpb.2006.06.003</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; from mne_denoise.ssa import local_ssa_clean_channel</span>
+<span class="sd">    &gt;&gt;&gt; time = np.arange(300) / 100.0</span>
+<span class="sd">    &gt;&gt;&gt; observed = np.sin(2 * np.pi * 0.5 * time)</span>
+<span class="sd">    &gt;&gt;&gt; cleaned = local_ssa_clean_channel(</span>
+<span class="sd">    ...     observed, window_length=20, n_clusters=2, random_state=0</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; cleaned.shape</span>
+<span class="sd">    (300,)</span>
+<span class="sd">    """</span>
+    <span class="n">n_clusters</span><span class="p">,</span> <span class="n">max_clusters</span><span class="p">,</span> <span class="n">random_state</span> <span class="o">=</span> <span class="n">_check_local_parameters</span><span class="p">(</span>
+        <span class="n">n_clusters</span><span class="p">,</span> <span class="n">max_clusters</span><span class="p">,</span> <span class="n">random_state</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">return_info</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"return_info must be a bool"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">sfreq</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">sfreq</span> <span class="o">=</span> <span class="n">check_positive_real</span><span class="p">(</span><span class="n">sfreq</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"sfreq"</span><span class="p">)</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"x must be one-dimensional"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"x must contain only finite values"</span><span class="p">)</span>
+    <span class="n">resolved</span> <span class="o">=</span> <span class="n">_resolve_window_length</span><span class="p">(</span>
+        <span class="n">x</span><span class="o">.</span><span class="n">size</span><span class="p">,</span>
+        <span class="n">window_length</span><span class="p">,</span>
+        <span class="n">window_seconds</span><span class="o">=</span><span class="n">window_seconds</span><span class="p">,</span>
+        <span class="n">sfreq</span><span class="o">=</span><span class="n">sfreq</span><span class="p">,</span>
+        <span class="n">max_window</span><span class="o">=</span><span class="n">max_window</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">trajectory</span> <span class="o">=</span> <span class="n">_trajectory_matrix</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">resolved</span><span class="p">)</span>
+    <span class="n">labels</span><span class="p">,</span> <span class="n">models</span> <span class="o">=</span> <span class="n">_fit_local_clusters</span><span class="p">(</span>
+        <span class="n">trajectory</span><span class="p">,</span>
+        <span class="n">n_clusters</span><span class="o">=</span><span class="n">n_clusters</span><span class="p">,</span>
+        <span class="n">max_clusters</span><span class="o">=</span><span class="n">max_clusters</span><span class="p">,</span>
+        <span class="n">random_state</span><span class="o">=</span><span class="n">random_state</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">artifact_trajectory</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">trajectory</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">models</span><span class="p">:</span>
+        <span class="n">indices</span> <span class="o">=</span> <span class="n">model</span><span class="p">[</span><span class="s2">"indices"</span><span class="p">]</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="n">trajectory</span><span class="p">[:,</span> <span class="n">indices</span><span class="p">]</span>
+        <span class="n">centered</span> <span class="o">=</span> <span class="n">values</span> <span class="o">-</span> <span class="n">model</span><span class="p">[</span><span class="s2">"mean"</span><span class="p">]</span>
+        <span class="n">basis</span> <span class="o">=</span> <span class="n">model</span><span class="p">[</span><span class="s2">"eigenvectors"</span><span class="p">][:,</span> <span class="p">:</span> <span class="n">model</span><span class="p">[</span><span class="s2">"dimension"</span><span class="p">]]</span>
+        <span class="n">artifact_trajectory</span><span class="p">[:,</span> <span class="n">indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">model</span><span class="p">[</span><span class="s2">"mean"</span><span class="p">]</span> <span class="o">+</span> <span class="n">basis</span> <span class="o">@</span> <span class="p">(</span><span class="n">basis</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">centered</span><span class="p">)</span>
+    <span class="n">artifact</span> <span class="o">=</span> <span class="n">_diagonal_average</span><span class="p">(</span><span class="n">artifact_trajectory</span><span class="p">)</span>
+    <span class="n">cleaned</span> <span class="o">=</span> <span class="n">x</span> <span class="o">-</span> <span class="n">artifact</span>
+    <span class="n">info</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">"artifact"</span><span class="p">:</span> <span class="n">artifact</span><span class="p">,</span>
+        <span class="s2">"window_length"</span><span class="p">:</span> <span class="n">resolved</span><span class="p">,</span>
+        <span class="s2">"trajectory_shape"</span><span class="p">:</span> <span class="n">trajectory</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
+        <span class="s2">"n_clusters"</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">models</span><span class="p">),</span>
+        <span class="s2">"labels"</span><span class="p">:</span> <span class="n">labels</span><span class="p">,</span>
+        <span class="s2">"cluster_sizes"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">model</span><span class="p">[</span><span class="s2">"indices"</span><span class="p">]</span><span class="o">.</span><span class="n">size</span> <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">models</span><span class="p">]),</span>
+        <span class="s2">"subspace_dimensions"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">model</span><span class="p">[</span><span class="s2">"dimension"</span><span class="p">]</span> <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">models</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span>
+        <span class="p">),</span>
+        <span class="s2">"eigenvalues"</span><span class="p">:</span> <span class="p">[</span><span class="n">model</span><span class="p">[</span><span class="s2">"eigenvalues"</span><span class="p">]</span> <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">models</span><span class="p">],</span>
+        <span class="s2">"mdl_scores"</span><span class="p">:</span> <span class="p">[</span><span class="n">model</span><span class="p">[</span><span class="s2">"mdl_scores"</span><span class="p">]</span> <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">models</span><span class="p">],</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="n">return_info</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">cleaned</span><span class="p">,</span> <span class="n">info</span>
+    <span class="k">return</span> <span class="n">cleaned</span></div>
+
+
+
+<div class="viewcode-block" id="compute_local_ssa">
+<a class="viewcode-back" href="../../../generated/mne_denoise.ssa.compute_local_ssa.html#mne_denoise.ssa.compute_local_ssa">[docs]</a>
+<span class="nd">@verbose</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">compute_local_ssa</span><span class="p">(</span>
+    <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">window_length</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">window_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">sfreq</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">n_clusters</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"auto"</span><span class="p">,</span>
+    <span class="n">max_clusters</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">max_window</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+    <span class="n">random_state</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Apply local SSA independently to every input channel.</span>
+
+<span class="sd">    This is the channel-first functional interface to</span>
+<span class="sd">    :func:`local_ssa_clean_channel`. It returns both cleaned data and the local</span>
+<span class="sd">    model diagnostics required to assess the reconstruction.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    X : array-like, shape (n_channels, n_times)</span>
+<span class="sd">        Finite channel-first data. Channels are never mixed.</span>
+<span class="sd">    window_length : int | None, default=None</span>
+<span class="sd">        Delay-vector dimension in samples. If None, it is selected</span>
+<span class="sd">        automatically.</span>
+<span class="sd">    window_seconds : float | None, default=None</span>
+<span class="sd">        Delay-vector duration in seconds, mutually exclusive with</span>
+<span class="sd">        ``window_length``.</span>
+<span class="sd">    sfreq : float | None, default=None</span>
+<span class="sd">        Sampling frequency in Hz. Required for ``window_seconds`` and used by</span>
+<span class="sd">        automatic window selection when available.</span>
+<span class="sd">    n_clusters : int | "auto", default="auto"</span>
+<span class="sd">        Number of delay-vector clusters, or automatic reliable selection.</span>
+<span class="sd">    max_clusters : int, default=10</span>
+<span class="sd">        Upper bound for automatic cluster-count selection.</span>
+<span class="sd">    max_window : int, default=100</span>
+<span class="sd">        Maximum delay-vector dimension used by automatic window selection.</span>
+<span class="sd">    random_state : int | None, default=0</span>
+<span class="sd">        Random seed passed to k-means.</span>
+<span class="sd">    verbose : bool | str | int | None</span>
+<span class="sd">        MNE-style logging level. Channel helpers remain silent; this function</span>
+<span class="sd">        reports one aggregate result at INFO.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    X_clean : ndarray, shape (n_channels, n_times)</span>
+<span class="sd">        Residual data after independently subtracting each channel's local</span>
+<span class="sd">        reconstruction.</span>
+<span class="sd">    info : dict</span>
+<span class="sd">        Per-channel cluster counts, cluster sizes, selected dimensions,</span>
+<span class="sd">        covariance eigenvalues, MDL scores, and reconstructed artifacts.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TypeError</span>
+<span class="sd">        If a scalar parameter has an invalid type.</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``X``, the embedding, or the requested clustering is invalid.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    local_ssa_clean_channel : Canonical single-channel implementation.</span>
+<span class="sd">    LocalSingularSpectrumAnalysis : MNE/scikit-learn estimator interface.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    This function calls :func:`local_ssa_clean_channel` independently for every</span>
+<span class="sd">    channel. It is repeated univariate local SSA, not multivariate SSA. No</span>
+<span class="sd">    spatial covariance or cross-channel trajectory matrix is estimated.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; from mne_denoise.ssa import compute_local_ssa</span>
+<span class="sd">    &gt;&gt;&gt; time = np.arange(300) / 100.0</span>
+<span class="sd">    &gt;&gt;&gt; observed = np.vstack(</span>
+<span class="sd">    ...     [np.sin(2 * np.pi * 0.5 * time), np.sin(2 * np.pi * 1.0 * time)]</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; cleaned, info = compute_local_ssa(</span>
+<span class="sd">    ...     observed, window_length=20, n_clusters=2, random_state=0</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; cleaned.shape</span>
+<span class="sd">    (2, 300)</span>
+<span class="sd">    &gt;&gt;&gt; info["n_clusters"].shape</span>
+<span class="sd">    (2,)</span>
+<span class="sd">    """</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">check_channel_first_data</span><span class="p">(</span>
+        <span class="n">X</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"local SSA"</span><span class="p">,</span> <span class="n">allow_epochs</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">min_channels</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">min_times</span><span class="o">=</span><span class="mi">3</span>
+    <span class="p">)</span>
+    <span class="n">cleaned</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty_like</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+    <span class="n">records</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">channel</span> <span class="ow">in</span> <span class="n">X</span><span class="p">:</span>
+        <span class="n">result</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <span class="n">local_ssa_clean_channel</span><span class="p">(</span>
+            <span class="n">channel</span><span class="p">,</span>
+            <span class="n">window_length</span><span class="p">,</span>
+            <span class="n">window_seconds</span><span class="o">=</span><span class="n">window_seconds</span><span class="p">,</span>
+            <span class="n">sfreq</span><span class="o">=</span><span class="n">sfreq</span><span class="p">,</span>
+            <span class="n">n_clusters</span><span class="o">=</span><span class="n">n_clusters</span><span class="p">,</span>
+            <span class="n">max_clusters</span><span class="o">=</span><span class="n">max_clusters</span><span class="p">,</span>
+            <span class="n">max_window</span><span class="o">=</span><span class="n">max_window</span><span class="p">,</span>
+            <span class="n">random_state</span><span class="o">=</span><span class="n">random_state</span><span class="p">,</span>
+            <span class="n">return_info</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">cleaned</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">records</span><span class="p">)]</span> <span class="o">=</span> <span class="n">result</span>
+        <span class="n">records</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">info</span><span class="p">)</span>
+    <span class="n">info</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">"method"</span><span class="p">:</span> <span class="s2">"local-mdl"</span><span class="p">,</span>
+        <span class="s2">"window_length"</span><span class="p">:</span> <span class="n">records</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"window_length"</span><span class="p">],</span>
+        <span class="s2">"n_clusters"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">record</span><span class="p">[</span><span class="s2">"n_clusters"</span><span class="p">]</span> <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">records</span><span class="p">]),</span>
+        <span class="s2">"cluster_sizes"</span><span class="p">:</span> <span class="p">[</span><span class="n">record</span><span class="p">[</span><span class="s2">"cluster_sizes"</span><span class="p">]</span> <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">records</span><span class="p">],</span>
+        <span class="s2">"subspace_dimensions"</span><span class="p">:</span> <span class="p">[</span><span class="n">record</span><span class="p">[</span><span class="s2">"subspace_dimensions"</span><span class="p">]</span> <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">records</span><span class="p">],</span>
+        <span class="s2">"eigenvalues"</span><span class="p">:</span> <span class="p">[</span><span class="n">record</span><span class="p">[</span><span class="s2">"eigenvalues"</span><span class="p">]</span> <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">records</span><span class="p">],</span>
+        <span class="s2">"mdl_scores"</span><span class="p">:</span> <span class="p">[</span><span class="n">record</span><span class="p">[</span><span class="s2">"mdl_scores"</span><span class="p">]</span> <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">records</span><span class="p">],</span>
+        <span class="s2">"artifacts"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">record</span><span class="p">[</span><span class="s2">"artifact"</span><span class="p">]</span> <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">records</span><span class="p">]),</span>
+    <span class="p">}</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">"Local SSA: window=</span><span class="si">%d</span><span class="s2"> samples, channels=</span><span class="si">%d</span><span class="s2">, mean clusters=</span><span class="si">%.1f</span><span class="s2">, "</span>
+        <span class="s2">"mean subspace dimension=</span><span class="si">%.1f</span><span class="s2">."</span><span class="p">,</span>
+        <span class="n">info</span><span class="p">[</span><span class="s2">"window_length"</span><span class="p">],</span>
+        <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+        <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="s2">"n_clusters"</span><span class="p">])),</span>
+        <span class="nb">float</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">dimensions</span><span class="p">)</span> <span class="k">for</span> <span class="n">dimensions</span> <span class="ow">in</span> <span class="n">info</span><span class="p">[</span><span class="s2">"subspace_dimensions"</span><span class="p">]])</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">cleaned</span><span class="p">,</span> <span class="n">info</span></div>
+
+
+
+<div class="viewcode-block" id="LocalSingularSpectrumAnalysis">
+<a class="viewcode-back" href="../../../generated/mne_denoise.ssa.LocalSingularSpectrumAnalysis.html#mne_denoise.ssa.LocalSingularSpectrumAnalysis">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LocalSingularSpectrumAnalysis</span><span class="p">(</span><span class="n">_BaseSSATransformer</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Local-SSA high-amplitude artifact transformer.</span>
+
+<span class="sd">    The estimator applies the clustered local-subspace reconstruction of</span>
+<span class="sd">    Teixeira et al. independently to each selected channel and exposes the</span>
+<span class="sd">    fitted clustering diagnostics after transformation.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    window_length : int | None, default=None</span>
+<span class="sd">        Delay-vector dimension in samples. It is mutually exclusive with</span>
+<span class="sd">        ``window_seconds``. None selects an automatic value.</span>
+<span class="sd">    window_seconds : float | None, default=None</span>
+<span class="sd">        Delay-vector duration in seconds. It requires a sampling frequency and</span>
+<span class="sd">        is mutually exclusive with ``window_length``.</span>
+<span class="sd">    sfreq : float | None, default=None</span>
+<span class="sd">        Sampling frequency in Hz. MNE input supplies it from metadata and must</span>
+<span class="sd">        agree with an explicit value.</span>
+<span class="sd">    n_clusters : int | "auto", default="auto"</span>
+<span class="sd">        Number of delay-vector clusters, or automatic reliable selection.</span>
+<span class="sd">    max_clusters : int, default=10</span>
+<span class="sd">        Upper bound for automatic cluster-count selection.</span>
+<span class="sd">    max_window : int, default=100</span>
+<span class="sd">        Maximum delay-vector dimension used by automatic window selection.</span>
+<span class="sd">    random_state : int | None, default=0</span>
+<span class="sd">        Random seed passed to k-means.</span>
+<span class="sd">    verbose : bool | str | int | None, default=None</span>
+<span class="sd">        MNE-style logging level.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    sfreq_ : float | None</span>
+<span class="sd">        Validated sampling frequency, or None when sample-based parameters and</span>
+<span class="sd">        NumPy input do not require one.</span>
+<span class="sd">    n_channels_in_ : int</span>
+<span class="sd">        Number of data channels seen during fitting.</span>
+<span class="sd">    ch_names_in_ : tuple of str | None</span>
+<span class="sd">        Fitted MNE channel names and order, or None for NumPy input.</span>
+<span class="sd">    diagnostics_ : dict | list of dict</span>
+<span class="sd">        Diagnostics from the most recent transformation. Epoched input stores</span>
+<span class="sd">        one dictionary per epoch.</span>
+<span class="sd">    n_clusters_ : ndarray</span>
+<span class="sd">        Effective cluster count per channel, or per epoch and channel.</span>
+<span class="sd">    subspace_dimensions_ : list</span>
+<span class="sd">        Selected local subspace dimensions for every channel.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    compute_local_ssa : Functional interface for channel-first arrays.</span>
+<span class="sd">    local_ssa_clean_channel : Canonical single-channel implementation.</span>
+<span class="sd">    mne_denoise.ssa.SingularSpectrumAnalysis : Basic SSA with frequency grouping.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The estimator is transductive. ``fit`` validates the operating point and</span>
+<span class="sd">    records the channel layout; every ``transform`` clusters and decomposes the</span>
+<span class="sd">    records supplied to that call. Record and epoch boundaries can therefore</span>
+<span class="sd">    change the delay vectors, clusters, covariance spectra, and reconstruction.</span>
+
+<span class="sd">    Local SSA assumes that coherent, high-energy structure is artifact. Genuine</span>
+<span class="sd">    neural activity that satisfies the same local-subspace model can be removed</span>
+<span class="sd">    [1]_.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [1] Teixeira, A. R., Tome, A. M., Lang, E. W., Gruber, P., &amp; Martins da</span>
+<span class="sd">           Silva, A. (2006). Automatic removal of high-amplitude artefacts from</span>
+<span class="sd">           single-channel electroencephalograms. Computer Methods and Programs</span>
+<span class="sd">           in Biomedicine, 83, 125-138.</span>
+<span class="sd">           https://doi.org/10.1016/j.cmpb.2006.06.003</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; from mne_denoise.ssa import LocalSingularSpectrumAnalysis</span>
+<span class="sd">    &gt;&gt;&gt; sfreq = 100.0</span>
+<span class="sd">    &gt;&gt;&gt; time = np.arange(500) / sfreq</span>
+<span class="sd">    &gt;&gt;&gt; data = np.vstack(</span>
+<span class="sd">    ...     [np.sin(2 * np.pi * 0.5 * time), np.sin(2 * np.pi * 10.0 * time)]</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; model = LocalSingularSpectrumAnalysis(</span>
+<span class="sd">    ...     window_length=20, n_clusters=2, random_state=0</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; cleaned = model.fit_transform(data)</span>
+<span class="sd">    &gt;&gt;&gt; cleaned.shape</span>
+<span class="sd">    (2, 500)</span>
+<span class="sd">    """</span>
+
+<div class="viewcode-block" id="LocalSingularSpectrumAnalysis.__init__">
+<a class="viewcode-back" href="../../../generated/mne_denoise.ssa.LocalSingularSpectrumAnalysis.html#mne_denoise.ssa.LocalSingularSpectrumAnalysis.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">window_length</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">window_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">sfreq</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">n_clusters</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"auto"</span><span class="p">,</span>
+        <span class="n">max_clusters</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+        <span class="n">max_window</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+        <span class="n">random_state</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">window_length</span> <span class="o">=</span> <span class="n">window_length</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">window_seconds</span> <span class="o">=</span> <span class="n">window_seconds</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sfreq</span> <span class="o">=</span> <span class="n">sfreq</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_clusters</span> <span class="o">=</span> <span class="n">n_clusters</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_clusters</span> <span class="o">=</span> <span class="n">max_clusters</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_window</span> <span class="o">=</span> <span class="n">max_window</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">random_state</span> <span class="o">=</span> <span class="n">random_state</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_validate_fit_parameters</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">sfreq</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">_check_local_parameters</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_clusters</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_clusters</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">random_state</span><span class="p">)</span>
+        <span class="n">_resolve_window_length</span><span class="p">(</span>
+            <span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">window_length</span><span class="p">,</span>
+            <span class="n">window_seconds</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">window_seconds</span><span class="p">,</span>
+            <span class="n">sfreq</span><span class="o">=</span><span class="n">sfreq</span><span class="p">,</span>
+            <span class="n">max_window</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">max_window</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_record</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">sfreq</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+        <span class="c1"># The estimator owns one aggregate SSA report; suppress the core's</span>
+        <span class="c1"># standalone summary for each record while retaining its computation.</span>
+        <span class="k">return</span> <span class="n">compute_local_ssa</span><span class="p">(</span>
+            <span class="n">data</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">window_length</span><span class="p">,</span>
+            <span class="n">window_seconds</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">window_seconds</span><span class="p">,</span>
+            <span class="n">sfreq</span><span class="o">=</span><span class="n">sfreq</span><span class="p">,</span>
+            <span class="n">n_clusters</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_clusters</span><span class="p">,</span>
+            <span class="n">max_clusters</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">max_clusters</span><span class="p">,</span>
+            <span class="n">max_window</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">max_window</span><span class="p">,</span>
+            <span class="n">random_state</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">random_state</span><span class="p">,</span>
+            <span class="n">verbose</span><span class="o">=</span><span class="s2">"WARNING"</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_set_diagnostic_attributes</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">records</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="o">*</span><span class="p">,</span> <span class="n">epoched</span><span class="p">:</span> <span class="nb">bool</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">epoched</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n_clusters_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">record</span><span class="p">[</span><span class="s2">"n_clusters"</span><span class="p">]</span> <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">records</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">subspace_dimensions_</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="n">record</span><span class="p">[</span><span class="s2">"subspace_dimensions"</span><span class="p">]</span> <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">records</span>
+            <span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n_clusters_</span> <span class="o">=</span> <span class="n">records</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"n_clusters"</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">subspace_dimensions_</span> <span class="o">=</span> <span class="n">records</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"subspace_dimensions"</span><span class="p">]</span>
+        <span class="n">dimensions</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">record_dimensions</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">subspace_dimensions_</span>
+            <span class="k">for</span> <span class="n">values</span> <span class="ow">in</span> <span class="n">record_dimensions</span>
+        <span class="p">]</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">"Local SSA: window=</span><span class="si">%s</span><span class="s2"> samples, channels=</span><span class="si">%d</span><span class="s2">, mean clusters=</span><span class="si">%.1f</span><span class="s2">, "</span>
+            <span class="s2">"mean subspace dimension=</span><span class="si">%.1f</span><span class="s2">."</span><span class="p">,</span>
+            <span class="n">records</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"window_length"</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">window_length</span> <span class="ow">or</span> <span class="s2">"auto"</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n_channels_in_</span><span class="p">,</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_clusters_</span><span class="p">)),</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">dimensions</span><span class="p">)),</span>
+        <span class="p">)</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../../../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2026, mne-denoise developers.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

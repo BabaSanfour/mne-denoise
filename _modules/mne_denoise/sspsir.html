@@ -1,0 +1,1192 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mne_denoise.sspsir &#8212; mne-denoise 0.0.1 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery.css?v=fd6457a4" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery-binder.css?v=f4aeca0c" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery-dataframe.css?v=2082cf3c" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery-rendered-html.css?v=1277b6f3" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=95c83b7e" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../../_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../_static/sg-tags.js?v=d80f6fa4"></script>
+    <script src="../../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/mne_denoise/sspsir';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.0.1" />
+  
+    
+    <script src="../../_static/searchtools.js"></script>
+    <script src="../../_static/language_data.js"></script>
+    <script src="../../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">mne-denoise 0.0.1 documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../getting-started.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../dss.html">
+    DSS Module Documentation
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../time_shift_dss.html">
+    TimeShiftDSS
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../asr.html">
+    Artifact Subspace Reconstruction
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../bss_cca.html">
+    Reference-free BSS-CCA
+  </a>
+</li>
+
+            <li class="nav-item dropdown">
+                <button class="btn dropdown-toggle nav-item" type="button"
+                data-bs-toggle="dropdown" aria-expanded="false"
+                aria-controls="pst-nav-more-links">
+                    More
+                </button>
+                <ul id="pst-nav-more-links" class="dropdown-menu">
+                    
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../sns.html">
+    Sensor Noise Suppression (SNS)
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../ssa.html">
+    Singular Spectrum Analysis
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../icanclean.html">
+    iCanClean
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../auto_examples/index.html">
+    Examples Gallery
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../api.html">
+    API reference
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../development.html">
+    Development workflow
+  </a>
+</li>
+
+                </ul>
+            </li>
+            
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/mne-tools/mne-denoise" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar hide-on-wide">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../getting-started.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../dss.html">
+    DSS Module Documentation
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../time_shift_dss.html">
+    TimeShiftDSS
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../asr.html">
+    Artifact Subspace Reconstruction
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../bss_cca.html">
+    Reference-free BSS-CCA
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../sns.html">
+    Sensor Noise Suppression (SNS)
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../ssa.html">
+    Singular Spectrum Analysis
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../icanclean.html">
+    iCanClean
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../auto_examples/index.html">
+    Examples Gallery
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../api.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../development.html">
+    Development workflow
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/mne-tools/mne-denoise" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">mne_denoise.sspsir</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for mne_denoise.sspsir</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""SSP-SIR: suppress TMS-evoked muscle artifacts from EEG.</span>
+
+<span class="sd">Implements signal-space projection--source-informed reconstruction (SSP-SIR)</span>
+<span class="sd">[1]_. The method projects out the high-variance muscle-artifact subspace and</span>
+<span class="sd">reconstructs the brain signal lost to that projection through a forward model.</span>
+<span class="sd">Temporal blending can restrict the suppression to the artifact window [2]_.</span>
+<span class="sd">Broader reviews discuss SSP-SIR as a source-based method [3]_ and within a</span>
+<span class="sd">unified framework for TMS-EEG artifact removal [4]_.</span>
+
+<span class="sd">Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)</span>
+<span class="sd">         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">.. [1] Mutanen, T. P., Kukkonen, M., Nieminen, J. O., Stenroos, M., Sarvas,</span>
+<span class="sd">       J., &amp; Ilmoniemi, R. J. (2016). Recovering TMS-evoked EEG responses</span>
+<span class="sd">       masked by muscle artifacts. NeuroImage, 139, 157-166.</span>
+<span class="sd">.. [2] Mutanen, T. P., Ilmoniemi, I., Atti, I., Metsomaa, J., &amp; Ilmoniemi,</span>
+<span class="sd">       R. J. (2024). A simulation study: comparing independent component</span>
+<span class="sd">       analysis and signal-space projection - source-informed reconstruction</span>
+<span class="sd">       for rejecting muscle artifacts evoked by transcranial magnetic</span>
+<span class="sd">       stimulation. Frontiers in Human Neuroscience, 18, 1324958.</span>
+<span class="sd">.. [3] Mutanen, T. P., Metsomaa, J., Makkonen, M., Varone, G., Marzetti, L.,</span>
+<span class="sd">       &amp; Ilmoniemi, R. J. (2022). Source-based artifact-rejection techniques</span>
+<span class="sd">       for TMS-EEG. Journal of Neuroscience Methods, 382, 109693.</span>
+<span class="sd">.. [4] Hernandez-Pavon, J. C., Kugiumtzis, D., Zrenner, C., Kimiskidis, V. K.,</span>
+<span class="sd">       &amp; Metsomaa, J. (2022). Removing artifacts from TMS-evoked EEG: A methods</span>
+<span class="sd">       review and a unifying theoretical framework. Journal of Neuroscience</span>
+<span class="sd">       Methods, 376, 109591.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">numbers</span><span class="w"> </span><span class="kn">import</span> <span class="n">Integral</span><span class="p">,</span> <span class="n">Real</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.ndimage</span><span class="w"> </span><span class="kn">import</span> <span class="n">uniform_filter1d</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.signal</span><span class="w"> </span><span class="kn">import</span> <span class="n">butter</span><span class="p">,</span> <span class="n">filtfilt</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.special</span><span class="w"> </span><span class="kn">import</span> <span class="n">expit</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseEstimator</span><span class="p">,</span> <span class="n">TransformerMixin</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.utils.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_is_fitted</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_mne</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._data</span><span class="w"> </span><span class="kn">import</span> <span class="n">extract_data_from_mne</span><span class="p">,</span> <span class="n">reconstruct_mne_object</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._leadfield</span><span class="w"> </span><span class="kn">import</span> <span class="n">_validate_leadfield</span><span class="p">,</span> <span class="n">resolve_leadfield</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._logging</span><span class="w"> </span><span class="kn">import</span> <span class="n">logger</span><span class="p">,</span> <span class="n">verbose</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._validation</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">check_channel_layout</span><span class="p">,</span>
+    <span class="n">check_matching_sfreq</span><span class="p">,</span>
+    <span class="n">check_option</span><span class="p">,</span>
+    <span class="n">check_positive_real</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"SSPSIR"</span><span class="p">,</span> <span class="s2">"compute_sir"</span><span class="p">,</span> <span class="s2">"compute_sspsir"</span><span class="p">]</span>
+
+<span class="c1">#: 10-90% transition width (s) of the crossfade around a user artifact window.</span>
+<span class="n">_SMOOTH_LENGTH</span> <span class="o">=</span> <span class="mf">0.010</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_truncated_svd</span><span class="p">(</span>
+    <span class="n">matrix</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">M</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">what</span><span class="p">:</span> <span class="nb">str</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Return the leading singular triplets, limited to numerical rank."""</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">M</span><span class="p">,</span> <span class="p">(</span><span class="nb">bool</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">bool_</span><span class="p">))</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">M</span><span class="p">,</span> <span class="n">Integral</span><span class="p">)</span> <span class="ow">or</span> <span class="n">M</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"M must be a positive integer, got </span><span class="si">{</span><span class="n">M</span><span class="si">!r}</span><span class="s2">."</span><span class="p">)</span>
+    <span class="n">u</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">vt</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">svd</span><span class="p">(</span><span class="n">matrix</span><span class="p">,</span> <span class="n">full_matrices</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">requested_rank</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">M</span><span class="p">)</span>
+    <span class="n">tol</span> <span class="o">=</span> <span class="n">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="nb">max</span><span class="p">(</span><span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span> <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">size</span> <span class="k">else</span> <span class="mf">0.0</span>
+    <span class="n">numerical_rank</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">count_nonzero</span><span class="p">(</span><span class="n">s</span> <span class="o">&gt;</span> <span class="n">tol</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">numerical_rank</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Cannot reconstruct from </span><span class="si">{</span><span class="n">what</span><span class="si">}</span><span class="s2">: its numerical rank is zero."</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">numerical_rank</span> <span class="o">&lt;</span> <span class="n">requested_rank</span><span class="p">:</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"M=</span><span class="si">{</span><span class="n">M</span><span class="si">}</span><span class="s2"> exceeds the numerical rank (</span><span class="si">{</span><span class="n">numerical_rank</span><span class="si">}</span><span class="s2">) of </span><span class="si">{</span><span class="n">what</span><span class="si">}</span><span class="s2">; "</span>
+            <span class="sa">f</span><span class="s2">"using M=</span><span class="si">{</span><span class="n">numerical_rank</span><span class="si">}</span><span class="s2"> instead."</span><span class="p">,</span>
+            <span class="ne">RuntimeWarning</span><span class="p">,</span>
+            <span class="n">stacklevel</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="n">rank</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">requested_rank</span><span class="p">,</span> <span class="n">numerical_rank</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">u</span><span class="p">[:,</span> <span class="p">:</span><span class="n">rank</span><span class="p">],</span> <span class="n">s</span><span class="p">[:</span><span class="n">rank</span><span class="p">],</span> <span class="n">vt</span><span class="p">[:</span><span class="n">rank</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_artifact_subspace</span><span class="p">(</span>
+    <span class="n">svd_input</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">n_components</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Left singular vectors of ``svd_input`` and the number of artifact PCs.</span>
+
+<span class="sd">    ``n_components`` is either an int (number of PCs) or a float in (0, 1)</span>
+<span class="sd">    (cumulative high-frequency variance fraction).</span>
+<span class="sd">    """</span>
+    <span class="n">svd_input</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">svd_input</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">svd_input</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span> <span class="ow">or</span> <span class="mi">0</span> <span class="ow">in</span> <span class="n">svd_input</span><span class="o">.</span><span class="n">shape</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"svd_input must be a non-empty 2D array, got shape </span><span class="si">{</span><span class="n">svd_input</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">."</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">svd_input</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"svd_input must contain only finite values."</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">n_components</span><span class="p">,</span> <span class="p">(</span><span class="nb">bool</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">bool_</span><span class="p">))</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">n_components</span><span class="p">,</span> <span class="n">Real</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"n_components must be a positive integer or a variance fraction in (0, 1)."</span>
+        <span class="p">)</span>
+
+    <span class="n">is_count</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">n_components</span><span class="p">,</span> <span class="n">Integral</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">is_count</span><span class="p">:</span>
+        <span class="n">n_pc</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_components</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">n_pc</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"n_components must be a positive integer, got </span><span class="si">{</span><span class="n">n_components</span><span class="si">}</span><span class="s2">."</span>
+            <span class="p">)</span>
+    <span class="k">elif</span> <span class="ow">not</span> <span class="mf">0.0</span> <span class="o">&lt;</span> <span class="nb">float</span><span class="p">(</span><span class="n">n_components</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1.0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"A floating-point n_components must be a variance fraction in "</span>
+            <span class="sa">f</span><span class="s2">"(0, 1), got </span><span class="si">{</span><span class="n">n_components</span><span class="si">}</span><span class="s2">."</span>
+        <span class="p">)</span>
+
+    <span class="n">u</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">svd</span><span class="p">(</span><span class="n">svd_input</span><span class="p">,</span> <span class="n">full_matrices</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">s</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Cannot estimate an artifact subspace from all-zero data."</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">is_count</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">n_pc</span> <span class="o">&gt;</span> <span class="n">u</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"n_components=</span><span class="si">{</span><span class="n">n_pc</span><span class="si">}</span><span class="s2"> exceeds the </span><span class="si">{</span><span class="n">u</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> available "</span>
+                <span class="s2">"artifact dimensions."</span>
+            <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">power</span> <span class="o">=</span> <span class="p">(</span><span class="n">s</span> <span class="o">/</span> <span class="n">s</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">**</span> <span class="mi">2</span>
+        <span class="n">n_pc</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">power</span><span class="p">),</span> <span class="nb">float</span><span class="p">(</span><span class="n">n_components</span><span class="p">)</span> <span class="o">*</span> <span class="n">power</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">n_pc</span> <span class="o">&gt;=</span> <span class="n">svd_input</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"n_components must leave at least one channel dimension outside "</span>
+            <span class="s2">"the artifact subspace."</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">u</span><span class="p">[:,</span> <span class="p">:</span><span class="n">n_pc</span><span class="p">],</span> <span class="n">n_pc</span><span class="p">,</span> <span class="n">s</span>
+
+
+<div class="viewcode-block" id="compute_sspsir">
+<a class="viewcode-back" href="../../generated/mne_denoise.sspsir.compute_sspsir.html#mne_denoise.sspsir.compute_sspsir">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">compute_sspsir</span><span class="p">(</span>
+    <span class="n">leadfield</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">artifact_topographies</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">M</span><span class="p">:</span> <span class="nb">int</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Build the artifact-suppressing SSP-SIR operator (``cleaned = C @ data``).</span>
+
+<span class="sd">    This is the projected branch of SSP-SIR: project the artifact subspace out,</span>
+<span class="sd">    then reconstruct through the forward model. In the full method it is</span>
+<span class="sd">    crossfaded against :func:`compute_sir`; see :class:`SSPSIR`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    leadfield : ndarray, shape (n_channels, n_sources)</span>
+<span class="sd">        Average-referenced lead field.</span>
+<span class="sd">    artifact_topographies : ndarray, shape (n_channels, n_components)</span>
+<span class="sd">        Orthonormal artifact subspace (left singular vectors).</span>
+<span class="sd">    M : int</span>
+<span class="sd">        Truncation dimension of the source-informed reconstruction.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    operator : ndarray, shape (n_channels, n_channels)</span>
+<span class="sd">        The artifact-suppressing SSP-SIR operator.</span>
+<span class="sd">    """</span>
+    <span class="n">leadfield</span> <span class="o">=</span> <span class="n">_validate_leadfield</span><span class="p">(</span><span class="n">leadfield</span><span class="p">)</span>
+    <span class="n">artifact_topographies</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">artifact_topographies</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">artifact_topographies</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"artifact_topographies must be 2D, got shape "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">artifact_topographies</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">."</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">artifact_topographies</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"artifact_topographies must contain only finite values."</span><span class="p">)</span>
+    <span class="n">n_channels</span> <span class="o">=</span> <span class="n">leadfield</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">artifact_topographies</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">n_channels</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"Lead field has </span><span class="si">{</span><span class="n">n_channels</span><span class="si">}</span><span class="s2"> channels but the artifact "</span>
+            <span class="sa">f</span><span class="s2">"topographies have </span><span class="si">{</span><span class="n">artifact_topographies</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">."</span>
+        <span class="p">)</span>
+    <span class="n">n_artifact</span> <span class="o">=</span> <span class="n">artifact_topographies</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="mi">1</span> <span class="o">&lt;=</span> <span class="n">n_artifact</span> <span class="o">&lt;</span> <span class="n">n_channels</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"artifact_topographies must contain between 1 and n_channels - 1 "</span>
+            <span class="s2">"components."</span>
+        <span class="p">)</span>
+    <span class="n">gram</span> <span class="o">=</span> <span class="n">artifact_topographies</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">artifact_topographies</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">gram</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">n_artifact</span><span class="p">),</span> <span class="n">rtol</span><span class="o">=</span><span class="mf">1e-7</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-9</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"artifact_topographies must have orthonormal columns."</span><span class="p">)</span>
+    <span class="n">proj</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">n_channels</span><span class="p">)</span> <span class="o">-</span> <span class="n">artifact_topographies</span> <span class="o">@</span> <span class="n">artifact_topographies</span><span class="o">.</span><span class="n">T</span>
+    <span class="n">pl</span> <span class="o">=</span> <span class="n">proj</span> <span class="o">@</span> <span class="n">leadfield</span>
+    <span class="n">u</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">vt</span> <span class="o">=</span> <span class="n">_truncated_svd</span><span class="p">(</span><span class="n">pl</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="s2">"the projected lead field"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">leadfield</span> <span class="o">@</span> <span class="p">(</span><span class="n">vt</span><span class="o">.</span><span class="n">T</span> <span class="o">/</span> <span class="n">s</span><span class="p">)</span> <span class="o">@</span> <span class="n">u</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">proj</span></div>
+
+
+
+<div class="viewcode-block" id="compute_sir">
+<a class="viewcode-back" href="../../generated/mne_denoise.sspsir.compute_sir.html#mne_denoise.sspsir.compute_sir">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">compute_sir</span><span class="p">(</span><span class="n">leadfield</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">M</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Build the source-informed reconstruction operator without projection.</span>
+
+<span class="sd">    A rank-``M`` reconstruction of the data through the forward model, with no</span>
+<span class="sd">    artifact subspace removed. It is</span>
+<span class="sd">    *not* the identity -- it restricts the data to the ``M`` leading</span>
+<span class="sd">    lead-field topographies -- so the crossfade in :class:`SSPSIR` applies the</span>
+<span class="sd">    same rank truncation inside and outside the artifact window.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    leadfield : ndarray, shape (n_channels, n_sources)</span>
+<span class="sd">        Average-referenced lead field.</span>
+<span class="sd">    M : int</span>
+<span class="sd">        Truncation dimension of the source-informed reconstruction.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    operator : ndarray, shape (n_channels, n_channels)</span>
+<span class="sd">        The unprojected source-informed reconstruction operator.</span>
+<span class="sd">    """</span>
+    <span class="n">leadfield</span> <span class="o">=</span> <span class="n">_validate_leadfield</span><span class="p">(</span><span class="n">leadfield</span><span class="p">)</span>
+    <span class="n">u</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_truncated_svd</span><span class="p">(</span><span class="n">leadfield</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="s2">"the lead field"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">u</span> <span class="o">@</span> <span class="n">u</span><span class="o">.</span><span class="n">T</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_as_mne_projections</span><span class="p">(</span><span class="n">topographies</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">ch_names</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Wrap artifact topographies as :class:`mne.Projection` objects.</span>
+
+<span class="sd">    Exposing them in MNE's own container means the directions SSP-SIR removed</span>
+<span class="sd">    can be inspected and plotted with the standard tooling, e.g.</span>
+<span class="sd">    ``mne.viz.plot_projs_topomap(ssp.projs_, raw.info)`` -- worth doing for a</span>
+<span class="sd">    method whose main failure mode is removing too much.</span>
+<span class="sd">    """</span>
+    <span class="n">_mne</span><span class="o">.</span><span class="n">require_mne</span><span class="p">(</span><span class="s2">"SSP-SIR artifact projections"</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="n">_mne</span><span class="o">.</span><span class="n">mne</span><span class="o">.</span><span class="n">Projection</span><span class="p">(</span>
+            <span class="n">data</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">"data"</span><span class="p">:</span> <span class="n">topographies</span><span class="p">[:,</span> <span class="n">i</span> <span class="p">:</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">T</span><span class="p">,</span>
+                <span class="s2">"col_names"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">ch_names</span><span class="p">),</span>
+                <span class="s2">"row_names"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="s2">"ncol"</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">ch_names</span><span class="p">),</span>
+                <span class="s2">"nrow"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+            <span class="p">},</span>
+            <span class="n">active</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">"SSP-SIR artifact </span><span class="si">{</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
+            <span class="n">kind</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>  <span class="c1"># FIFFV_PROJ_ITEM_FIELD</span>
+            <span class="n">explained_var</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">topographies</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="p">]</span>
+
+
+<div class="viewcode-block" id="SSPSIR">
+<a class="viewcode-back" href="../../generated/mne_denoise.sspsir.SSPSIR.html#mne_denoise.sspsir.SSPSIR">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SSPSIR</span><span class="p">(</span><span class="n">BaseEstimator</span><span class="p">,</span> <span class="n">TransformerMixin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Suppress TMS-evoked muscle artifacts from EEG (SSP-SIR).</span>
+
+<span class="sd">    SSP-SIR projects out the high-variance muscle-artifact subspace and then</span>
+<span class="sd">    reconstructs the brain signal lost to that projection through a forward</span>
+<span class="sd">    model. With no individualised forward model, a three-layer spherical lead</span>
+<span class="sd">    field is built from the montage. Conceptually this is signal-space</span>
+<span class="sd">    projection followed by the source-informed reconstruction that MNE-Python</span>
+<span class="sd">    also exposes as ``proj="reconstruct"``.</span>
+
+<span class="sd">    As in the published method, the artifact-suppressed reconstruction is</span>
+<span class="sd">    crossfaded in time against a reconstruction of the *unprojected* data</span>
+<span class="sd">    (:func:`compute_sir`), so that the artifact subspace is removed</span>
+<span class="sd">    only where the muscle artifact lives. Without this crossfade the projection</span>
+<span class="sd">    also removes brain signal from the baseline and from late TEP components.</span>
+<span class="sd">    Restricting suppression to the artifact window is also what the method's</span>
+<span class="sd">    authors do in practice (Mutanen et al., 2024) [2]_.</span>
+
+<span class="sd">    The numerical core has reference parity and synthetic validation, but the</span>
+<span class="sd">    estimator has not yet been independently validated on a public real</span>
+<span class="sd">    TMS-EEG dataset. Treat real-data use as experimental.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    n_components : int | float</span>
+<span class="sd">        Number of artifact principal components to remove (int), or the</span>
+<span class="sd">        cumulative high-frequency variance fraction to cover (float in (0, 1)).</span>
+<span class="sd">        See Notes for the exact criterion.</span>
+<span class="sd">    forward : mne.Forward | None</span>
+<span class="sd">        Optional forward solution; if None a spherical lead field is built.</span>
+<span class="sd">    art_window : tuple of float | None</span>
+<span class="sd">        ``(tmin, tmax)`` in seconds delimiting the muscle artifact used to</span>
+<span class="sd">        estimate the artifact subspace. If None, the subspace is estimated</span>
+<span class="sd">        automatically from high-frequency power across the whole epoch.</span>
+<span class="sd">    blend : {'auto', 'constant'}</span>
+<span class="sd">        How to crossfade the projected and unprojected reconstructions.</span>
+<span class="sd">        ``'auto'`` (default) matches the kernel to the subspace mode: the</span>
+<span class="sd">        sliding-RMS high-frequency envelope when ``art_window`` is None, or a</span>
+<span class="sd">        smooth window around ``art_window`` otherwise. ``'constant'`` applies</span>
+<span class="sd">        the projection uniformly over time.</span>
+<span class="sd">    high_pass : float</span>
+<span class="sd">        High-pass cutoff (Hz) used to isolate the muscle artifact. Default 100.</span>
+<span class="sd">    M : int | None</span>
+<span class="sd">        Source-informed reconstruction truncation dimension. If None, uses</span>
+<span class="sd">        ``rank(data) - n_components``.</span>
+<span class="sd">    smooth_length : float</span>
+<span class="sd">        10-90% transition width (seconds) of the ``art_window`` crossfade.</span>
+<span class="sd">        Default 0.010.</span>
+<span class="sd">    sfreq : float | None</span>
+<span class="sd">        Sampling frequency, required only for plain-array input.</span>
+<span class="sd">    n_dipoles : int</span>
+<span class="sd">        Number of dipoles for the spherical lead field.</span>
+<span class="sd">    verbose : bool | str | int | None, default=None</span>
+<span class="sd">        MNE-style logging level. The fitted SSP-SIR summary is emitted at</span>
+<span class="sd">        INFO; numerical reconstruction helpers remain silent.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    leadfield_ : ndarray</span>
+<span class="sd">        The average-referenced lead field used.</span>
+<span class="sd">    artifact_topographies_ : ndarray, shape (n_channels, n_components)</span>
+<span class="sd">        The removed artifact subspace.</span>
+<span class="sd">    operator_ : ndarray, shape (n_channels, n_channels)</span>
+<span class="sd">        The fitted artifact-suppressing operator.</span>
+<span class="sd">    operator_orig_ : ndarray, shape (n_channels, n_channels)</span>
+<span class="sd">        The unprojected source-informed reconstruction operator.</span>
+<span class="sd">    kernel_ : ndarray, shape (n_times,)</span>
+<span class="sd">        Crossfade weights in [0, 1]; 1 where the artifact subspace is fully</span>
+<span class="sd">        removed. All ones when ``blend='constant'``.</span>
+<span class="sd">    n_components_ : int</span>
+<span class="sd">        Number of artifact components removed.</span>
+<span class="sd">    M_ : int</span>
+<span class="sd">        Effective source-informed reconstruction rank used. This can be lower</span>
+<span class="sd">        than the requested ``M`` when the projected lead field has lower</span>
+<span class="sd">        numerical rank.</span>
+<span class="sd">    singular_values_ : ndarray</span>
+<span class="sd">        Singular values of the high-frequency data the subspace was estimated</span>
+<span class="sd">        from. Inspect these to choose ``n_components`` by the spectrum elbow,</span>
+<span class="sd">        which is what Mutanen et al. (2016) actually recommend [1]_.</span>
+<span class="sd">    projs_ : list of mne.Projection</span>
+<span class="sd">        ``artifact_topographies_`` wrapped as MNE projections, so the removed</span>
+<span class="sd">        directions can be plotted with ``mne.viz.plot_projs_topomap``. Empty</span>
+<span class="sd">        when fitted on a plain array, which carries no channel names.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    With a float ``n_components`` this keeps the components covering that</span>
+<span class="sd">    fraction of *variance*, ``sum(s[:k]**2) / sum(s**2)`` -- the standard PCA</span>
+<span class="sd">    criterion. Choosing by the elbow of ``singular_values_`` is what Mutanen</span>
+<span class="sd">    et al. (2016) actually recommend [1]_; pass an explicit int to do so.</span>
+
+<span class="sd">    Established implementations expose the same three modes under different</span>
+<span class="sd">    names -- automatic and windowed subspace estimation, and applying the</span>
+<span class="sd">    projection across the whole epoch rather than only around the artifact --</span>
+<span class="sd">    so ``art_window`` and ``blend`` translate directly. One difference is</span>
+<span class="sd">    substantive rather than nominal: a float ``n_components`` selects a</span>
+<span class="sd">    variance fraction here, whereas the equivalent data-driven option</span>
+<span class="sd">    elsewhere thresholds ``sum(s[:k])**2 / sum(s)**2``, a squared</span>
+<span class="sd">    nuclear-norm fraction, and so keeps more components for the same nominal</span>
+<span class="sd">    percentage -- 7 against 3 at 90% on a typical spectrum. Pass an explicit</span>
+<span class="sd">    int when a particular count is required.</span>
+
+<span class="sd">    For broader treatments of SSP-SIR as a source-based method and as part of</span>
+<span class="sd">    the general TMS-EEG artifact-removal landscape, see Mutanen et al. (2022)</span>
+<span class="sd">    [3]_ and Hernandez-Pavon et al. (2022) [4]_, respectively.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [1] Mutanen, T. P., Kukkonen, M., Nieminen, J. O., Stenroos, M.,</span>
+<span class="sd">           Sarvas, J., &amp; Ilmoniemi, R. J. (2016). Recovering TMS-evoked EEG</span>
+<span class="sd">           responses masked by muscle artifacts. NeuroImage, 139, 157-166.</span>
+<span class="sd">    .. [2] Mutanen, T. P., Ilmoniemi, I., Atti, I., Metsomaa, J., &amp; Ilmoniemi,</span>
+<span class="sd">           R. J. (2024). A simulation study: comparing independent component</span>
+<span class="sd">           analysis and signal-space projection - source-informed</span>
+<span class="sd">           reconstruction for rejecting muscle artifacts evoked by</span>
+<span class="sd">           transcranial magnetic stimulation. Frontiers in Human Neuroscience,</span>
+<span class="sd">           18, 1324958.</span>
+<span class="sd">    .. [3] Mutanen, T. P., Metsomaa, J., Makkonen, M., Varone, G., Marzetti,</span>
+<span class="sd">           L., &amp; Ilmoniemi, R. J. (2022). Source-based artifact-rejection</span>
+<span class="sd">           techniques for TMS-EEG. Journal of Neuroscience Methods, 382,</span>
+<span class="sd">           109693.</span>
+<span class="sd">    .. [4] Hernandez-Pavon, J. C., Kugiumtzis, D., Zrenner, C., Kimiskidis,</span>
+<span class="sd">           V. K., &amp; Metsomaa, J. (2022). Removing artifacts from TMS-evoked</span>
+<span class="sd">           EEG: A methods review and a unifying theoretical framework. Journal</span>
+<span class="sd">           of Neuroscience Methods, 376, 109591.</span>
+<span class="sd">    """</span>
+
+<div class="viewcode-block" id="SSPSIR.__init__">
+<a class="viewcode-back" href="../../generated/mne_denoise.sspsir.SSPSIR.html#mne_denoise.sspsir.SSPSIR.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">n_components</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">forward</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">art_window</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">blend</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"auto"</span><span class="p">,</span>
+        <span class="n">high_pass</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">100.0</span><span class="p">,</span>
+        <span class="n">M</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">smooth_length</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">_SMOOTH_LENGTH</span><span class="p">,</span>
+        <span class="n">sfreq</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">n_dipoles</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5000</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_components</span> <span class="o">=</span> <span class="n">n_components</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">forward</span> <span class="o">=</span> <span class="n">forward</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">art_window</span> <span class="o">=</span> <span class="n">art_window</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">blend</span> <span class="o">=</span> <span class="n">blend</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">high_pass</span> <span class="o">=</span> <span class="n">high_pass</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">=</span> <span class="n">M</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">smooth_length</span> <span class="o">=</span> <span class="n">smooth_length</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sfreq</span> <span class="o">=</span> <span class="n">sfreq</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_dipoles</span> <span class="o">=</span> <span class="n">n_dipoles</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_resolve_sfreq</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sfreq</span><span class="p">):</span>
+        <span class="n">sfreq</span> <span class="o">=</span> <span class="n">sfreq</span> <span class="k">if</span> <span class="n">sfreq</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">sfreq</span>
+        <span class="k">if</span> <span class="n">sfreq</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"SSP-SIR needs a sampling frequency: pass an MNE object or set sfreq."</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">sfreq</span><span class="p">,</span> <span class="p">(</span><span class="nb">bool</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">bool_</span><span class="p">))</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">sfreq</span><span class="p">,</span> <span class="n">Real</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"sfreq must be a positive finite number, got </span><span class="si">{</span><span class="n">sfreq</span><span class="si">!r}</span><span class="s2">."</span><span class="p">)</span>
+        <span class="n">sfreq</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">sfreq</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">sfreq</span><span class="p">)</span> <span class="ow">or</span> <span class="n">sfreq</span> <span class="o">&lt;=</span> <span class="mf">0.0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"sfreq must be a positive finite number, got </span><span class="si">{</span><span class="n">sfreq</span><span class="si">!r}</span><span class="s2">."</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="mf">0.0</span> <span class="o">&lt;</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">high_pass</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">sfreq</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"high_pass (</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">high_pass</span><span class="si">}</span><span class="s2"> Hz) must be between 0 and the "</span>
+                <span class="sa">f</span><span class="s2">"Nyquist frequency (</span><span class="si">{</span><span class="n">sfreq</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">2.0</span><span class="si">}</span><span class="s2"> Hz) for sfreq=</span><span class="si">{</span><span class="n">sfreq</span><span class="si">}</span><span class="s2"> Hz."</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">sfreq</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_svd_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">evoked</span><span class="p">,</span> <span class="n">sfreq</span><span class="p">,</span> <span class="n">times</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""High-pass the evoked; return the SVD input and the crossfade kernel.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        The high-pass is a second-order Butterworth applied with</span>
+<span class="sd">        :func:`scipy.signal.filtfilt` rather than</span>
+<span class="sd">        :func:`mne.filter.filter_data`, because the artifact subspace is</span>
+<span class="sd">        defined through exactly this filter in the published method. The two</span>
+<span class="sd">        differ only in how far they extend the signal past the epoch edges</span>
+<span class="sd">        (scipy pads 9 samples by odd reflection, MNE considerably more) --</span>
+<span class="sd">        neither extension is more correct, since the true signal outside the</span>
+<span class="sd">        epoch is unknown. That moves the filtered trace by ~1e-2 relative at</span>
+<span class="sd">        the boundaries and ~3e-12 in the interior. The artifact subspaces</span>
+<span class="sd">        that result differ by under 0.15 degrees, so the choice does not</span>
+<span class="sd">        matter to the outcome -- but keeping the published filter preserves</span>
+<span class="sd">        an exact reference check that would otherwise be lost.</span>
+<span class="sd">        """</span>
+        <span class="n">b</span><span class="p">,</span> <span class="n">a</span> <span class="o">=</span> <span class="n">butter</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">high_pass</span> <span class="o">/</span> <span class="p">(</span><span class="n">sfreq</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">),</span> <span class="n">btype</span><span class="o">=</span><span class="s2">"high"</span><span class="p">)</span>
+        <span class="n">data_high</span> <span class="o">=</span> <span class="n">filtfilt</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">evoked</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">art_window</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">tmin</span><span class="p">,</span> <span class="n">tmax</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">art_window</span>
+            <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">times</span> <span class="o">&gt;=</span> <span class="n">tmin</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">times</span> <span class="o">&lt;=</span> <span class="n">tmax</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">mask</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"art_window does not overlap the data time range."</span><span class="p">)</span>
+            <span class="c1"># Smooth step function around the artifact window.</span>
+            <span class="n">slope</span> <span class="o">=</span> <span class="mf">4.0</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">smooth_length</span><span class="p">)</span>
+            <span class="n">kernel</span> <span class="o">=</span> <span class="n">expit</span><span class="p">(</span><span class="n">slope</span> <span class="o">*</span> <span class="p">(</span><span class="n">times</span> <span class="o">-</span> <span class="n">tmin</span><span class="p">))</span> <span class="o">-</span> <span class="n">expit</span><span class="p">(</span><span class="n">slope</span> <span class="o">*</span> <span class="p">(</span><span class="n">times</span> <span class="o">-</span> <span class="n">tmax</span><span class="p">))</span>
+            <span class="k">return</span> <span class="n">data_high</span><span class="p">[:,</span> <span class="n">mask</span><span class="p">],</span> <span class="n">kernel</span>
+
+        <span class="c1"># Weight by a 50 ms sliding RMS of high-frequency power.</span>
+        <span class="n">win</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">sfreq</span> <span class="o">/</span> <span class="mf">1000.0</span> <span class="o">*</span> <span class="mf">50.0</span><span class="p">)))</span>
+        <span class="n">power</span> <span class="o">=</span> <span class="n">uniform_filter1d</span><span class="p">(</span><span class="n">data_high</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">win</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"nearest"</span><span class="p">)</span>
+        <span class="n">kernel</span> <span class="o">=</span> <span class="n">power</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">kernel</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">kernel</span> <span class="o">/</span> <span class="n">kernel</span><span class="o">.</span><span class="n">max</span><span class="p">())</span> <span class="k">if</span> <span class="n">kernel</span><span class="o">.</span><span class="n">max</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">kernel</span>
+        <span class="k">return</span> <span class="n">kernel</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:]</span> <span class="o">*</span> <span class="n">data_high</span><span class="p">,</span> <span class="n">kernel</span>
+
+    <span class="nd">@verbose</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fit</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">X</span><span class="p">,</span>
+        <span class="n">y</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Estimate the SSP-SIR cleaning operators from ``X``."""</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_components</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"n_components must be set (number of artifact PCs to remove, or a "</span>
+                <span class="s2">"variance fraction in (0, 1))."</span>
+            <span class="p">)</span>
+        <span class="n">check_option</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">blend</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"blend"</span><span class="p">,</span> <span class="n">allowed</span><span class="o">=</span><span class="p">(</span><span class="s2">"auto"</span><span class="p">,</span> <span class="s2">"constant"</span><span class="p">))</span>
+        <span class="n">check_positive_real</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">high_pass</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"high_pass"</span><span class="p">)</span>
+        <span class="n">check_positive_real</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">smooth_length</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"smooth_length"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_dipoles</span><span class="p">,</span> <span class="p">(</span><span class="nb">bool</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">bool_</span><span class="p">))</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n_dipoles</span><span class="p">,</span> <span class="n">Integral</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"n_dipoles must be a positive integer, got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">n_dipoles</span><span class="si">!r}</span><span class="s2">."</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_dipoles</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"n_dipoles must be a positive integer, got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">n_dipoles</span><span class="si">!r}</span><span class="s2">."</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span><span class="p">,</span> <span class="p">(</span><span class="nb">bool</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">bool_</span><span class="p">))</span>
+            <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span><span class="p">,</span> <span class="n">Integral</span><span class="p">)</span>
+            <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">&lt;</span> <span class="mi">1</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"M must be a positive integer or None, got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span><span class="si">!r}</span><span class="s2">."</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">art_window</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">art_window</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">art_window</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"art_window must be a (tmin, tmax) tuple or None."</span><span class="p">)</span>
+            <span class="n">tmin</span><span class="p">,</span> <span class="n">tmax</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">art_window</span>
+            <span class="k">if</span> <span class="nb">any</span><span class="p">(</span>
+                <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">bool</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">bool_</span><span class="p">))</span>
+                <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Real</span><span class="p">)</span>
+                <span class="ow">or</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="p">(</span><span class="n">tmin</span><span class="p">,</span> <span class="n">tmax</span><span class="p">)</span>
+            <span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"art_window values must be finite numbers."</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">tmin</span> <span class="o">&gt;=</span> <span class="n">tmax</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">"art_window must satisfy tmin &lt; tmax, got </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">art_window</span><span class="si">}</span><span class="s2">."</span>
+                <span class="p">)</span>
+        <span class="n">data</span><span class="p">,</span> <span class="n">sfreq</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">orig_inst</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">ch_names</span> <span class="o">=</span> <span class="n">extract_data_from_mne</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+        <span class="n">sfreq</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_resolve_sfreq</span><span class="p">(</span><span class="n">sfreq</span><span class="p">)</span>
+        <span class="n">times</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">orig_inst</span><span class="p">,</span> <span class="s2">"times"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+        <span class="c1"># Average reference and an evoked (trial-averaged) view for the subspace.</span>
+        <span class="n">evoked</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="k">if</span> <span class="n">data</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">float</span><span class="p">)</span>
+        <span class="n">evoked</span> <span class="o">=</span> <span class="n">evoked</span> <span class="o">-</span> <span class="n">evoked</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">n_channels</span> <span class="o">=</span> <span class="n">evoked</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">times</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">times</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">evoked</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span> <span class="o">/</span> <span class="n">sfreq</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">times</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">times</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+
+        <span class="n">svd_input</span><span class="p">,</span> <span class="n">kernel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_svd_input</span><span class="p">(</span><span class="n">evoked</span><span class="p">,</span> <span class="n">sfreq</span><span class="p">,</span> <span class="n">times</span><span class="p">)</span>
+        <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">artifact_topographies_</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n_components_</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">singular_values_</span><span class="p">,</span>
+        <span class="p">)</span> <span class="o">=</span> <span class="n">_artifact_subspace</span><span class="p">(</span><span class="n">svd_input</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_components</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">leadfield_</span> <span class="o">=</span> <span class="n">resolve_leadfield</span><span class="p">(</span>
+            <span class="n">inst</span><span class="o">=</span><span class="n">orig_inst</span><span class="p">,</span>
+            <span class="n">ch_names</span><span class="o">=</span><span class="n">ch_names</span><span class="p">,</span>
+            <span class="n">n_channels</span><span class="o">=</span><span class="n">n_channels</span><span class="p">,</span>
+            <span class="n">method</span><span class="o">=</span><span class="s2">"SSP-SIR"</span><span class="p">,</span>
+            <span class="n">forward</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">,</span>
+            <span class="n">n_dipoles</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_dipoles</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">data_rank</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">matrix_rank</span><span class="p">(</span><span class="n">evoked</span><span class="p">))</span>
+        <span class="n">M</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">data_rank</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_components_</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">operator_</span> <span class="o">=</span> <span class="n">compute_sspsir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">leadfield_</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">artifact_topographies_</span><span class="p">,</span> <span class="n">M</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">M_</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">matrix_rank</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">operator_</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">operator_orig_</span> <span class="o">=</span> <span class="n">compute_sir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">leadfield_</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">M_</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kernel_</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">evoked</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">blend</span> <span class="o">==</span> <span class="s2">"constant"</span>
+            <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">kernel</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sfreq_</span> <span class="o">=</span> <span class="n">sfreq</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">times_</span> <span class="o">=</span> <span class="n">times</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mne_ch_names_</span> <span class="o">=</span> <span class="n">ch_names</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">projs_</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">_as_mne_projections</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">artifact_topographies_</span><span class="p">,</span> <span class="n">ch_names</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">ch_names</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="k">else</span> <span class="p">[]</span>
+        <span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">"SSP-SIR: channels=</span><span class="si">%d</span><span class="s2">, removed </span><span class="si">%d</span><span class="s2"> artifact component(s), "</span>
+            <span class="s2">"SIR truncation M=</span><span class="si">%d</span><span class="s2"> (data rank </span><span class="si">%d</span><span class="s2">), blend=</span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
+            <span class="n">n_channels</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n_components_</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">M_</span><span class="p">,</span>
+            <span class="n">data_rank</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">blend</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="nd">@verbose</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">transform</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">X</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Apply the fitted SSP-SIR operators to ``X``."""</span>
+        <span class="n">check_is_fitted</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attributes</span><span class="o">=</span><span class="p">[</span><span class="s2">"operator_"</span><span class="p">,</span> <span class="s2">"operator_orig_"</span><span class="p">,</span> <span class="s2">"kernel_"</span><span class="p">])</span>
+        <span class="n">data</span><span class="p">,</span> <span class="n">sfreq</span><span class="p">,</span> <span class="n">mne_type</span><span class="p">,</span> <span class="n">orig_inst</span><span class="p">,</span> <span class="n">picks</span><span class="p">,</span> <span class="n">ch_names</span> <span class="o">=</span> <span class="n">extract_data_from_mne</span><span class="p">(</span>
+            <span class="n">X</span><span class="p">,</span> <span class="n">ch_names</span><span class="o">=</span><span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_mne_ch_names_"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">check_channel_layout</span><span class="p">(</span>
+            <span class="s2">"SSPSIR"</span><span class="p">,</span>
+            <span class="n">n_channels</span><span class="o">=</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">],</span>
+            <span class="n">fitted_n_channels</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">operator_</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+            <span class="n">ch_names</span><span class="o">=</span><span class="n">ch_names</span><span class="p">,</span>
+            <span class="n">fitted_ch_names</span><span class="o">=</span><span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_mne_ch_names_"</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">n_times</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">blend</span> <span class="o">==</span> <span class="s2">"constant"</span><span class="p">:</span>
+            <span class="c1"># This branch is spatially and temporally invariant.</span>
+            <span class="n">cleaned</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">operator_</span> <span class="o">@</span> <span class="n">data</span>
+            <span class="k">return</span> <span class="n">reconstruct_mne_object</span><span class="p">(</span><span class="n">cleaned</span><span class="p">,</span> <span class="n">orig_inst</span><span class="p">,</span> <span class="n">mne_type</span><span class="p">,</span> <span class="n">picks</span><span class="o">=</span><span class="n">picks</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">n_times</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel_</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"SSPSIR was fitted on </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">kernel_</span><span class="o">.</span><span class="n">size</span><span class="si">}</span><span class="s2"> time points but got "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">n_times</span><span class="si">}</span><span class="s2">. The crossfade kernel is time-locked to the fitted "</span>
+                <span class="s2">"data; refit on this data, or use blend='constant' to apply the "</span>
+                <span class="s2">"projection uniformly over time."</span>
+            <span class="p">)</span>
+        <span class="n">check_matching_sfreq</span><span class="p">(</span>
+            <span class="n">sfreq</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sfreq_</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">"SSPSIR"</span><span class="p">,</span>
+            <span class="n">rtol</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+            <span class="n">atol</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">times</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">orig_inst</span><span class="p">,</span> <span class="s2">"times"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">times</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">times</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">times_</span><span class="p">,</span> <span class="n">rtol</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-12</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"SSPSIR transform data have a different time axis from the fitted "</span>
+                <span class="s2">"data. Refit on this data, or use blend='constant'."</span>
+            <span class="p">)</span>
+        <span class="c1"># matmul broadcasts the (n_channels, n_channels) operators over any</span>
+        <span class="c1"># leading epoch axis, so 2D and 3D share one BLAS-backed path.</span>
+        <span class="n">suppressed</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">operator_</span> <span class="o">@</span> <span class="n">data</span>
+        <span class="n">original</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">operator_orig_</span> <span class="o">@</span> <span class="n">data</span>
+        <span class="n">cleaned</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel_</span> <span class="o">*</span> <span class="n">suppressed</span> <span class="o">+</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel_</span><span class="p">)</span> <span class="o">*</span> <span class="n">original</span>
+        <span class="k">return</span> <span class="n">reconstruct_mne_object</span><span class="p">(</span><span class="n">cleaned</span><span class="p">,</span> <span class="n">orig_inst</span><span class="p">,</span> <span class="n">mne_type</span><span class="p">,</span> <span class="n">picks</span><span class="o">=</span><span class="n">picks</span><span class="p">)</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2026, mne-denoise developers.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

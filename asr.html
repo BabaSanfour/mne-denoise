@@ -1,0 +1,940 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="./" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Artifact Subspace Reconstruction &#8212; mne-denoise 0.0.1 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="_static/sg_gallery.css?v=fd6457a4" />
+    <link rel="stylesheet" type="text/css" href="_static/sg_gallery-binder.css?v=f4aeca0c" />
+    <link rel="stylesheet" type="text/css" href="_static/sg_gallery-dataframe.css?v=2082cf3c" />
+    <link rel="stylesheet" type="text/css" href="_static/sg_gallery-rendered-html.css?v=1277b6f3" />
+    <link rel="stylesheet" type="text/css" href="_static/sphinx-design.min.css?v=95c83b7e" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=f281be69"></script>
+    <script src="_static/sg-tags.js?v=d80f6fa4"></script>
+    <script src="_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'asr';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Reference-free BSS-CCA" href="bss_cca.html" />
+    <link rel="prev" title="TimeShiftDSS" href="time_shift_dss.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.0.1" />
+  
+    
+    <script src="_static/searchtools.js"></script>
+    <script src="_static/language_data.js"></script>
+    <script src="searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">mne-denoise 0.0.1 documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="getting-started.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="dss.html">
+    DSS Module Documentation
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="time_shift_dss.html">
+    TimeShiftDSS
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="#">
+    Artifact Subspace Reconstruction
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="bss_cca.html">
+    Reference-free BSS-CCA
+  </a>
+</li>
+
+            <li class="nav-item dropdown">
+                <button class="btn dropdown-toggle nav-item" type="button"
+                data-bs-toggle="dropdown" aria-expanded="false"
+                aria-controls="pst-nav-more-links">
+                    More
+                </button>
+                <ul id="pst-nav-more-links" class="dropdown-menu">
+                    
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="sns.html">
+    Sensor Noise Suppression (SNS)
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="ssa.html">
+    Singular Spectrum Analysis
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="icanclean.html">
+    iCanClean
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="auto_examples/index.html">
+    Examples Gallery
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="api.html">
+    API reference
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="development.html">
+    Development workflow
+  </a>
+</li>
+
+                </ul>
+            </li>
+            
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/mne-tools/mne-denoise" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="getting-started.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="dss.html">
+    DSS Module Documentation
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="time_shift_dss.html">
+    TimeShiftDSS
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="#">
+    Artifact Subspace Reconstruction
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="bss_cca.html">
+    Reference-free BSS-CCA
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="sns.html">
+    Sensor Noise Suppression (SNS)
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="ssa.html">
+    Singular Spectrum Analysis
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="icanclean.html">
+    iCanClean
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="auto_examples/index.html">
+    Examples Gallery
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="api.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="development.html">
+    Development workflow
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/mne-tools/mne-denoise" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar">
+  <svg class="pst-icon" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"></div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Artifact Subspace Reconstruction</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="artifact-subspace-reconstruction">
+<h1>Artifact Subspace Reconstruction<a class="headerlink" href="#artifact-subspace-reconstruction" title="Link to this heading">#</a></h1>
+<p>Artifact Subspace Reconstruction (ASR) repairs short, high-amplitude,
+spatially structured EEG artifacts by calibrating a clean covariance model and
+reconstructing burst-contaminated subspaces with the standard clean_rawdata
+lookahead, moving-covariance, and raised-cosine blending procedure.</p>
+<p>The production target is standard Euclidean ASR. The module also exposes
+specialized Juggler-style calibration variants, MATLAB-fixture-backed adaptive
+ASR variants, and an experimental Riemannian backend; these variants are useful
+for research and comparison workflows but should be reported explicitly when
+used.</p>
+<section id="basic-usage">
+<h2>Basic usage<a class="headerlink" href="#basic-usage" title="Link to this heading">#</a></h2>
+<p>For MNE <code class="docutils literal notranslate"><span class="pre">Raw</span></code> objects, ASR defaults to EEG channels and leaves other channel
+types unchanged.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">mne_denoise.asr</span><span class="w"> </span><span class="kn">import</span> <span class="n">ASR</span>
+
+<span class="n">asr</span> <span class="o">=</span> <span class="n">ASR</span><span class="p">(</span>
+    <span class="n">cutoff</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span>
+    <span class="n">calibration</span><span class="o">=</span><span class="s2">"auto"</span><span class="p">,</span>
+    <span class="n">picks</span><span class="o">=</span><span class="s2">"eeg"</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">asr</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+<span class="n">raw_clean</span> <span class="o">=</span> <span class="n">asr</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>For NumPy arrays, pass the sampling frequency explicitly. Arrays use shape
+<code class="docutils literal notranslate"><span class="pre">(n_channels,</span> <span class="pre">n_times)</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">asr</span> <span class="o">=</span> <span class="n">ASR</span><span class="p">(</span><span class="n">sfreq</span><span class="o">=</span><span class="mf">250.0</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="mf">20.0</span><span class="p">)</span>
+<span class="n">clean</span> <span class="o">=</span> <span class="n">asr</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="typical-preprocessing-pipeline">
+<h2>Typical preprocessing pipeline<a class="headerlink" href="#typical-preprocessing-pipeline" title="Link to this heading">#</a></h2>
+<p>ASR sits between high-pass filtering and ICA in a standard EEG pipeline. It is
+applied to continuous data <em>after</em> filtering and <em>before</em> epoching/ICA, so that
+high-amplitude bursts do not bias the ICA decomposition:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">mne</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mne_denoise.asr</span><span class="w"> </span><span class="kn">import</span> <span class="n">ASR</span>
+
+<span class="n">raw</span> <span class="o">=</span> <span class="n">mne</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">read_raw_fif</span><span class="p">(</span><span class="s2">"sub-01_raw.fif"</span><span class="p">,</span> <span class="n">preload</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">raw</span><span class="o">.</span><span class="n">set_eeg_reference</span><span class="p">(</span><span class="s2">"average"</span><span class="p">)</span>
+
+<span class="c1"># 1. High-pass filter (ASR assumes high-pass-filtered data; see below).</span>
+<span class="n">raw</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">l_freq</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">h_freq</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+
+<span class="c1"># 2. ASR: calibrate on the clean parts of the recording, then repair bursts.</span>
+<span class="n">asr</span> <span class="o">=</span> <span class="n">ASR</span><span class="p">(</span><span class="n">cutoff</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span> <span class="n">picks</span><span class="o">=</span><span class="s2">"eeg"</span><span class="p">)</span>
+<span class="n">raw_clean</span> <span class="o">=</span> <span class="n">asr</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+
+<span class="c1"># 3. ICA on the ASR-cleaned data (now free of high-variance bursts).</span>
+<span class="n">ica</span> <span class="o">=</span> <span class="n">mne</span><span class="o">.</span><span class="n">preprocessing</span><span class="o">.</span><span class="n">ICA</span><span class="p">(</span>
+    <span class="n">n_components</span><span class="o">=</span><span class="mf">0.99</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"infomax"</span><span class="p">,</span>
+    <span class="n">fit_params</span><span class="o">=</span><span class="nb">dict</span><span class="p">(</span><span class="n">extended</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">97</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">ica</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">raw_clean</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The repaired and rejected spans are also available as annotations via
+<code class="docutils literal notranslate"><span class="pre">asr.to_annotations(...)</span></code> so you can review what ASR changed without deleting
+samples. The <code class="docutils literal notranslate"><span class="pre">examples/asr</span></code> gallery has runnable, synthetic versions of these
+workflows.</p>
+</section>
+<section id="riemannian-asr">
+<h2>Riemannian ASR<a class="headerlink" href="#riemannian-asr" title="Link to this heading">#</a></h2>
+<p>Two Riemannian backends are available.</p>
+<p><code class="docutils literal notranslate"><span class="pre">method=&quot;riemannian_windowed&quot;</span></code> is the <strong>recommended</strong> Riemannian backend and
+is first-class (no <code class="docutils literal notranslate"><span class="pre">experimental</span></code> flag). It keeps the Riemannian
+(geometric-median) robust calibration covariance but applies a standard
+per-window eigendecomposition at processing time, so its <code class="docutils literal notranslate"><span class="pre">cutoff</span></code> knob works
+the same monotone way as standard ASR:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">asr</span> <span class="o">=</span> <span class="n">ASR</span><span class="p">(</span><span class="n">sfreq</span><span class="o">=</span><span class="mf">250.0</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"riemannian_windowed"</span><span class="p">)</span>
+<span class="n">clean</span> <span class="o">=</span> <span class="n">asr</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Its processing is byte-identical to standard ASR given the same calibration
+state, while retaining the robust Riemannian calibration covariance.</p>
+<p><code class="docutils literal notranslate"><span class="pre">method=&quot;riemannian&quot;</span></code> is the MATLAB-<code class="docutils literal notranslate"><span class="pre">rASRMatlab</span></code>-faithful backend and stays
+behind an explicit experimental opt-in. It computes one covariance and one
+reconstruction matrix for the whole stream, which makes it <strong>cutoff-invariant
+on real EEG</strong> — use it only for MATLAB parity, not for cutoff tuning:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">asr</span> <span class="o">=</span> <span class="n">ASR</span><span class="p">(</span><span class="n">sfreq</span><span class="o">=</span><span class="mf">250.0</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"riemannian"</span><span class="p">,</span> <span class="n">experimental</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">clean</span> <span class="o">=</span> <span class="n">asr</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="reference-cross-checks">
+<h2>Reference cross-checks<a class="headerlink" href="#reference-cross-checks" title="Link to this heading">#</a></h2>
+<p>The specialized backends are research-oriented and should be independently
+validated on data representative of the intended use before being adopted in a
+scientific pipeline. The standard backend is covered by the package test suite;
+its assumptions and diagnostics are described above.</p>
+</section>
+<section id="adaptive-asr">
+<h2>Adaptive ASR<a class="headerlink" href="#adaptive-asr" title="Link to this heading">#</a></h2>
+<p>The local AASR MATLAB reference is exposed as <a class="reference internal" href="generated/mne_denoise.asr.AdaptiveASR.html#mne_denoise.asr.AdaptiveASR" title="mne_denoise.asr.AdaptiveASR"><code class="xref py py-class docutils literal notranslate"><span class="pre">mne_denoise.asr.AdaptiveASR</span></code></a>.
+This variant keeps standard ASR burst reconstruction but updates the
+calibration subspace between chunks using the Hebbian/anti-Hebbian PSP/PSW
+rules from the AASR repository.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">mne_denoise.asr</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdaptiveASR</span>
+
+<span class="n">aasr</span> <span class="o">=</span> <span class="n">AdaptiveASR</span><span class="p">(</span>
+    <span class="n">sfreq</span><span class="o">=</span><span class="mf">250.0</span><span class="p">,</span>
+    <span class="n">cutoff</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span>
+    <span class="n">variant</span><span class="o">=</span><span class="s2">"psw"</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">aasr</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">chunk_1</span><span class="p">)</span>
+<span class="n">aasr</span><span class="o">.</span><span class="n">partial_fit</span><span class="p">(</span><span class="n">chunk_2</span><span class="p">)</span>
+<span class="n">clean</span> <span class="o">=</span> <span class="n">aasr</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">full_data</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">chunk_1</span></code> and <code class="docutils literal notranslate"><span class="pre">chunk_2</span></code> should be complete update segments. The published
+AASR demonstration uses 20-second segments and does not update on the final
+incomplete remainder. <code class="docutils literal notranslate"><span class="pre">partial_fit()</span></code> rejects a segment that is too short to
+form the one-second clean-selection window before changing any fitted state.
+Streaming applications should therefore accumulate short acquisition blocks
+into an update segment before calling <code class="docutils literal notranslate"><span class="pre">partial_fit()</span></code>.</p>
+<p>The public API follows the package (sklearn-style) conventions:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">fit()</span></code> for initial calibration; <code class="docutils literal notranslate"><span class="pre">partial_fit()</span></code> for adaptive updates</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">transform()</span></code> for burst repair with the current adaptive state</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">reset_process_state()</span></code> to replay the reconstruction path deterministically</p></li>
+</ul>
+<p>A moving-window variant is available via <code class="docutils literal notranslate"><span class="pre">variant=&quot;mw&quot;</span></code>. Its
+<code class="docutils literal notranslate"><span class="pre">mw_mode=&quot;sliding&quot;</span></code> option (calibrate-and-clean per window) is the
+recommended MW configuration; the default <code class="docutils literal notranslate"><span class="pre">mw_mode=&quot;final_state&quot;</span></code> mirrors the
+MATLAB <code class="docutils literal notranslate"><span class="pre">AASR_demo</span></code> Cell 4 semantics.</p>
+<p>The adaptive variants are specialized research paths. Validate their behavior
+on data representative of the intended application before scientific use.</p>
+</section>
+<section id="jugglerasr">
+<h2>JugglerASR<a class="headerlink" href="#jugglerasr" title="Link to this heading">#</a></h2>
+<p>Juggler’s ASR keeps the standard ASR burst-repair stage and replaces only the
+reference-data selector used during calibration. Two source-backed strategies
+from Kim et al. (2025) are exposed:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">strategy=&quot;dbscan&quot;</span></code>: top-five amplitude features clustered with
+Chebyshev-distance DBSCAN</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">strategy=&quot;gev&quot;</span></code>: a fitted generalized extreme-value model on the maximum
+per-sample amplitude</p></li>
+</ul>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">mne_denoise.asr</span><span class="w"> </span><span class="kn">import</span> <span class="n">JugglerASR</span>
+
+<span class="n">jasr</span> <span class="o">=</span> <span class="n">JugglerASR</span><span class="p">(</span>
+    <span class="n">cutoff</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span>
+    <span class="n">strategy</span><span class="o">=</span><span class="s2">"dbscan"</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">jasr</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+<span class="n">raw_clean</span> <span class="o">=</span> <span class="n">jasr</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+<span class="n">reference_mask</span> <span class="o">=</span> <span class="n">jasr</span><span class="o">.</span><span class="n">get_calibration_mask</span><span class="p">()</span>  <span class="c1"># sample-based for Juggler</span>
+</pre></div>
+</div>
+<p>The paper specifies the sample-selection logic but does not provide a local
+MATLAB oracle in this repository, so this implementation is validated through
+unit tests and the published algorithm description rather than a parity
+fixture. Treat it as a specialized calibration strategy for high-motion MoBI
+data, not as a universal replacement for standard ASR.</p>
+</section>
+<section id="choosing-a-variant">
+<h2>Choosing a variant<a class="headerlink" href="#choosing-a-variant" title="Link to this heading">#</a></h2>
+<p>A quick decision guide:</p>
+<ul class="simple">
+<li><p><strong>Reference-compatible starting point</strong> — <code class="docutils literal notranslate"><span class="pre">ASR(method=&quot;standard&quot;)</span></code> retains
+<code class="docutils literal notranslate"><span class="pre">cutoff=20</span></code> as its default for legacy comparisons. The
+cutoff scale changes with calibration, filtering, reconstruction, and data
+regime, so this value is not a universal recommendation. Freeze it only after
+paired attenuation and neural-preservation validation.</p></li>
+<li><p><strong>Need Riemannian-robust calibration with a working cutoff</strong> —
+<code class="docutils literal notranslate"><span class="pre">ASR(method=&quot;riemannian_windowed&quot;)</span></code>.</p></li>
+<li><p><strong>Online / streaming BCI</strong> — <code class="docutils literal notranslate"><span class="pre">AdaptiveASR(variant=&quot;psw&quot;)</span></code> (strongest SNR
+gain) or <code class="docutils literal notranslate"><span class="pre">variant=&quot;psp&quot;</span></code> (best ground-truth correlation).</p></li>
+<li><p><strong>Per-segment cleaning</strong> — <code class="docutils literal notranslate"><span class="pre">AdaptiveASR(variant=&quot;mw&quot;,</span> <span class="pre">mw_mode=&quot;sliding&quot;)</span></code>
+(avoid the coarse-window <code class="docutils literal notranslate"><span class="pre">final_state</span></code> default, which can over-clean).</p></li>
+<li><p><strong>Extreme MoBI / high motion</strong> where the clean-windows criterion collapses —
+<code class="docutils literal notranslate"><span class="pre">JugglerASR(strategy=&quot;gev&quot;)</span></code> (tight selector) or <code class="docutils literal notranslate"><span class="pre">strategy=&quot;dbscan&quot;</span></code>
+(more permissive). These survive contamination levels where standard ASR
+refuses to calibrate.</p></li>
+</ul>
+</section>
+<section id="visualizing-results">
+<h2>Visualizing results<a class="headerlink" href="#visualizing-results" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">mne_denoise.viz</span></code> ships three ASR-specific diagnostics that have no generic
+equivalent — <a class="reference internal" href="generated/mne_denoise.viz.plot_asr_repair_timeline.html#mne_denoise.viz.plot_asr_repair_timeline" title="mne_denoise.viz.plot_asr_repair_timeline"><code class="xref py py-func docutils literal notranslate"><span class="pre">plot_asr_repair_timeline()</span></code></a>,
+<a class="reference internal" href="generated/mne_denoise.viz.plot_asr_component_reconstruction.html#mne_denoise.viz.plot_asr_component_reconstruction" title="mne_denoise.viz.plot_asr_component_reconstruction"><code class="xref py py-func docutils literal notranslate"><span class="pre">plot_asr_component_reconstruction()</span></code></a>, and
+<a class="reference internal" href="generated/mne_denoise.viz.plot_asr_calibration_fraction.html#mne_denoise.viz.plot_asr_calibration_fraction" title="mne_denoise.viz.plot_asr_calibration_fraction"><code class="xref py py-func docutils literal notranslate"><span class="pre">plot_asr_calibration_fraction()</span></code></a>. They take the fitted
+estimator and honour <code class="docutils literal notranslate"><span class="pre">ax=</span></code> / <code class="docutils literal notranslate"><span class="pre">show=</span></code> / <code class="docutils literal notranslate"><span class="pre">fname=</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">mne_denoise.viz</span><span class="w"> </span><span class="kn">import</span> <span class="n">plot_asr_repair_timeline</span><span class="p">,</span> <span class="n">plot_signal_overlay</span>
+
+<span class="n">asr</span> <span class="o">=</span> <span class="n">ASR</span><span class="p">(</span><span class="n">sfreq</span><span class="o">=</span><span class="mf">250.0</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="mf">20.0</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+<span class="n">clean</span> <span class="o">=</span> <span class="n">asr</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+<span class="n">plot_signal_overlay</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="n">clean</span><span class="p">,</span> <span class="n">raw</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">pick</span><span class="o">=</span><span class="s2">"Fp1"</span><span class="p">)</span>  <span class="c1"># generic before/after</span>
+<span class="n">plot_asr_repair_timeline</span><span class="p">(</span><span class="n">asr</span><span class="p">)</span>                            <span class="c1"># repaired windows</span>
+</pre></div>
+</div>
+<p>For before/after overlays, PSD comparison, and per-channel variance
+topographies, reuse the generic helpers
+<a class="reference internal" href="generated/mne_denoise.viz.plot_signal_overlay.html#mne_denoise.viz.plot_signal_overlay" title="mne_denoise.viz.plot_signal_overlay"><code class="xref py py-func docutils literal notranslate"><span class="pre">plot_signal_overlay()</span></code></a>,
+<a class="reference internal" href="generated/mne_denoise.viz.plot_psd_comparison.html#mne_denoise.viz.plot_psd_comparison" title="mne_denoise.viz.plot_psd_comparison"><code class="xref py py-func docutils literal notranslate"><span class="pre">plot_psd_comparison()</span></code></a>, and
+<a class="reference internal" href="generated/mne_denoise.viz.plot_power_ratio_map.html#mne_denoise.viz.plot_power_ratio_map" title="mne_denoise.viz.plot_power_ratio_map"><code class="xref py py-func docutils literal notranslate"><span class="pre">plot_power_ratio_map()</span></code></a> (they accept MNE objects or NumPy
+arrays). The <code class="docutils literal notranslate"><span class="pre">plot_05_asr_visualization.py</span></code> gallery example exercises the
+full set end-to-end.</p>
+</section>
+<section id="important-assumptions">
+<h2>Important assumptions<a class="headerlink" href="#important-assumptions" title="Link to this heading">#</a></h2>
+<p>ASR should be applied after bad channels are removed or excluded and after the
+data have been high-pass filtered in the surrounding MNE pipeline. The
+statistics-only filter in <code class="docutils literal notranslate"><span class="pre">ASR</span></code> does not replace user-visible preprocessing;
+it only affects covariance estimates. Average-reference projectors and other
+rank-reducing projectors should be reviewed before calibration.</p>
+</section>
+<section id="diagnostics">
+<h2>Diagnostics<a class="headerlink" href="#diagnostics" title="Link to this heading">#</a></h2>
+<p>After <code class="docutils literal notranslate"><span class="pre">transform</span></code>, the estimator stores audit fields:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">clean_window_mask_</span></code></dt><dd><p>Calibration windows retained as clean.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">sample_mask_</span></code></dt><dd><p>Samples repaired during the last transform.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">n_components_reconstructed_</span></code></dt><dd><p>Number of reconstructed components per processing window.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">diagnostics_</span></code></dt><dd><p>Window starts, stops, variance estimates, thresholds, and summary fractions.
+Long-recording memory fields include <code class="docutils literal notranslate"><span class="pre">memory_mode</span></code>, <code class="docutils literal notranslate"><span class="pre">max_mem_mb</span></code>,
+<code class="docutils literal notranslate"><span class="pre">estimated_full_cov_bytes</span></code>, <code class="docutils literal notranslate"><span class="pre">peak_cov_buffer_bytes</span></code>, <code class="docutils literal notranslate"><span class="pre">chunk_samples</span></code>,
+and <code class="docutils literal notranslate"><span class="pre">used_memory_bound</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">to_annotations(kind=...)</span></code></dt><dd><p>Unified annotation export. <code class="docutils literal notranslate"><span class="pre">kind=&quot;repair&quot;</span></code> (default) annotates repaired
+windows from the last transform; <code class="docutils literal notranslate"><span class="pre">kind=&quot;rejection&quot;</span></code> annotates samples
+removed by the final window-rejection pass; <code class="docutils literal notranslate"><span class="pre">kind=&quot;calibration&quot;</span></code> annotates
+the reference samples chosen by <code class="xref py py-class docutils literal notranslate"><span class="pre">JugglerASR</span></code> (sample-based backends
+only). All return <code class="docutils literal notranslate"><span class="pre">mne.Annotations</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">get_calibration_mask()</span></code></dt><dd><p>Returns the boolean calibration mask — window-based for standard / Riemannian
+/ adaptive backends, sample-based for <code class="xref py py-class docutils literal notranslate"><span class="pre">JugglerASR</span></code> (see
+<code class="docutils literal notranslate"><span class="pre">calibration_mask_kind_</span></code>).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">get_rejection_mask()</span></code></dt><dd><p>Returns the retained-sample mask from optional clean_windows-style final
+window rejection.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">variance_removed()</span></code></dt><dd><p>Computes ASR-specific variance-change and repair-extent metrics from
+before/after data and an optional fitted <code class="docutils literal notranslate"><span class="pre">ASR</span></code> instance.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">compute_clean_window_mask()</span></code></dt><dd><p>Exposes clean_windows-style retained-sample masking as a standalone helper
+for continuous arrays.</p>
+</dd>
+</dl>
+</section>
+<section id="threshold-fitting">
+<h2>Threshold fitting<a class="headerlink" href="#threshold-fitting" title="Link to this heading">#</a></h2>
+<p>ASR calibration uses <code class="docutils literal notranslate"><span class="pre">fit_rms_distribution()</span></code> to estimate robust clean RMS
+statistics for each calibration component. The fitter follows the
+clean_rawdata truncated generalized-Gaussian grid search and stores
+per-component <code class="docutils literal notranslate"><span class="pre">threshold_mu</span></code>, <code class="docutils literal notranslate"><span class="pre">threshold_sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">threshold_beta</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">threshold_fit_error</span></code> in <code class="docutils literal notranslate"><span class="pre">calibration_info_</span></code>.</p>
+</section>
+<section id="final-window-rejection">
+<h2>Final window rejection<a class="headerlink" href="#final-window-rejection" title="Link to this heading">#</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">ASR</span></code> can optionally apply a non-destructive clean_windows-style final pass
+after burst repair by setting <code class="docutils literal notranslate"><span class="pre">window_criterion</span></code> and
+<code class="docutils literal notranslate"><span class="pre">window_criterion_tolerances</span></code>. This mirrors clean_rawdata’s distinction
+between burst repair and later segment rejection:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">asr</span> <span class="o">=</span> <span class="n">ASR</span><span class="p">(</span>
+    <span class="n">cutoff</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span>
+    <span class="n">calibration</span><span class="o">=</span><span class="s2">"auto"</span><span class="p">,</span>
+    <span class="n">window_criterion</span><span class="o">=</span><span class="mf">0.25</span><span class="p">,</span>
+    <span class="n">window_criterion_tolerances</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mf">7.0</span><span class="p">),</span>
+<span class="p">)</span>
+
+<span class="n">raw_clean</span> <span class="o">=</span> <span class="n">asr</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+<span class="n">keep_mask</span> <span class="o">=</span> <span class="n">asr</span><span class="o">.</span><span class="n">get_rejection_mask</span><span class="p">()</span>
+<span class="n">reject_annotations</span> <span class="o">=</span> <span class="n">asr</span><span class="o">.</span><span class="n">to_annotations</span><span class="p">(</span><span class="s2">"rejection"</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>This step does not delete samples from the returned object. It records the
+retained/rejected mask and exposes it for downstream QC, annotation, or
+manual trimming.</p>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="time_shift_dss.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">TimeShiftDSS</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="bss_cca.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Reference-free BSS-CCA</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#basic-usage">Basic usage</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#typical-preprocessing-pipeline">Typical preprocessing pipeline</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#riemannian-asr">Riemannian ASR</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#reference-cross-checks">Reference cross-checks</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#adaptive-asr">Adaptive ASR</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jugglerasr">JugglerASR</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#choosing-a-variant">Choosing a variant</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#visualizing-results">Visualizing results</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#important-assumptions">Important assumptions</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#diagnostics">Diagnostics</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#threshold-fitting">Threshold fitting</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#final-window-rejection">Final window rejection</a></li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+  
+  <div class="tocsection editthispage">
+    <a href="https://github.com/mne-tools/mne-denoise/edit/main/docs/asr.rst">
+      <i class="fa-solid fa-pencil"></i>
+      
+      
+        
+          Edit on GitHub
+        
+      
+    </a>
+  </div>
+</div>
+
+  <div class="sidebar-secondary-item">
+
+  <div class="tocsection sourcelink">
+    <a href="_sources/asr.rst.txt">
+      <i class="fa-solid fa-file-lines"></i> Show Source
+    </a>
+  </div>
+</div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2026, mne-denoise developers.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

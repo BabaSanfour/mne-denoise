@@ -1,0 +1,1517 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mne_denoise.bss_cca &#8212; mne-denoise 0.0.1 documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=cb8930eaaf36d9849b67" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery.css?v=fd6457a4" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery-binder.css?v=f4aeca0c" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery-dataframe.css?v=2082cf3c" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery-rendered-html.css?v=1277b6f3" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=95c83b7e" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../../_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
+
+    <script src="../../_static/documentation_options.js?v=d45e8c67"></script>
+    <script src="../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../_static/sg-tags.js?v=d80f6fa4"></script>
+    <script src="../../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/mne_denoise/bss_cca';</script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="0.0.1" />
+  
+    
+    <script src="../../_static/searchtools.js"></script>
+    <script src="../../_static/language_data.js"></script>
+    <script src="../../searchindex.js"></script>
+  
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+  
+  
+  
+  
+  
+    <p class="title logo__title">mne-denoise 0.0.1 documentation</p>
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../getting-started.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../dss.html">
+    DSS Module Documentation
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../time_shift_dss.html">
+    TimeShiftDSS
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../asr.html">
+    Artifact Subspace Reconstruction
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../bss_cca.html">
+    Reference-free BSS-CCA
+  </a>
+</li>
+
+            <li class="nav-item dropdown">
+                <button class="btn dropdown-toggle nav-item" type="button"
+                data-bs-toggle="dropdown" aria-expanded="false"
+                aria-controls="pst-nav-more-links">
+                    More
+                </button>
+                <ul id="pst-nav-more-links" class="dropdown-menu">
+                    
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../sns.html">
+    Sensor Noise Suppression (SNS)
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../ssa.html">
+    Singular Spectrum Analysis
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../icanclean.html">
+    iCanClean
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../auto_examples/index.html">
+    Examples Gallery
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../api.html">
+    API reference
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../../development.html">
+    Development workflow
+  </a>
+</li>
+
+                </ul>
+            </li>
+            
+  </ul>
+</nav></div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+        <div class="navbar-item navbar-persistent--container">
+          
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+        </div>
+      
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/mne-tools/mne-denoise" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+    <div class="navbar-persistent--mobile">
+
+<button class="btn search-button-field search-button__button pst-js-only" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+ <i class="fa-solid fa-magnifying-glass"></i>
+ <span class="search-button__default-text">Search</span>
+ <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+</button>
+    </div>
+  
+
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar hide-on-wide">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../getting-started.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../dss.html">
+    DSS Module Documentation
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../time_shift_dss.html">
+    TimeShiftDSS
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../asr.html">
+    Artifact Subspace Reconstruction
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../bss_cca.html">
+    Reference-free BSS-CCA
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../sns.html">
+    Sensor Noise Suppression (SNS)
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../ssa.html">
+    Singular Spectrum Analysis
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../icanclean.html">
+    iCanClean
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../auto_examples/index.html">
+    Examples Gallery
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../api.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../../development.html">
+    Development workflow
+  </a>
+</li>
+
+  </ul>
+</nav></div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/mne-tools/mne-denoise" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-square-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../index.html" class="nav-link">Module code</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">mne_denoise.bss_cca</span></li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for mne_denoise.bss_cca</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Core reference-free BSS-CCA algorithm and estimator.</span>
+
+<span class="sd">This module contains:</span>
+
+<span class="sd">1. ``compute_bss_cca``: the canonical array implementation of BSS-CCA [1]_.</span>
+<span class="sd">2. ``BSSCCA``: the scikit-learn estimator, compatible with MNE-Python objects</span>
+<span class="sd">   or channel-first NumPy arrays.</span>
+
+<span class="sd">BSS-CCA solves canonical correlation analysis between the multichannel signal</span>
+<span class="sd">:math:`x(t)` and a delayed copy :math:`y(t) = x(t - 1)` of itself [1]_. The</span>
+<span class="sd">resulting components are ordered by decreasing lagged correlation. Muscle</span>
+<span class="sd">activity resembles temporally white noise and therefore concentrates in the</span>
+<span class="sd">**lowest** components, which are dropped before the signal is projected back to</span>
+<span class="sd">the sensors.</span>
+
+<span class="sd">The method assumes band-limited input. Both source papers band-pass filter</span>
+<span class="sd">before decomposition (0.3-35 Hz plus a notch in [2]_) and use an average</span>
+<span class="sd">reference montage; see :ref:`the user guide &lt;bss_cca&gt;` for why that matters.</span>
+
+<span class="sd">Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)</span>
+<span class="sd">         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">.. [1] De Clercq, W., Vergult, A., Vanrumste, B., Van Paesschen, W., &amp;</span>
+<span class="sd">       Van Huffel, S. (2006). Canonical correlation analysis applied to remove</span>
+<span class="sd">       muscle artifacts from the electroencephalogram. IEEE Transactions on</span>
+<span class="sd">       Biomedical Engineering, 53(12), 2583-2587.</span>
+<span class="sd">       https://doi.org/10.1109/TBME.2006.879459</span>
+<span class="sd">.. [2] Vergult, A., De Clercq, W., Palmini, A., Vanrumste, B., Dupont, P.,</span>
+<span class="sd">       Van Huffel, S., &amp; Van Paesschen, W. (2007). Improving the interpretation</span>
+<span class="sd">       of ictal scalp EEG: BSS-CCA algorithm for muscle artifact removal.</span>
+<span class="sd">       Epilepsia, 48(5), 950-958.</span>
+<span class="sd">       https://doi.org/10.1111/j.1528-1167.2007.01031.x</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">numbers</span><span class="w"> </span><span class="kn">import</span> <span class="n">Integral</span><span class="p">,</span> <span class="n">Real</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseEstimator</span><span class="p">,</span> <span class="n">TransformerMixin</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.utils.validation</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_is_fitted</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">._blending</span><span class="w"> </span><span class="kn">import</span> <span class="n">overlap_add_combine</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._cca</span><span class="w"> </span><span class="kn">import</span> <span class="n">canonical_correlation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._data</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">continuous_to_epochs</span><span class="p">,</span>
+    <span class="n">epochs_to_continuous</span><span class="p">,</span>
+    <span class="n">extract_data_from_mne</span><span class="p">,</span>
+    <span class="n">reconstruct_mne_object</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._logging</span><span class="w"> </span><span class="kn">import</span> <span class="n">logger</span><span class="p">,</span> <span class="n">verbose</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._spatial</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">apply_spatial_transform</span><span class="p">,</span>
+    <span class="n">fit_mixing_matrix</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._validation</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">check_channel_first_data</span><span class="p">,</span>
+    <span class="n">check_channel_layout</span><span class="p">,</span>
+    <span class="n">check_matching_sfreq</span><span class="p">,</span>
+    <span class="n">check_positive_real</span><span class="p">,</span>
+    <span class="n">resolve_sfreq</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"BSSCCA"</span><span class="p">,</span> <span class="s2">"compute_bss_cca"</span><span class="p">]</span>
+
+<span class="c1">#: Warn when the number of lagged pairs falls below this multiple of the</span>
+<span class="c1">#: channel count; canonical correlations saturate toward 1 as the ratio drops.</span>
+<span class="n">_PAIRS_PER_CHANNEL_WARNING</span> <span class="o">=</span> <span class="mi">10</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_lag_samples</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">lag_samples</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">lag_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">sfreq</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">n_times</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Resolve one explicit lag declaration to a positive sample count."""</span>
+    <span class="k">if</span> <span class="n">lag_samples</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">lag_seconds</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"set at most one of lag_samples or lag_seconds"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">lag_seconds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">lag_samples</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">lag_samples</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">lag_samples</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">lag_samples</span><span class="p">,</span> <span class="n">Integral</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"lag_samples must be a positive integer"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">lag_samples</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"lag_samples must be a positive integer"</span><span class="p">)</span>
+        <span class="n">resolved</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">lag_samples</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">lag_seconds</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">lag_seconds</span><span class="p">,</span> <span class="n">Real</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"lag_seconds must be a finite number"</span><span class="p">)</span>
+        <span class="n">lag_seconds</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">lag_seconds</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">lag_seconds</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"lag_seconds must be a finite number"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">lag_seconds</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"lag_seconds must be positive"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">sfreq</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"sfreq is required when lag_seconds is used"</span><span class="p">)</span>
+        <span class="n">sfreq</span> <span class="o">=</span> <span class="n">check_positive_real</span><span class="p">(</span><span class="n">sfreq</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"sfreq"</span><span class="p">)</span>
+        <span class="n">resolved</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">lag_seconds</span> <span class="o">*</span> <span class="n">sfreq</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">resolved</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"lag_seconds=</span><span class="si">{</span><span class="n">lag_seconds</span><span class="si">}</span><span class="s2"> resolves to less than one sample "</span>
+                <span class="sa">f</span><span class="s2">"at sfreq=</span><span class="si">{</span><span class="n">sfreq</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span>
+    <span class="k">if</span> <span class="n">resolved</span> <span class="o">&gt;=</span> <span class="n">n_times</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"lag (</span><span class="si">{</span><span class="n">resolved</span><span class="si">}</span><span class="s2"> samples) leaves no paired samples for n_times=</span><span class="si">{</span><span class="n">n_times</span><span class="si">}</span><span class="s2">"</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">resolved</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_check_selection</span><span class="p">(</span>
+    <span class="n">n_remove</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">rho_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Validate that exactly one selection rule is requested."""</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">n_remove</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="o">==</span> <span class="p">(</span><span class="n">rho_threshold</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"set exactly one of n_remove or rho_threshold; there is no "</span>
+            <span class="s2">"universally valid default (De Clercq et al. describe "</span>
+            <span class="s2">"autocorrelation thresholding as unvalidated future work, and "</span>
+            <span class="s2">"select a component count instead)"</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">n_remove</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">n_remove</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">n_remove</span><span class="p">,</span> <span class="n">Integral</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"n_remove must be a non-negative integer"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">n_remove</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"n_remove must be a non-negative integer"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_remove</span><span class="p">),</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rho_threshold</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">rho_threshold</span><span class="p">,</span> <span class="n">Real</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"rho_threshold must be a finite number"</span><span class="p">)</span>
+    <span class="n">rho_threshold</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">rho_threshold</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">rho_threshold</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"rho_threshold must be a finite number"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="mf">0.0</span> <span class="o">&lt;=</span> <span class="n">rho_threshold</span> <span class="o">&lt;=</span> <span class="mf">1.0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"rho_threshold must be between 0 and 1"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="n">rho_threshold</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_lagged_pairs</span><span class="p">(</span><span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">lag_samples</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Return current/past CCA views without wrap or epoch-boundary pairs.</span>
+
+<span class="sd">    For 3-D input the pairs are formed inside each epoch and then stacked, so</span>
+<span class="sd">    no pair ever spans an epoch boundary.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    X : ndarray, shape (n_channels, n_times) | (n_epochs, n_channels, n_times)</span>
+<span class="sd">        Channel-first data.</span>
+<span class="sd">    lag_samples : int</span>
+<span class="sd">        Positive lag.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    current : ndarray, shape (n_pairs, n_channels)</span>
+<span class="sd">        Samples ``t``.</span>
+<span class="sd">    past : ndarray, shape (n_pairs, n_channels)</span>
+<span class="sd">        Samples ``t - lag_samples``, aligned row-wise with ``current``.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">X</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="n">current</span> <span class="o">=</span> <span class="n">X</span><span class="p">[:,</span> <span class="n">lag_samples</span><span class="p">:]</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">past</span> <span class="o">=</span> <span class="n">X</span><span class="p">[:,</span> <span class="p">:</span><span class="o">-</span><span class="n">lag_samples</span><span class="p">]</span><span class="o">.</span><span class="n">T</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">n_channels</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">current</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">X</span><span class="p">[:,</span> <span class="p">:,</span> <span class="n">lag_samples</span><span class="p">:],</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_channels</span><span class="p">)</span>
+        <span class="n">past</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">X</span><span class="p">[:,</span> <span class="p">:,</span> <span class="p">:</span><span class="o">-</span><span class="n">lag_samples</span><span class="p">],</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_channels</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">current</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">past</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_select_components</span><span class="p">(</span>
+    <span class="n">correlations</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">n_remove</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">rho_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">reject</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"low"</span><span class="p">,</span>
+    <span class="n">threshold_on</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"rho"</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Choose which canonical components to retain.</span>
+
+<span class="sd">    ``correlations`` is descending, so low-autocorrelation components are at the</span>
+<span class="sd">    tail and high-autocorrelation components at the head.</span>
+
+<span class="sd">    ``reject`` selects which end is artifactual:</span>
+
+<span class="sd">    ``'low'``</span>
+<span class="sd">        Drop the tail. Broadband, temporally incoherent sources -- muscle/EMG --</span>
+<span class="sd">        have low lag-1 autocorrelation, which is the regime De Clercq et al.</span>
+<span class="sd">        [1]_ target and the package's original behaviour.</span>
+<span class="sd">    ``'high'``</span>
+<span class="sd">        Drop the head. Strongly autocorrelated sources -- slow drift and</span>
+<span class="sd">        movement artifact -- sit at the top of the spectrum, the opposite end</span>
+<span class="sd">        from muscle.</span>
+
+<span class="sd">    ``n_remove`` drops that many components from the chosen end.</span>
+<span class="sd">    """</span>
+    <span class="n">n_components</span> <span class="o">=</span> <span class="n">correlations</span><span class="o">.</span><span class="n">size</span>
+    <span class="k">if</span> <span class="n">n_remove</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">n_remove</span> <span class="o">&gt;</span> <span class="n">n_components</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"n_remove=</span><span class="si">{</span><span class="n">n_remove</span><span class="si">}</span><span class="s2"> exceeds the fitted CCA rank </span><span class="si">{</span><span class="n">n_components</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span>
+        <span class="n">keep</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">n_components</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">n_remove</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">reject</span> <span class="o">==</span> <span class="s2">"low"</span><span class="p">:</span>
+                <span class="n">keep</span><span class="p">[</span><span class="n">n_components</span> <span class="o">-</span> <span class="n">n_remove</span> <span class="p">:]</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">keep</span><span class="p">[:</span><span class="n">n_remove</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">return</span> <span class="n">keep</span>
+
+    <span class="c1"># ``rsq`` compares against the SQUARED correlation. Squaring the data</span>
+    <span class="c1"># rather than square-rooting the threshold keeps the comparison exact at</span>
+    <span class="c1"># the endpoints.</span>
+    <span class="n">metric</span> <span class="o">=</span> <span class="n">correlations</span> <span class="k">if</span> <span class="n">threshold_on</span> <span class="o">==</span> <span class="s2">"rho"</span> <span class="k">else</span> <span class="n">correlations</span><span class="o">**</span><span class="mi">2</span>
+    <span class="n">keep</span> <span class="o">=</span> <span class="n">metric</span> <span class="o">&gt;=</span> <span class="n">rho_threshold</span> <span class="k">if</span> <span class="n">reject</span> <span class="o">==</span> <span class="s2">"low"</span> <span class="k">else</span> <span class="n">metric</span> <span class="o">&lt;=</span> <span class="n">rho_threshold</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">keep</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+        <span class="n">bound</span> <span class="o">=</span> <span class="s2">"reaches"</span> <span class="k">if</span> <span class="n">reject</span> <span class="o">==</span> <span class="s2">"low"</span> <span class="k">else</span> <span class="s2">"falls below"</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+            <span class="s2">"BSS-CCA: no component </span><span class="si">%s</span><span class="s2"> rho_threshold=</span><span class="si">%.4f</span><span class="s2"> (</span><span class="si">%s</span><span class="s2"> range </span><span class="si">%.4f</span><span class="s2">-</span><span class="si">%.4f</span><span class="s2">); "</span>
+            <span class="s2">"every component will be removed. Adjust the threshold or use "</span>
+            <span class="s2">"n_remove."</span><span class="p">,</span>
+            <span class="n">bound</span><span class="p">,</span>
+            <span class="n">rho_threshold</span><span class="p">,</span>
+            <span class="n">threshold_on</span><span class="p">,</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">metric</span><span class="o">.</span><span class="n">min</span><span class="p">())</span> <span class="k">if</span> <span class="n">n_components</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="s2">"nan"</span><span class="p">),</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">metric</span><span class="o">.</span><span class="n">max</span><span class="p">())</span> <span class="k">if</span> <span class="n">n_components</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="s2">"nan"</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">keep</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_learn_operator</span><span class="p">(</span>
+    <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">lag_samples</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">n_remove</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">rho_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">reject</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">threshold_on</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">bound</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Learn one BSS-CCA channel-space operator and its diagnostics.</span>
+
+<span class="sd">    ``bound`` is ``(ext_start, ext_end, own_start, own_end)``: the operator is</span>
+<span class="sd">    fitted on ``[ext_start, ext_end)`` and is solely responsible for</span>
+<span class="sd">    ``[own_start, own_end)``. The two coincide unless blocks overlap.</span>
+
+<span class="sd">    The back-projection is obtained by least squares against the data rather</span>
+<span class="sd">    than by inverting the canonical filters. The two agree exactly when the</span>
+<span class="sd">    data is full rank, but only the least-squares form is correct when it is</span>
+<span class="sd">    not; see the warning in :mod:`mne_denoise._cca`.</span>
+<span class="sd">    """</span>
+    <span class="n">ext_start</span><span class="p">,</span> <span class="n">ext_end</span><span class="p">,</span> <span class="n">own_start</span><span class="p">,</span> <span class="n">own_end</span> <span class="o">=</span> <span class="n">bound</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">X</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">ext_start</span><span class="p">:</span><span class="n">ext_end</span><span class="p">]</span>
+    <span class="n">current</span><span class="p">,</span> <span class="n">past</span> <span class="o">=</span> <span class="n">_lagged_pairs</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">lag_samples</span><span class="p">)</span>
+    <span class="n">n_pairs</span><span class="p">,</span> <span class="n">n_channels</span> <span class="o">=</span> <span class="n">current</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">if</span> <span class="n">n_pairs</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"BSS-CCA requires at least two lagged pairs, got </span><span class="si">{</span><span class="n">n_pairs</span><span class="si">}</span><span class="s2">; "</span>
+            <span class="sa">f</span><span class="s2">"reduce the lag or supply more samples"</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">n_pairs</span> <span class="o">&lt;=</span> <span class="n">n_channels</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"BSS-CCA requires more lagged pairs than channels, got "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">n_pairs</span><span class="si">}</span><span class="s2"> pairs for </span><span class="si">{</span><span class="n">n_channels</span><span class="si">}</span><span class="s2"> channels; every canonical "</span>
+            <span class="sa">f</span><span class="s2">"correlation would saturate at 1 and nothing would be removed"</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">n_pairs</span> <span class="o">&lt;</span> <span class="n">_PAIRS_PER_CHANNEL_WARNING</span> <span class="o">*</span> <span class="n">n_channels</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+            <span class="s2">"BSS-CCA: only </span><span class="si">%d</span><span class="s2"> lagged pairs for </span><span class="si">%d</span><span class="s2"> channels; canonical "</span>
+            <span class="s2">"correlations are biased upward when samples are scarce."</span><span class="p">,</span>
+            <span class="n">n_pairs</span><span class="p">,</span>
+            <span class="n">n_channels</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="n">filters_x</span><span class="p">,</span> <span class="n">filters_y</span><span class="p">,</span> <span class="n">correlations</span><span class="p">,</span> <span class="n">_u</span><span class="p">,</span> <span class="n">_v</span> <span class="o">=</span> <span class="n">canonical_correlation</span><span class="p">(</span><span class="n">current</span><span class="p">,</span> <span class="n">past</span><span class="p">)</span>
+    <span class="n">n_components</span> <span class="o">=</span> <span class="n">filters_x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">n_components</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"BSS-CCA found zero-rank current or lagged data"</span><span class="p">)</span>
+
+    <span class="n">unmixing</span> <span class="o">=</span> <span class="n">filters_x</span><span class="o">.</span><span class="n">T</span>
+    <span class="n">continuous</span> <span class="o">=</span> <span class="n">epochs_to_continuous</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="n">training_mean</span> <span class="o">=</span> <span class="n">continuous</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">centered</span> <span class="o">=</span> <span class="n">continuous</span> <span class="o">-</span> <span class="n">training_mean</span>
+    <span class="n">sources</span> <span class="o">=</span> <span class="n">unmixing</span> <span class="o">@</span> <span class="n">centered</span>
+    <span class="n">mixing</span> <span class="o">=</span> <span class="n">fit_mixing_matrix</span><span class="p">(</span><span class="n">centered</span><span class="p">,</span> <span class="n">sources</span><span class="p">)</span>
+
+    <span class="n">keep</span> <span class="o">=</span> <span class="n">_select_components</span><span class="p">(</span>
+        <span class="n">correlations</span><span class="p">,</span>
+        <span class="n">n_remove</span><span class="o">=</span><span class="n">n_remove</span><span class="p">,</span>
+        <span class="n">rho_threshold</span><span class="o">=</span><span class="n">rho_threshold</span><span class="p">,</span>
+        <span class="n">reject</span><span class="o">=</span><span class="n">reject</span><span class="p">,</span>
+        <span class="n">threshold_on</span><span class="o">=</span><span class="n">threshold_on</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">cleaning</span> <span class="o">=</span> <span class="n">mixing</span> <span class="o">@</span> <span class="p">(</span><span class="n">keep</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span> <span class="o">*</span> <span class="n">unmixing</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">"cleaning_matrix"</span><span class="p">:</span> <span class="n">cleaning</span><span class="p">,</span>
+        <span class="s2">"filters"</span><span class="p">:</span> <span class="n">unmixing</span><span class="p">,</span>
+        <span class="s2">"patterns"</span><span class="p">:</span> <span class="n">mixing</span><span class="p">,</span>
+        <span class="s2">"correlations"</span><span class="p">:</span> <span class="n">correlations</span><span class="p">,</span>
+        <span class="s2">"autocorrelations"</span><span class="p">:</span> <span class="n">_signed_autocorrelations</span><span class="p">(</span><span class="n">current</span><span class="p">,</span> <span class="n">past</span><span class="p">,</span> <span class="n">filters_x</span><span class="p">),</span>
+        <span class="s2">"filter_asymmetry"</span><span class="p">:</span> <span class="n">_filter_asymmetry</span><span class="p">(</span><span class="n">filters_x</span><span class="p">,</span> <span class="n">filters_y</span><span class="p">),</span>
+        <span class="s2">"kept_mask"</span><span class="p">:</span> <span class="n">keep</span><span class="p">,</span>
+        <span class="s2">"training_mean"</span><span class="p">:</span> <span class="n">training_mean</span><span class="p">,</span>
+        <span class="s2">"input_rank"</span><span class="p">:</span> <span class="n">n_components</span><span class="p">,</span>
+        <span class="s2">"n_pairs"</span><span class="p">:</span> <span class="n">n_pairs</span><span class="p">,</span>
+        <span class="s2">"span"</span><span class="p">:</span> <span class="p">(</span><span class="n">ext_start</span><span class="p">,</span> <span class="n">ext_end</span><span class="p">),</span>
+        <span class="s2">"own_span"</span><span class="p">:</span> <span class="p">(</span><span class="n">own_start</span><span class="p">,</span> <span class="n">own_end</span><span class="p">),</span>
+    <span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_signed_autocorrelations</span><span class="p">(</span>
+    <span class="n">current</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">past</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">filters_x</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Signed lag-1 autocorrelation of each canonical component.</span>
+
+<span class="sd">    The canonical correlation is non-negative by construction, so a component</span>
+<span class="sd">    dominated by near-Nyquist energy is *anti*-correlated at the lag yet ranks</span>
+<span class="sd">    highly. Applying the same filter to both views recovers the signed value.</span>
+<span class="sd">    """</span>
+    <span class="n">zc</span> <span class="o">=</span> <span class="n">current</span> <span class="o">@</span> <span class="n">filters_x</span>
+    <span class="n">zp</span> <span class="o">=</span> <span class="n">past</span> <span class="o">@</span> <span class="n">filters_x</span>
+    <span class="n">zc</span> <span class="o">=</span> <span class="n">zc</span> <span class="o">-</span> <span class="n">zc</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">zp</span> <span class="o">=</span> <span class="n">zp</span> <span class="o">-</span> <span class="n">zp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">zc</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">zp</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">norm</span><span class="p">[</span><span class="n">norm</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="s2">"ij,ij-&gt;j"</span><span class="p">,</span> <span class="n">zc</span><span class="p">,</span> <span class="n">zp</span><span class="p">)</span> <span class="o">/</span> <span class="n">norm</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_filter_asymmetry</span><span class="p">(</span><span class="n">filters_x</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">filters_y</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Distance between the two canonical filters of each component.</span>
+
+<span class="sd">    Reading the canonical correlation as an autocorrelation presumes the two</span>
+<span class="sd">    views share a filter. This returns ``0`` when they do and grows to ``2``</span>
+<span class="sd">    when they are opposed, giving a per-component validity check.</span>
+<span class="sd">    """</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_unit</span><span class="p">(</span><span class="n">matrix</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+        <span class="n">norms</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">matrix</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">norms</span><span class="p">[</span><span class="n">norms</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="k">return</span> <span class="n">matrix</span> <span class="o">/</span> <span class="n">norms</span>
+
+    <span class="n">a</span> <span class="o">=</span> <span class="n">_unit</span><span class="p">(</span><span class="n">filters_x</span><span class="p">)</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">_unit</span><span class="p">(</span><span class="n">filters_y</span><span class="p">)</span>
+    <span class="n">signs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="s2">"ij,ij-&gt;j"</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">))</span>
+    <span class="n">signs</span><span class="p">[</span><span class="n">signs</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">a</span> <span class="o">-</span> <span class="n">b</span> <span class="o">*</span> <span class="n">signs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_segment_bounds</span><span class="p">(</span>
+    <span class="n">n_times</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">n_block</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hop</span><span class="p">:</span> <span class="nb">int</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Return ``(ext_start, ext_end, own_start, own_end)`` per block.</span>
+
+<span class="sd">    ``ext`` is the range a block is fitted on; ``own`` is the range it is</span>
+<span class="sd">    solely responsible for. With ``hop == n_block`` the two coincide and the</span>
+<span class="sd">    blocks tile the recording exactly, matching the contiguous 10 s scheme</span>
+<span class="sd">    of [2]_.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">n_times</span> <span class="o">&lt;=</span> <span class="n">n_block</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_times</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">n_times</span><span class="p">)]</span>
+
+    <span class="n">starts</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_times</span> <span class="o">-</span> <span class="n">n_block</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">hop</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">starts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">n_block</span> <span class="o">&lt;</span> <span class="n">n_times</span><span class="p">:</span>
+        <span class="n">starts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">n_times</span> <span class="o">-</span> <span class="n">n_block</span><span class="p">)</span>
+
+    <span class="n">bounds</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">own_start</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">start</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">starts</span><span class="p">):</span>
+        <span class="n">own_end</span> <span class="o">=</span> <span class="n">n_times</span> <span class="k">if</span> <span class="n">index</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">starts</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">else</span> <span class="nb">min</span><span class="p">(</span><span class="n">start</span> <span class="o">+</span> <span class="n">hop</span><span class="p">,</span> <span class="n">n_times</span><span class="p">)</span>
+        <span class="n">own_end</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">own_end</span><span class="p">,</span> <span class="n">own_start</span><span class="p">)</span>
+        <span class="n">bounds</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">start</span><span class="p">,</span> <span class="n">start</span> <span class="o">+</span> <span class="n">n_block</span><span class="p">,</span> <span class="n">own_start</span><span class="p">,</span> <span class="n">own_end</span><span class="p">))</span>
+        <span class="n">own_start</span> <span class="o">=</span> <span class="n">own_end</span>
+    <span class="k">return</span> <span class="n">bounds</span>
+
+
+<div class="viewcode-block" id="compute_bss_cca">
+<a class="viewcode-back" href="../../generated/mne_denoise.bss_cca.compute_bss_cca.html#mne_denoise.bss_cca.compute_bss_cca">[docs]</a>
+<span class="nd">@verbose</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">compute_bss_cca</span><span class="p">(</span>
+    <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">lag_samples</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">lag_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">sfreq</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">n_remove</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">rho_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">reject</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"low"</span><span class="p">,</span>
+    <span class="n">threshold_on</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"rho"</span><span class="p">,</span>
+    <span class="n">segment_len</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">overlap</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+    <span class="n">preserve_mean</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">"""Learn and apply reference-free BSS-CCA to a channel-first array.</span>
+
+<span class="sd">    This is the canonical implementation of the algorithm of [1]_. It applies</span>
+<span class="sd">    the learned operator to the same data used to estimate it; use</span>
+<span class="sd">    :class:`BSSCCA` to fit and transform separate data.</span>
+
+<span class="sd">    Exactly one of ``n_remove`` or ``rho_threshold`` must be supplied. ``[1]_``</span>
+<span class="sd">    selects a component count and describes threshold-based selection as</span>
+<span class="sd">    unvalidated future work, so no default is assumed on your behalf.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    X : ndarray, shape (n_channels, n_times) | (n_epochs, n_channels, n_times)</span>
+<span class="sd">        Continuous or epoched channel-first data.</span>
+<span class="sd">    lag_samples : int | None, default=None</span>
+<span class="sd">        Positive lag in samples. ``None`` uses the paper's value of ``1``</span>
+<span class="sd">        unless ``lag_seconds`` is given.</span>
+<span class="sd">    lag_seconds : float | None, default=None</span>
+<span class="sd">        Positive lag in physical time. Requires ``sfreq``. Mutually exclusive</span>
+<span class="sd">        with ``lag_samples``.</span>
+<span class="sd">    sfreq : float | None, default=None</span>
+<span class="sd">        Sampling frequency, required by ``lag_seconds`` and ``segment_len``.</span>
+<span class="sd">    n_remove : int | None, default=None</span>
+<span class="sd">        Number of components to remove from the end selected by ``reject``,</span>
+<span class="sd">        the operating knob used in [1]_.</span>
+<span class="sd">    rho_threshold : float | None, default=None</span>
+<span class="sd">        Retain components whose canonical correlation is on the side of this</span>
+<span class="sd">        value selected by ``reject`` -- at least it for ``'low'``, at most it</span>
+<span class="sd">        for ``'high'``.</span>
+<span class="sd">    reject : {'low', 'high'}, default='low'</span>
+<span class="sd">        Which end of the autocorrelation spectrum is artifactual. ``'low'``</span>
+<span class="sd">        drops the least autocorrelated components, where muscle concentrates</span>
+<span class="sd">        [1]_. ``'high'`` drops the most autocorrelated components, where slow</span>
+<span class="sd">        drift and movement artifact concentrate.</span>
+<span class="sd">    threshold_on : {'rho', 'rsq'}, default='rho'</span>
+<span class="sd">        Scale on which ``rho_threshold`` is expressed: the canonical correlation</span>
+<span class="sd">        itself, or its square. Ignored when ``n_remove`` is used.</span>
+<span class="sd">    segment_len : float | None, default=None</span>
+<span class="sd">        Block length in seconds. ``None`` learns one operator for all data.</span>
+<span class="sd">        A value fits an independent operator per block, as in the contiguous</span>
+<span class="sd">        10 s scheme of [2]_. Blocks never span an epoch boundary.</span>
+<span class="sd">    overlap : float, default=0.0</span>
+<span class="sd">        Fraction of ``segment_len`` shared between consecutive blocks. ``0``</span>
+<span class="sd">        reproduces the paper's contiguous blocks; a positive value blends</span>
+<span class="sd">        neighbouring blocks and is a package extension.</span>
+<span class="sd">    preserve_mean : bool, default=True</span>
+<span class="sd">        Add the fitted channel mean back after cleaning. Equation (7) of [1]_</span>
+<span class="sd">        reconstructs mean-free data; restoring the mean keeps the output on</span>
+<span class="sd">        the same offset as the input.</span>
+<span class="sd">    verbose : bool | str | int | None, default=None</span>
+<span class="sd">        MNE-style logging level.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    X_clean : ndarray</span>
+<span class="sd">        Cleaned data with the same shape as ``X``.</span>
+<span class="sd">    info : dict</span>
+<span class="sd">        Fitted operators, component diagnostics, and the resolved operating</span>
+<span class="sd">        point. Per-block entries are tuples ordered by block.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    TypeError</span>
+<span class="sd">        If a scalar parameter has an invalid type.</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``X``, the lag, the selection rule, or the blocking is invalid, or</span>
+<span class="sd">        if there are not more lagged pairs than channels.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    BSSCCA : Estimator interface with leakage-safe fit/transform.</span>
+<span class="sd">    mne_denoise.icanclean.compute_icanclean : Reference-based CCA cleaning.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Canonical correlations are non-negative, so a component dominated by</span>
+<span class="sd">    near-Nyquist energy is anti-correlated at the lag yet ranks near the top.</span>
+<span class="sd">    Band-limit the input as both source papers do, and check</span>
+<span class="sd">    ``info['autocorrelations']`` for negative entries.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; from mne_denoise.bss_cca import compute_bss_cca</span>
+<span class="sd">    &gt;&gt;&gt; rng = np.random.default_rng(0)</span>
+<span class="sd">    &gt;&gt;&gt; t = np.arange(2500) / 250.0</span>
+<span class="sd">    &gt;&gt;&gt; brain = np.sin(2 * np.pi * 10 * t) * rng.standard_normal((8, 1))</span>
+<span class="sd">    &gt;&gt;&gt; observed = brain + 0.5 * rng.standard_normal((8, t.size))</span>
+<span class="sd">    &gt;&gt;&gt; cleaned, info = compute_bss_cca(observed, n_remove=4)</span>
+<span class="sd">    &gt;&gt;&gt; cleaned.shape</span>
+<span class="sd">    (8, 2500)</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [1] De Clercq, W., Vergult, A., Vanrumste, B., Van Paesschen, W., &amp;</span>
+<span class="sd">           Van Huffel, S. (2006). Canonical correlation analysis applied to</span>
+<span class="sd">           remove muscle artifacts from the electroencephalogram. IEEE</span>
+<span class="sd">           Transactions on Biomedical Engineering, 53(12), 2583-2587.</span>
+<span class="sd">           https://doi.org/10.1109/TBME.2006.879459</span>
+<span class="sd">    .. [2] Vergult, A., De Clercq, W., Palmini, A., Vanrumste, B., Dupont, P.,</span>
+<span class="sd">           Van Huffel, S., &amp; Van Paesschen, W. (2007). Improving the</span>
+<span class="sd">           interpretation of ictal scalp EEG: BSS-CCA algorithm for muscle</span>
+<span class="sd">           artifact removal. Epilepsia, 48(5), 950-958.</span>
+<span class="sd">           https://doi.org/10.1111/j.1528-1167.2007.01031.x</span>
+<span class="sd">    """</span>
+    <span class="n">X</span> <span class="o">=</span> <span class="n">check_channel_first_data</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"BSS-CCA"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">preserve_mean</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"preserve_mean must be a bool"</span><span class="p">)</span>
+    <span class="n">n_remove</span><span class="p">,</span> <span class="n">rho_threshold</span> <span class="o">=</span> <span class="n">_check_selection</span><span class="p">(</span><span class="n">n_remove</span><span class="p">,</span> <span class="n">rho_threshold</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">reject</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"low"</span><span class="p">,</span> <span class="s2">"high"</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"reject must be 'low' or 'high', got </span><span class="si">{</span><span class="n">reject</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">threshold_on</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"rho"</span><span class="p">,</span> <span class="s2">"rsq"</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"threshold_on must be 'rho' or 'rsq', got </span><span class="si">{</span><span class="n">threshold_on</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="n">lag</span> <span class="o">=</span> <span class="n">_resolve_lag_samples</span><span class="p">(</span>
+        <span class="n">lag_samples</span><span class="o">=</span><span class="n">lag_samples</span><span class="p">,</span>
+        <span class="n">lag_seconds</span><span class="o">=</span><span class="n">lag_seconds</span><span class="p">,</span>
+        <span class="n">sfreq</span><span class="o">=</span><span class="n">sfreq</span><span class="p">,</span>
+        <span class="n">n_times</span><span class="o">=</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="n">n_block</span><span class="p">,</span> <span class="n">hop</span> <span class="o">=</span> <span class="n">_resolve_blocking</span><span class="p">(</span>
+        <span class="n">segment_len</span><span class="o">=</span><span class="n">segment_len</span><span class="p">,</span>
+        <span class="n">overlap</span><span class="o">=</span><span class="n">overlap</span><span class="p">,</span>
+        <span class="n">sfreq</span><span class="o">=</span><span class="n">sfreq</span><span class="p">,</span>
+        <span class="n">n_times</span><span class="o">=</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">n_block</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">X</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"segment_len is only supported for 2-D continuous data; epoched "</span>
+            <span class="s2">"input is already segmented, so call once per epoch set with "</span>
+            <span class="s2">"segment_len=None"</span>
+        <span class="p">)</span>
+
+    <span class="n">n_times</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">bounds</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="p">[(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_times</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">n_times</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="n">n_block</span> <span class="ow">is</span> <span class="kc">None</span>
+        <span class="k">else</span> <span class="n">_segment_bounds</span><span class="p">(</span><span class="n">n_times</span><span class="p">,</span> <span class="n">n_block</span><span class="o">=</span><span class="n">n_block</span><span class="p">,</span> <span class="n">hop</span><span class="o">=</span><span class="n">hop</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">operators</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">_learn_operator</span><span class="p">(</span>
+            <span class="n">X</span><span class="p">,</span>
+            <span class="n">lag_samples</span><span class="o">=</span><span class="n">lag</span><span class="p">,</span>
+            <span class="n">n_remove</span><span class="o">=</span><span class="n">n_remove</span><span class="p">,</span>
+            <span class="n">rho_threshold</span><span class="o">=</span><span class="n">rho_threshold</span><span class="p">,</span>
+            <span class="n">reject</span><span class="o">=</span><span class="n">reject</span><span class="p">,</span>
+            <span class="n">threshold_on</span><span class="o">=</span><span class="n">threshold_on</span><span class="p">,</span>
+            <span class="n">bound</span><span class="o">=</span><span class="n">bound</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">bound</span> <span class="ow">in</span> <span class="n">bounds</span>
+    <span class="p">]</span>
+    <span class="n">cleaned</span> <span class="o">=</span> <span class="n">_apply_operators</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">operators</span><span class="p">,</span> <span class="n">preserve_mean</span><span class="o">=</span><span class="n">preserve_mean</span><span class="p">)</span>
+
+    <span class="c1"># Per-block quantities are reported as tuples only when blocking is in</span>
+    <span class="c1"># effect, so the common single-operator case stays flat.</span>
+    <span class="n">blocked</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">operators</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">segment_len</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+    <span class="n">kept</span> <span class="o">=</span> <span class="p">[</span><span class="n">operator</span><span class="p">[</span><span class="s2">"kept_mask"</span><span class="p">]</span> <span class="k">for</span> <span class="n">operator</span> <span class="ow">in</span> <span class="n">operators</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">per_block</span><span class="p">(</span><span class="n">values</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">values</span><span class="p">)</span> <span class="k">if</span> <span class="n">blocked</span> <span class="k">else</span> <span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">info</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">"cleaning_matrix"</span><span class="p">:</span> <span class="n">per_block</span><span class="p">([</span><span class="n">op</span><span class="p">[</span><span class="s2">"cleaning_matrix"</span><span class="p">]</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">operators</span><span class="p">]),</span>
+        <span class="s2">"filters"</span><span class="p">:</span> <span class="n">per_block</span><span class="p">([</span><span class="n">op</span><span class="p">[</span><span class="s2">"filters"</span><span class="p">]</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">operators</span><span class="p">]),</span>
+        <span class="s2">"patterns"</span><span class="p">:</span> <span class="n">per_block</span><span class="p">([</span><span class="n">op</span><span class="p">[</span><span class="s2">"patterns"</span><span class="p">]</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">operators</span><span class="p">]),</span>
+        <span class="s2">"correlations"</span><span class="p">:</span> <span class="n">per_block</span><span class="p">([</span><span class="n">op</span><span class="p">[</span><span class="s2">"correlations"</span><span class="p">]</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">operators</span><span class="p">]),</span>
+        <span class="s2">"autocorrelations"</span><span class="p">:</span> <span class="n">per_block</span><span class="p">([</span><span class="n">op</span><span class="p">[</span><span class="s2">"autocorrelations"</span><span class="p">]</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">operators</span><span class="p">]),</span>
+        <span class="s2">"filter_asymmetry"</span><span class="p">:</span> <span class="n">per_block</span><span class="p">([</span><span class="n">op</span><span class="p">[</span><span class="s2">"filter_asymmetry"</span><span class="p">]</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">operators</span><span class="p">]),</span>
+        <span class="s2">"kept_mask"</span><span class="p">:</span> <span class="n">per_block</span><span class="p">(</span><span class="n">kept</span><span class="p">),</span>
+        <span class="s2">"training_mean"</span><span class="p">:</span> <span class="n">per_block</span><span class="p">([</span><span class="n">op</span><span class="p">[</span><span class="s2">"training_mean"</span><span class="p">]</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">operators</span><span class="p">]),</span>
+        <span class="s2">"input_rank"</span><span class="p">:</span> <span class="n">per_block</span><span class="p">([</span><span class="nb">int</span><span class="p">(</span><span class="n">mask</span><span class="o">.</span><span class="n">size</span><span class="p">)</span> <span class="k">for</span> <span class="n">mask</span> <span class="ow">in</span> <span class="n">kept</span><span class="p">]),</span>
+        <span class="s2">"n_kept"</span><span class="p">:</span> <span class="n">per_block</span><span class="p">([</span><span class="nb">int</span><span class="p">(</span><span class="n">mask</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span> <span class="k">for</span> <span class="n">mask</span> <span class="ow">in</span> <span class="n">kept</span><span class="p">]),</span>
+        <span class="s2">"n_removed"</span><span class="p">:</span> <span class="n">per_block</span><span class="p">([</span><span class="nb">int</span><span class="p">(</span><span class="n">mask</span><span class="o">.</span><span class="n">size</span> <span class="o">-</span> <span class="n">mask</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span> <span class="k">for</span> <span class="n">mask</span> <span class="ow">in</span> <span class="n">kept</span><span class="p">]),</span>
+        <span class="s2">"spans"</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">op</span><span class="p">[</span><span class="s2">"span"</span><span class="p">]</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">operators</span><span class="p">),</span>
+        <span class="s2">"n_blocks"</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">operators</span><span class="p">),</span>
+        <span class="s2">"lag_samples"</span><span class="p">:</span> <span class="n">lag</span><span class="p">,</span>
+        <span class="s2">"lag_seconds"</span><span class="p">:</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">sfreq</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">lag</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">sfreq</span><span class="p">),</span>
+        <span class="s2">"sfreq"</span><span class="p">:</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">sfreq</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="n">sfreq</span><span class="p">),</span>
+        <span class="s2">"segment_len"</span><span class="p">:</span> <span class="n">segment_len</span><span class="p">,</span>
+        <span class="s2">"overlap"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">overlap</span><span class="p">),</span>
+        <span class="s2">"preserve_mean"</span><span class="p">:</span> <span class="n">preserve_mean</span><span class="p">,</span>
+        <span class="s2">"n_channels"</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]),</span>
+        <span class="s2">"reject"</span><span class="p">:</span> <span class="n">reject</span><span class="p">,</span>
+        <span class="s2">"threshold_on"</span><span class="p">:</span> <span class="n">threshold_on</span><span class="p">,</span>
+        <span class="s2">"n_remove"</span><span class="p">:</span> <span class="n">n_remove</span><span class="p">,</span>
+        <span class="s2">"rho_threshold"</span><span class="p">:</span> <span class="n">rho_threshold</span><span class="p">,</span>
+        <span class="c1"># Minimal records needed to re-apply the fitted operators; consumed by</span>
+        <span class="c1"># BSSCCA.fit so the estimator never re-derives them.</span>
+        <span class="s2">"operators"</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="n">key</span><span class="p">:</span> <span class="n">op</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+                <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"cleaning_matrix"</span><span class="p">,</span> <span class="s2">"training_mean"</span><span class="p">,</span> <span class="s2">"span"</span><span class="p">,</span> <span class="s2">"own_span"</span><span class="p">)</span>
+            <span class="p">}</span>
+            <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">operators</span>
+        <span class="p">),</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="n">n_remove</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">selection</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"reject=</span><span class="si">{</span><span class="n">reject</span><span class="si">}</span><span class="s2">, n_remove=</span><span class="si">{</span><span class="n">n_remove</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">selection</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"reject=</span><span class="si">{</span><span class="n">reject</span><span class="si">}</span><span class="s2">, threshold_on=</span><span class="si">{</span><span class="n">threshold_on</span><span class="si">}</span><span class="s2">, "</span>
+            <span class="sa">f</span><span class="s2">"rho_threshold=</span><span class="si">{</span><span class="n">rho_threshold</span><span class="si">:</span><span class="s2">.4g</span><span class="si">}</span><span class="s2">"</span>
+        <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">"BSS-CCA: lag=</span><span class="si">%d</span><span class="s2"> sample(s), </span><span class="si">%d</span><span class="s2"> block(s), </span><span class="si">%s</span><span class="s2">, removed </span><span class="si">%s</span><span class="s2"> of </span><span class="si">%s</span><span class="s2"> components."</span><span class="p">,</span>
+        <span class="n">lag</span><span class="p">,</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">operators</span><span class="p">),</span>
+        <span class="n">selection</span><span class="p">,</span>
+        <span class="n">info</span><span class="p">[</span><span class="s2">"n_removed"</span><span class="p">],</span>
+        <span class="n">info</span><span class="p">[</span><span class="s2">"input_rank"</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">cleaned</span><span class="p">,</span> <span class="n">info</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_blocking</span><span class="p">(</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">segment_len</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">overlap</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">sfreq</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">n_times</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Resolve ``segment_len``/``overlap`` to a block length and hop."""</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">overlap</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">overlap</span><span class="p">,</span> <span class="n">Real</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"overlap must be a finite number"</span><span class="p">)</span>
+    <span class="n">overlap</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">overlap</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">overlap</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="mf">0.0</span> <span class="o">&lt;=</span> <span class="n">overlap</span> <span class="o">&lt;</span> <span class="mf">1.0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"overlap must be finite and in [0, 1)"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">segment_len</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+    <span class="n">segment_len</span> <span class="o">=</span> <span class="n">check_positive_real</span><span class="p">(</span><span class="n">segment_len</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"segment_len"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">sfreq</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"sfreq is required when segment_len is used"</span><span class="p">)</span>
+    <span class="n">sfreq</span> <span class="o">=</span> <span class="n">check_positive_real</span><span class="p">(</span><span class="n">sfreq</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"sfreq"</span><span class="p">)</span>
+    <span class="n">n_block</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">segment_len</span> <span class="o">*</span> <span class="n">sfreq</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">n_block</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"segment_len=</span><span class="si">{</span><span class="n">segment_len</span><span class="si">}</span><span class="s2"> resolves to </span><span class="si">{</span><span class="n">n_block</span><span class="si">}</span><span class="s2"> samples at "</span>
+            <span class="sa">f</span><span class="s2">"sfreq=</span><span class="si">{</span><span class="n">sfreq</span><span class="si">}</span><span class="s2">; use a longer block"</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">n_block</span> <span class="o">&gt;=</span> <span class="n">n_times</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+            <span class="s2">"BSS-CCA: segment_len covers the whole recording; learning one operator."</span>
+        <span class="p">)</span>
+    <span class="n">hop</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_block</span> <span class="o">-</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">overlap</span> <span class="o">*</span> <span class="n">n_block</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">n_block</span><span class="p">,</span> <span class="n">hop</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_apply_operators</span><span class="p">(</span>
+    <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">operators</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">preserve_mean</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Apply one global operator, or blend per-block operators."""</span>
+    <span class="n">continuous</span> <span class="o">=</span> <span class="n">epochs_to_continuous</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">operators</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">operator</span> <span class="o">=</span> <span class="n">operators</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">cleaned</span> <span class="o">=</span> <span class="n">apply_spatial_transform</span><span class="p">(</span>
+            <span class="n">operator</span><span class="p">[</span><span class="s2">"cleaning_matrix"</span><span class="p">],</span> <span class="n">continuous</span> <span class="o">-</span> <span class="n">operator</span><span class="p">[</span><span class="s2">"training_mean"</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">preserve_mean</span><span class="p">:</span>
+            <span class="n">cleaned</span> <span class="o">=</span> <span class="n">cleaned</span> <span class="o">+</span> <span class="n">operator</span><span class="p">[</span><span class="s2">"training_mean"</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">continuous_to_epochs</span><span class="p">(</span><span class="n">cleaned</span><span class="p">,</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+    <span class="n">n_channels</span><span class="p">,</span> <span class="n">n_times</span> <span class="o">=</span> <span class="n">continuous</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">chunks</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">operator</span> <span class="ow">in</span> <span class="n">operators</span><span class="p">:</span>
+        <span class="n">ext_start</span><span class="p">,</span> <span class="n">ext_end</span> <span class="o">=</span> <span class="n">operator</span><span class="p">[</span><span class="s2">"span"</span><span class="p">]</span>
+        <span class="n">own_start</span><span class="p">,</span> <span class="n">own_end</span> <span class="o">=</span> <span class="n">operator</span><span class="p">[</span><span class="s2">"own_span"</span><span class="p">]</span>
+        <span class="n">block</span> <span class="o">=</span> <span class="n">apply_spatial_transform</span><span class="p">(</span>
+            <span class="n">operator</span><span class="p">[</span><span class="s2">"cleaning_matrix"</span><span class="p">],</span>
+            <span class="n">continuous</span><span class="p">[:,</span> <span class="n">ext_start</span><span class="p">:</span><span class="n">ext_end</span><span class="p">]</span> <span class="o">-</span> <span class="n">operator</span><span class="p">[</span><span class="s2">"training_mean"</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">preserve_mean</span><span class="p">:</span>
+            <span class="n">block</span> <span class="o">=</span> <span class="n">block</span> <span class="o">+</span> <span class="n">operator</span><span class="p">[</span><span class="s2">"training_mean"</span><span class="p">]</span>
+        <span class="n">chunks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="p">{</span>
+                <span class="s2">"data"</span><span class="p">:</span> <span class="n">block</span><span class="p">,</span>
+                <span class="s2">"ext_start"</span><span class="p">:</span> <span class="n">ext_start</span><span class="p">,</span>
+                <span class="s2">"ext_end"</span><span class="p">:</span> <span class="n">ext_end</span><span class="p">,</span>
+                <span class="s2">"start"</span><span class="p">:</span> <span class="n">own_start</span><span class="p">,</span>
+                <span class="s2">"end"</span><span class="p">:</span> <span class="n">own_end</span><span class="p">,</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">overlap_add_combine</span><span class="p">((</span><span class="n">n_channels</span><span class="p">,</span> <span class="n">n_times</span><span class="p">),</span> <span class="n">chunks</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="BSSCCA">
+<a class="viewcode-back" href="../../generated/mne_denoise.bss_cca.BSSCCA.html#mne_denoise.bss_cca.BSSCCA">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BSSCCA</span><span class="p">(</span><span class="n">BaseEstimator</span><span class="p">,</span> <span class="n">TransformerMixin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Reference-free BSS-CCA artifact-attenuation estimator.</span>
+
+<span class="sd">    Implements the blind source separation by canonical correlation analysis of</span>
+<span class="sd">    De Clercq et al. [1]_, solving CCA between the recording and a lagged copy</span>
+<span class="sd">    of itself and dropping the lowest-correlation components in which muscle</span>
+<span class="sd">    activity concentrates.</span>
+
+<span class="sd">    ``fit`` learns the channel mean and one or more fixed channel-space</span>
+<span class="sd">    operators; ``transform`` applies them without refitting, so a sample gets</span>
+<span class="sd">    the same result whether it is transformed alone, in a temporal chunk, or</span>
+<span class="sd">    among other epochs.</span>
+
+<span class="sd">    With ``segment_len`` set, the fitted operator is *piecewise in time*: block</span>
+<span class="sd">    ``k`` is applied to the samples block ``k`` was learned on. ``transform``</span>
+<span class="sd">    therefore requires input with the same number of samples as ``fit`` saw.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lag_samples : int | None, default=None</span>
+<span class="sd">        Positive lag in samples. ``None`` uses the paper's value of ``1``</span>
+<span class="sd">        unless ``lag_seconds`` is given.</span>
+<span class="sd">    lag_seconds : float | None, default=None</span>
+<span class="sd">        Positive lag in physical time. MNE inputs supply their own sampling</span>
+<span class="sd">        frequency; NumPy inputs require ``sfreq``.</span>
+<span class="sd">    sfreq : float | None, default=None</span>
+<span class="sd">        Sampling frequency for NumPy data. A value supplied alongside an MNE</span>
+<span class="sd">        input must agree with ``info['sfreq']``.</span>
+<span class="sd">    n_remove : int | None, default=None</span>
+<span class="sd">        Number of components to remove from the end selected by ``reject``.</span>
+<span class="sd">    rho_threshold : float | None, default=None</span>
+<span class="sd">        Retain components whose canonical correlation is on the side of this</span>
+<span class="sd">        value selected by ``reject`` -- at least it for ``'low'``, at most it</span>
+<span class="sd">        for ``'high'``. Exactly one of ``n_remove`` or ``rho_threshold`` is</span>
+<span class="sd">        required.</span>
+<span class="sd">    reject : {'low', 'high'}, default='low'</span>
+<span class="sd">        Which end of the autocorrelation spectrum is artifactual. ``'low'``</span>
+<span class="sd">        drops the least autocorrelated components, where muscle concentrates</span>
+<span class="sd">        [1]_. ``'high'`` drops the most autocorrelated components, where slow</span>
+<span class="sd">        drift and movement artifact concentrate.</span>
+<span class="sd">    threshold_on : {'rho', 'rsq'}, default='rho'</span>
+<span class="sd">        Scale on which ``rho_threshold`` is expressed: the canonical correlation</span>
+<span class="sd">        itself, or its square. Ignored when ``n_remove`` is used.</span>
+<span class="sd">    segment_len : float | None, default=None</span>
+<span class="sd">        Block length in seconds. ``None`` learns one operator for all data.</span>
+<span class="sd">    overlap : float, default=0.0</span>
+<span class="sd">        Fraction of ``segment_len`` shared between consecutive blocks.</span>
+<span class="sd">    preserve_mean : bool, default=True</span>
+<span class="sd">        Add the fitted channel mean back after cleaning.</span>
+<span class="sd">    verbose : bool | str | int | None, default=None</span>
+<span class="sd">        MNE-style logging level.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    cleaning_matrix_ : ndarray, shape (n_channels, n_channels)</span>
+<span class="sd">        Channel-space operator, applied to mean-centered data. A tuple of</span>
+<span class="sd">        matrices when ``segment_len`` is set.</span>
+<span class="sd">    filters_ : ndarray, shape (n_components, n_channels)</span>
+<span class="sd">        Canonical filters, rows ordered by decreasing correlation.</span>
+<span class="sd">    patterns_ : ndarray, shape (n_channels, n_components)</span>
+<span class="sd">        Least-squares mixing matrix; columns are sensor patterns.</span>
+<span class="sd">    correlations_ : ndarray, shape (n_components,)</span>
+<span class="sd">        Non-negative canonical correlations in descending order.</span>
+<span class="sd">    autocorrelations_ : ndarray, shape (n_components,)</span>
+<span class="sd">        Signed lag-1 autocorrelation of each component.</span>
+<span class="sd">    filter_asymmetry_ : ndarray, shape (n_components,)</span>
+<span class="sd">        Distance between the two canonical filters of each component.</span>
+<span class="sd">    kept_mask_ : ndarray of bool, shape (n_components,)</span>
+<span class="sd">        Components retained in the reconstruction.</span>
+<span class="sd">    training_mean_ : ndarray, shape (n_channels, 1)</span>
+<span class="sd">        Channel mean learned during ``fit``.</span>
+<span class="sd">    input_rank_ : int</span>
+<span class="sd">        Number of canonical components, below ``n_channels_in_`` when the</span>
+<span class="sd">        training data is rank deficient.</span>
+<span class="sd">    n_kept_, n_removed_ : int</span>
+<span class="sd">        Component counts.</span>
+<span class="sd">    n_channels_in_ : int</span>
+<span class="sd">        Channels seen during ``fit``.</span>
+<span class="sd">    feature_names_in_ : tuple of str | None</span>
+<span class="sd">        Channel names when fitted on an MNE object.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    compute_bss_cca : Canonical array implementation used by ``fit``.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    .. [1] De Clercq, W., Vergult, A., Vanrumste, B., Van Paesschen, W., &amp;</span>
+<span class="sd">           Van Huffel, S. (2006). Canonical correlation analysis applied to</span>
+<span class="sd">           remove muscle artifacts from the electroencephalogram. IEEE</span>
+<span class="sd">           Transactions on Biomedical Engineering, 53(12), 2583-2587.</span>
+<span class="sd">           https://doi.org/10.1109/TBME.2006.879459</span>
+<span class="sd">    """</span>
+
+<div class="viewcode-block" id="BSSCCA.__init__">
+<a class="viewcode-back" href="../../generated/mne_denoise.bss_cca.BSSCCA.html#mne_denoise.bss_cca.BSSCCA.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">lag_samples</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">lag_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">sfreq</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">n_remove</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">rho_threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">reject</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"low"</span><span class="p">,</span>
+        <span class="n">threshold_on</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"rho"</span><span class="p">,</span>
+        <span class="n">segment_len</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">overlap</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+        <span class="n">preserve_mean</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lag_samples</span> <span class="o">=</span> <span class="n">lag_samples</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lag_seconds</span> <span class="o">=</span> <span class="n">lag_seconds</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sfreq</span> <span class="o">=</span> <span class="n">sfreq</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_remove</span> <span class="o">=</span> <span class="n">n_remove</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rho_threshold</span> <span class="o">=</span> <span class="n">rho_threshold</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reject</span> <span class="o">=</span> <span class="n">reject</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">threshold_on</span> <span class="o">=</span> <span class="n">threshold_on</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">segment_len</span> <span class="o">=</span> <span class="n">segment_len</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">overlap</span> <span class="o">=</span> <span class="n">overlap</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">preserve_mean</span> <span class="o">=</span> <span class="n">preserve_mean</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="n">verbose</span></div>
+
+
+    <span class="nd">@verbose</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fit</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">X</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+        <span class="n">y</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BSSCCA</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Learn the BSS-CCA operators.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        X : array-like | mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked</span>
+<span class="sd">            Data used to learn the operators.</span>
+<span class="sd">        y : None</span>
+<span class="sd">            Ignored. Included for scikit-learn compatibility.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        self : BSSCCA</span>
+<span class="sd">            Fitted estimator.</span>
+<span class="sd">        """</span>
+        <span class="k">del</span> <span class="n">y</span>
+        <span class="n">data</span><span class="p">,</span> <span class="n">data_sfreq</span><span class="p">,</span> <span class="n">_mne_type</span><span class="p">,</span> <span class="n">_orig</span><span class="p">,</span> <span class="n">_picks</span><span class="p">,</span> <span class="n">names</span> <span class="o">=</span> <span class="n">extract_data_from_mne</span><span class="p">(</span>
+            <span class="n">X</span><span class="p">,</span> <span class="n">auto_pick</span><span class="o">=</span><span class="kc">True</span>
+        <span class="p">)</span>
+        <span class="n">sfreq</span> <span class="o">=</span> <span class="n">resolve_sfreq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sfreq</span><span class="p">,</span> <span class="n">data_sfreq</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">_cleaned</span><span class="p">,</span> <span class="n">info</span> <span class="o">=</span> <span class="n">compute_bss_cca</span><span class="p">(</span>
+            <span class="n">data</span><span class="p">,</span>
+            <span class="n">lag_samples</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lag_samples</span><span class="p">,</span>
+            <span class="n">lag_seconds</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lag_seconds</span><span class="p">,</span>
+            <span class="n">sfreq</span><span class="o">=</span><span class="n">sfreq</span><span class="p">,</span>
+            <span class="n">n_remove</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_remove</span><span class="p">,</span>
+            <span class="n">rho_threshold</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">rho_threshold</span><span class="p">,</span>
+            <span class="n">reject</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">reject</span><span class="p">,</span>
+            <span class="n">threshold_on</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">threshold_on</span><span class="p">,</span>
+            <span class="n">segment_len</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">segment_len</span><span class="p">,</span>
+            <span class="n">overlap</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">overlap</span><span class="p">,</span>
+            <span class="n">preserve_mean</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">preserve_mean</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cleaning_matrix_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"cleaning_matrix"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">filters_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"filters"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">patterns_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"patterns"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">correlations_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"correlations"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">autocorrelations_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"autocorrelations"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">filter_asymmetry_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"filter_asymmetry"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kept_mask_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"kept_mask"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">training_mean_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"training_mean"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">input_rank_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"input_rank"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_kept_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"n_kept"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_removed_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"n_removed"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">spans_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"spans"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_blocks_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"n_blocks"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lag_samples_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"lag_samples"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sfreq_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"sfreq"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_channels_in_</span> <span class="o">=</span> <span class="n">info</span><span class="p">[</span><span class="s2">"n_channels"</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_times_in_</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">feature_names_in_</span> <span class="o">=</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">names</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">names</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_operators</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="s2">"operators"</span><span class="p">])</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="nd">@verbose</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">transform</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">X</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+        <span class="n">y</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Apply the fitted operators to new data.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        X : array-like | mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked</span>
+<span class="sd">            Data with the channel layout seen during ``fit``.</span>
+<span class="sd">        y : None</span>
+<span class="sd">            Ignored. Included for scikit-learn compatibility.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        X_clean : same type as X</span>
+<span class="sd">            A copy with the selected data channels replaced.</span>
+<span class="sd">        """</span>
+        <span class="k">del</span> <span class="n">y</span>
+        <span class="n">check_is_fitted</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="p">(</span><span class="s2">"cleaning_matrix_"</span><span class="p">,</span> <span class="s2">"training_mean_"</span><span class="p">))</span>
+        <span class="n">data</span><span class="p">,</span> <span class="n">data_sfreq</span><span class="p">,</span> <span class="n">mne_type</span><span class="p">,</span> <span class="n">orig_inst</span><span class="p">,</span> <span class="n">picks</span><span class="p">,</span> <span class="n">names</span> <span class="o">=</span> <span class="n">extract_data_from_mne</span><span class="p">(</span>
+            <span class="n">X</span><span class="p">,</span> <span class="n">ch_names</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">feature_names_in_</span><span class="p">)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">feature_names_in_</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">)</span>
+        <span class="n">transform_sfreq</span> <span class="o">=</span> <span class="n">resolve_sfreq</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sfreq</span><span class="p">,</span> <span class="n">data_sfreq</span><span class="p">,</span> <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">check_matching_sfreq</span><span class="p">(</span><span class="n">transform_sfreq</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">sfreq_</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"BSS-CCA"</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">check_channel_first_data</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"BSS-CCA"</span><span class="p">)</span>
+        <span class="n">check_channel_layout</span><span class="p">(</span>
+            <span class="s2">"BSS-CCA"</span><span class="p">,</span>
+            <span class="n">n_channels</span><span class="o">=</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">],</span>
+            <span class="n">fitted_n_channels</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_channels_in_</span><span class="p">,</span>
+            <span class="n">ch_names</span><span class="o">=</span><span class="kc">None</span> <span class="k">if</span> <span class="n">names</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">names</span><span class="p">),</span>
+            <span class="n">fitted_ch_names</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">feature_names_in_</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_blocks_</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_times_in_</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"a block-wise operator is tied to the timeline it was learned "</span>
+                <span class="sa">f</span><span class="s2">"on: expected </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">n_times_in_</span><span class="si">}</span><span class="s2"> samples, got </span><span class="si">{</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span>
+        <span class="n">cleaned</span> <span class="o">=</span> <span class="n">_apply_operators</span><span class="p">(</span>
+            <span class="n">data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_operators</span><span class="p">,</span> <span class="n">preserve_mean</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">preserve_mean</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">reconstruct_mne_object</span><span class="p">(</span><span class="n">cleaned</span><span class="p">,</span> <span class="n">orig_inst</span><span class="p">,</span> <span class="n">mne_type</span><span class="p">,</span> <span class="n">picks</span><span class="o">=</span><span class="n">picks</span><span class="p">)</span>
+
+    <span class="nd">@verbose</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fit_transform</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">X</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+        <span class="n">y</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="o">**</span><span class="n">fit_params</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Fit on ``X`` and apply the fitted operators to ``X``.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        X : array-like | mne.io.BaseRaw | mne.BaseEpochs | mne.Evoked</span>
+<span class="sd">            Data to fit and transform.</span>
+<span class="sd">        y : None</span>
+<span class="sd">            Ignored. Included for scikit-learn compatibility.</span>
+<span class="sd">        **fit_params : dict</span>
+<span class="sd">            Reserved for scikit-learn compatibility.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        X_clean : same type as X</span>
+<span class="sd">            Cleaned data.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="n">fit_params</span><span class="p">:</span>
+            <span class="n">unexpected</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">fit_params</span><span class="p">))</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Unexpected fit parameters: </span><span class="si">{</span><span class="n">unexpected</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">X</span><span class="p">)</span></div>
+
+</pre></div>
+
+                </article>
+              
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../../_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67"></script>
+<script defer src="../../_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67"></script>
+
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2026, mne-denoise developers.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 9.1.0.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  <!-- # L10n: Setting the PST URL as an argument as this does not need to be localized -->
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.21.0.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>
