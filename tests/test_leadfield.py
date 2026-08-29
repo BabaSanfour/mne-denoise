@@ -165,20 +165,18 @@ def test_validate_leadfield_coerces_to_float():
     assert leadfield.dtype == np.dtype(float)
 
 
-@pytest.mark.parametrize(
-    ("leadfield", "message"),
-    [
-        (np.ones(4), "leadfield must be 2D"),
-        (np.ones((2, 3, 4)), "leadfield must be 2D"),
-        (np.empty((0, 3)), "at least one channel"),
-        (np.empty((2, 0)), "at least one channel and one source"),
-        (np.full((2, 3), np.nan), "finite"),
-        (np.full((2, 3), np.inf), "finite"),
-    ],
-)
-def test_validate_leadfield_rejects_invalid_matrices(leadfield, message):
-    with pytest.raises(ValueError, match=message):
-        _validate_leadfield(leadfield)
+def test_validate_leadfield_rejects_invalid_matrices():
+    cases = [
+        ("one-dimensional", np.ones(4), "leadfield must be 2D"),
+        ("three-dimensional", np.ones((2, 3, 4)), "leadfield must be 2D"),
+        ("no channels", np.empty((0, 3)), "at least one channel"),
+        ("no sources", np.empty((2, 0)), "at least one channel and one source"),
+        ("nan", np.full((2, 3), np.nan), "finite"),
+        ("infinity", np.full((2, 3), np.inf), "finite"),
+    ]
+    for _label, leadfield, message in cases:
+        with pytest.raises(ValueError, match=message):
+            _validate_leadfield(leadfield)
 
 
 def _raw(info):
@@ -198,7 +196,7 @@ def test_resolve_leadfield_builds_sphere_without_forward(eeg_info):
     assert leadfield.shape == (24, 150)
 
 
-def test_resolve_leadfield_from_forward(eeg_info, forward):
+def test_resolve_leadfield_with_supplied_forward(eeg_info, forward):
     """An MNE object plus a forward takes the forward, channel-aligned."""
     gain_before = forward["sol"]["data"].copy()
     row_names_before = forward["sol"]["row_names"].copy()
@@ -274,13 +272,13 @@ def test_spherical_leadfield_requires_eeg_without_forward():
         make_spherical_leadfield(info, n_dipoles=10)
 
 
-@pytest.mark.parametrize("n_dipoles", [0, 1.5, True])
-def test_spherical_leadfield_validates_n_dipoles(eeg_info, n_dipoles):
-    with pytest.raises(ValueError, match="n_dipoles"):
-        make_spherical_leadfield(eeg_info, n_dipoles=n_dipoles)
+def test_spherical_leadfield_validates_n_dipoles(eeg_info):
+    for _label, n_dipoles in (("zero", 0), ("fractional", 1.5), ("boolean", True)):
+        with pytest.raises(ValueError, match="n_dipoles"):
+            make_spherical_leadfield(eeg_info, n_dipoles=n_dipoles)
 
 
-def test_forward_gain_is_validated(eeg_info):
+def test_resolve_leadfield_validates_supplied_gain(eeg_info):
     bad_forward = {
         "sol": {"data": np.ones(24), "row_names": list(eeg_info["ch_names"])}
     }

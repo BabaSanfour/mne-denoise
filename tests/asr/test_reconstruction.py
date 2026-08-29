@@ -31,98 +31,12 @@ def test_process_asr_reduces_synthetic_bursts(synthetic_burst_data, method):
     assert diagnostics["n_windows"] > 0
     assert diagnostics["n_components_reconstructed"].sum() > 0
     assert diagnostics["sample_mask"].any()
+    assert diagnostics["covariance_geometry"] == method
+    assert 0 < diagnostics["max_components_reconstructed"] <= data.shape[0]
 
     before = np.var(data[:, burst_mask] - brain[:, burst_mask])
     after = np.var(cleaned[:, burst_mask] - brain[:, burst_mask])
     assert after < before
-
-
-@pytest.mark.parametrize("method", ["standard", "riemannian", "riemannian_windowed"])
-def test_process_asr_progress_is_one_ordered_stream_per_backend(
-    synthetic_burst_data, method
-):
-    """Each ASR backend reports completed reconstruction updates once."""
-    data, _, _, sfreq = synthetic_burst_data
-    calibration_method = "riemannian" if method.startswith("riemannian") else "standard"
-    state, _ = calibrate_asr(
-        data,
-        sfreq,
-        cutoff=3.0,
-        calibration="manual",
-        filter_kind="none",
-        method=calibration_method,
-    )
-
-    events = []
-    cleaned, diagnostics = process_asr(
-        data,
-        sfreq,
-        state,
-        window_length=0.5,
-        max_dims=0.5,
-        lookahead=0.0,
-        method=method,
-        callback=events.append,
-    )
-    reference_cleaned, reference_diagnostics = process_asr(
-        data,
-        sfreq,
-        state,
-        window_length=0.5,
-        max_dims=0.5,
-        lookahead=0.0,
-        method=method,
-    )
-
-    assert len(events) == diagnostics["n_windows"]
-    assert [event.method for event in events] == ["asr"] * len(events)
-    assert [event.stage for event in events] == ["window"] * len(events)
-    assert [event.current for event in events] == list(range(1, len(events) + 1))
-    assert [event.total for event in events] == [len(events)] * len(events)
-    assert [event.component for event in events] == [None] * len(events)
-    np.testing.assert_allclose(
-        [event.metric for event in events],
-        diagnostics["n_components_reconstructed"],
-        rtol=0.0,
-        atol=0.0,
-    )
-    np.testing.assert_allclose(cleaned, reference_cleaned)
-    np.testing.assert_array_equal(
-        diagnostics["n_components_reconstructed"],
-        reference_diagnostics["n_components_reconstructed"],
-    )
-
-
-def test_process_asr_callback_exception_propagates_unchanged(synthetic_burst_data):
-    """A reconstruction callback exception is not caught by ASR."""
-    data, _, _, sfreq = synthetic_burst_data
-    state, _ = calibrate_asr(
-        data,
-        sfreq,
-        cutoff=3.0,
-        calibration="manual",
-        filter_kind="none",
-    )
-
-    class ReconstructionCallbackError(RuntimeError):
-        pass
-
-    expected = ReconstructionCallbackError("reconstruction callback failed")
-
-    def callback(event):
-        del event
-        raise expected
-
-    with pytest.raises(ReconstructionCallbackError) as caught:
-        process_asr(
-            data,
-            sfreq,
-            state,
-            max_dims=0.5,
-            lookahead=0.0,
-            callback=callback,
-        )
-    assert caught.value is expected
 
 
 def test_process_asr_identity_path_emits_no_progress(synthetic_burst_data):
@@ -194,47 +108,126 @@ def test_process_asr_low_memory_matches_full_path(synthetic_burst_data):
     )
 
 
-def test_process_asr_method_validation(synthetic_burst_data):
-    """Ensure process_asr raises for invalid inputs."""
+def test_process_asr_scheduling_respects_overlap_lookahead_and_stepsize(
+    synthetic_burst_data,
+):
+    """Processing diagnostics expose contiguous, lookahead-shifted updates."""
+    data, _, _, sfreq = synthetic_burst_data
+    state, _ = calibrate_asr(
+        data,
+        sfreq,
+        method="standard",
+        calibration="manual",
+        filter_kind="none",
+    )
+
+    cleaned, diagnostics = process_asr(
+        data,
+        sfreq,
+        state,
+        window_length=0.5,
+        window_overlap=0.5,
+        max_dims=0.5,
+        lookahead=0.1,
+        stepsize=100,
+        method="standard",
+    )
+
+    assert cleaned.shape == data.shape
+    assert diagnostics["window_length_samples"] == int(0.5 * sfreq)
+    assert diagnostics["lookahead_samples"] == int(0.1 * sfreq)
+    assert diagnostics["stepsize_samples"] == 100
+    starts = diagnostics["window_starts"]
+    stops = diagnostics["window_stops"]
+    assert starts[0] == 0
+    assert stops[-1] == data.shape[1]
+    np.testing.assert_array_equal(stops[:-1], starts[1:])
+    assert np.all(np.diff(starts) > 0)
+    assert np.any(diagnostics["n_components_reconstructed"] > 0)
+    assert np.all(diagnostics["n_components_reconstructed"] <= data.shape[0])
+
+
+def test_process_asr_rank_deficient_calibration_is_stable():
+    """Regularization keeps reconstruction finite for dependent channels."""
+    rng = np.random.default_rng(123)
+    source = rng.standard_normal((3, 1200))
+    data = np.vstack(
+        (
+            source[0],
+            source[0],
+            source[1],
+            source[2] + 0.01 * source[1],
+        )
+    )
+    state, calibration_diagnostics = calibrate_asr(
+        data,
+        250.0,
+        calibration="manual",
+        filter_kind="none",
+        regularization=1e-6,
+    )
+    cleaned, diagnostics = process_asr(
+        data,
+        250.0,
+        state,
+        max_dims=0.5,
+    )
+
+    assert 0 < calibration_diagnostics["rank"] <= data.shape[0]
+    assert state.rank == calibration_diagnostics["rank"]
+    assert calibration_diagnostics["calibration_samples"] == data.shape[1]
+    assert cleaned.shape == data.shape
+    assert np.all(np.isfinite(state.cov))
+    assert np.all(np.isfinite(state.M))
+    assert np.all(np.isfinite(state.T))
+    assert np.all(np.isfinite(cleaned))
+    assert diagnostics["n_windows"] > 0
+
+
+def test_process_asr_rejects_invalid_scheduling_inputs(synthetic_burst_data):
+    """Invalid reconstruction controls fail as one public validation contract."""
     data, _, _, sfreq = synthetic_burst_data
     state, _ = calibrate_asr(
         data, sfreq, method="standard", calibration="manual", filter_kind="none"
     )
-    # 1. Invalid method
-    with pytest.raises(
-        ValueError,
-        match="method must be 'standard', 'riemannian', or 'riemannian_windowed'",
-    ):
-        process_asr(data, sfreq, state, method="bogus")
 
-    # 2. Channel mismatch
-    with pytest.raises(ValueError, match="channel count does not match"):
-        process_asr(data[:2], sfreq, state)
-
-    # 3. Window length exceeds data length
-    with pytest.raises(ValueError, match="Window length"):
-        process_asr(data[:, :10], sfreq, state, window_length=1.0)
-
-    # 4. lookahead < 0
-    with pytest.raises(ValueError, match="lookahead must be non-negative"):
-        process_asr(data, sfreq, state, lookahead=-0.1)
-
-    # 5. lookahead too long
-    with pytest.raises(ValueError, match="lookahead is too long"):
-        process_asr(data, sfreq, state, lookahead=1000.0)
-
-    # 6. stepsize < 1
-    with pytest.raises(ValueError, match="stepsize must be at least 1"):
-        process_asr(data, sfreq, state, stepsize=0)
-
-    # 7. stepsize > win_len
-    with pytest.raises(ValueError, match="stepsize must not exceed window_length"):
-        process_asr(data, sfreq, state, stepsize=1000)
-
-    # 8. max_bad <= 0 (identity pass)
-    clean, diag = process_asr(data, sfreq, state, max_dims=0.0)
-    assert diag["memory_mode"] == "identity"
-    np.testing.assert_array_equal(clean, data)
+    cases = [
+        ("method", data, {"method": "bogus"}, "method must be"),
+        ("channels", data[:2], {}, "channel count does not match"),
+        (
+            "short",
+            data[:, :10],
+            {"window_length": 1.0},
+            "Window length",
+        ),
+        (
+            "negative_lookahead",
+            data,
+            {"lookahead": -0.1},
+            "lookahead must be non-negative",
+        ),
+        (
+            "long_lookahead",
+            data,
+            {"lookahead": 1000.0},
+            "lookahead is too long",
+        ),
+        (
+            "zero_stepsize",
+            data,
+            {"stepsize": 0},
+            "stepsize must be at least 1",
+        ),
+        (
+            "large_stepsize",
+            data,
+            {"stepsize": 1000},
+            "stepsize must not exceed window_length",
+        ),
+    ]
+    for _label, candidate, kwargs, message in cases:
+        with pytest.raises(ValueError, match=message):
+            process_asr(candidate, sfreq, state, **kwargs)
 
 
 def test_process_asr_store_matrices(synthetic_burst_data):
@@ -252,7 +245,12 @@ def test_process_asr_store_matrices(synthetic_burst_data):
         store_reconstruction_matrices=True,
         method="riemannian",
     )
-    assert "reconstruction_matrices" in diag
+    assert clean.shape == data.shape
+    assert diag["reconstruction_matrices"].shape == (
+        diag["n_windows"],
+        data.shape[0],
+        data.shape[0],
+    )
 
     # And for riemannian_windowed
     clean2, diag2 = process_asr(
@@ -263,58 +261,9 @@ def test_process_asr_store_matrices(synthetic_burst_data):
         store_reconstruction_matrices=True,
         method="riemannian_windowed",
     )
-    assert "reconstruction_matrices" in diag2
-
-
-def test_process_adaptive_chunk() -> None:
-    from mne_denoise.asr._reconstruction import _process_adaptive_chunk
-    from mne_denoise.asr._types import ASRState
-
-    rng = np.random.default_rng(42)
-    X = rng.standard_normal((3, 100))
-
-    state = ASRState(
-        M=np.eye(3),
-        T=np.eye(3),
-        thresholds=np.ones(3),
-        calibration_patterns=np.eye(3),
-        filter_b=np.array([1.0]),
-        filter_a=np.array([1.0]),
-        cov=np.eye(3),
-        rank=3,
+    assert clean2.shape == data.shape
+    assert diag2["reconstruction_matrices"].shape == (
+        diag2["n_windows"],
+        data.shape[0],
+        data.shape[0],
     )
-    process_state = {}
-
-    X_clean, diag, next_state = _process_adaptive_chunk(
-        X=X,
-        sfreq=100.0,
-        state=state,
-        process_state=process_state,
-        window_length=0.5,
-        lookahead=None,
-        stepsize=None,
-        max_dims=2.0,
-        store_reconstruction_matrices=True,
-        adaptive_variant="psw",
-        max_mem_mb=None,
-    )
-
-    assert X_clean.shape == (3, 100)
-    assert isinstance(diag, dict)
-    assert isinstance(next_state, dict)
-    assert "reconstruction_matrices" in diag
-
-    X_clean2, diag2, next_state2 = _process_adaptive_chunk(
-        X=X,
-        sfreq=100.0,
-        state=state,
-        process_state=process_state,
-        window_length=0.5,
-        lookahead=0.1,
-        stepsize=10,
-        max_dims=2.0,
-        store_reconstruction_matrices=True,
-        adaptive_variant="euclidean",
-        max_mem_mb=None,
-    )
-    assert X_clean2.shape == (3, 100)

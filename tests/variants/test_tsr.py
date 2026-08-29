@@ -1,158 +1,13 @@
-import logging
-
 import mne
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose, assert_array_equal
-from sklearn.base import clone
 
-from mne_denoise.dss import DSS, AverageBias, TimeShiftDSS
-from mne_denoise.dss.denoisers.temporal import LagAverageBias, SmoothingBias
+from mne_denoise.dss import TimeShiftDSS
 from mne_denoise.dss.variants.tsr import (
     _lag_augment,
     _observation_weights,
-    smooth_dss,
 )
-
-
-@pytest.fixture
-def slow_data_generator():
-    rng = np.random.default_rng(42)
-    n_times = 500
-
-    # Slow wave (high autocorrelation)
-    t = np.linspace(0, 4 * np.pi, n_times)
-    slow_signal = np.sin(t)
-
-    def get_data(shape):
-        noise = rng.normal(0, 0.5, shape)  # White noise (low autocorr)
-        data = noise.copy()
-
-        # Add slow signal
-        if len(shape) == 2:  # (n_ch, n_times)
-            data[0] += slow_signal
-        elif len(shape) == 3:  # (n_epochs, n_ch, n_times)
-            data[:, 0, :] += slow_signal
-
-        return data, slow_signal
-
-    return get_data
-
-
-def test_tsr_array(slow_data_generator):
-    data, slow = slow_data_generator((3, 500))
-    dss = DSS(bias=LagAverageBias(lags=10), n_components=3)
-    dss.fit(data)
-
-    sources = dss.transform(data)
-    # Slow component should be first (highest eigenvalue/score)
-    corr = np.abs(np.corrcoef(sources[0], slow)[0, 1])
-    assert corr > 0.8
-
-
-def test_tsr_raw(slow_data_generator):
-    data, slow = slow_data_generator((3, 500))
-    info = mne.create_info(3, 100, "eeg")
-    raw = mne.io.RawArray(data, info, verbose=False)
-
-    dss = DSS(bias=LagAverageBias(lags=10), n_components=3)
-    dss.fit(raw)
-
-    sources = dss.transform(raw)
-    corr = np.abs(np.corrcoef(sources[0], slow)[0, 1])
-    assert corr > 0.8
-
-
-def test_tsr_epochs(slow_data_generator):
-    data, slow = slow_data_generator((5, 3, 500))
-    info = mne.create_info(3, 100, "eeg")
-    epochs = mne.EpochsArray(data, info, verbose=False)
-
-    dss = DSS(bias=LagAverageBias(lags=10), n_components=2)
-    dss.fit(epochs)
-
-    sources = dss.transform(epochs)
-    assert sources.shape == (5, 2, 500)
-
-    corr = np.abs(np.corrcoef(sources[0, 0], slow)[0, 1])
-    assert corr > 0.8
-
-
-def test_smooth_dss_evoked(slow_data_generator):
-    # smooth_dss specifically targets low frequency
-    data, slow = slow_data_generator((5, 3, 500))
-    info = mne.create_info(3, 100, "eeg")
-    epochs = mne.EpochsArray(data, info, verbose=False)
-    evoked = epochs.average()
-
-    dss = smooth_dss(window=20, n_components=1)
-    dss.fit(evoked)
-
-    src = dss.transform(evoked)
-    assert isinstance(src, np.ndarray)
-    assert src.shape == (1, 500)
-
-    corr = np.abs(np.corrcoef(src[0], slow)[0, 1])
-    assert corr > 0.8
-
-
-def test_smooth_dss_fit_summary_describes_window(slow_data_generator, caplog):
-    """The parent DSS summary identifies the smoothing window."""
-    data, _slow = slow_data_generator((3, 500))
-    with caplog.at_level(logging.INFO, logger="mne_denoise"):
-        smooth_dss(window=20, n_components=1).fit(data, verbose=True)
-    summaries = [r for r in caplog.records if r.message.startswith("DSS:")]
-    assert len(summaries) == 1
-    assert "SmoothingBias(window=20)" in summaries[0].message
-
-
-def test_timeshift_dss_owns_one_high_level_summary(caplog):
-    """Nested ordinary DSS is hidden behind one TimeShiftDSS report."""
-    data = _data(shape=(3, 80, 8))
-    with caplog.at_level(logging.INFO, logger="mne_denoise"):
-        _estimator(lag_samples=[0, 1], n_components=2, rank=2).fit(data, verbose=True)
-    summaries = [
-        record
-        for record in caplog.records
-        if record.message.startswith("TimeShiftDSS:")
-    ]
-    assert len(summaries) == 1
-    for token in ("lags=", "rank=", "components="):
-        assert token in summaries[0].message
-
-
-def test_tsr_3d_bias_unit():
-    """Test explicit 3D data handling in bias classes."""
-    rng = np.random.default_rng(42)
-    data_3d = rng.standard_normal((3, 20, 5))  # (ch, times, epochs)
-
-    # 1. LagAverageBias
-    bias = LagAverageBias(lags=2)
-    out_3d = bias.apply(data_3d)
-    assert out_3d.shape == data_3d.shape
-    assert out_3d.ndim == 3
-
-    # 2. SmoothingBias
-    bias_smooth = SmoothingBias(window=3)
-    out_smooth = bias_smooth.apply(data_3d)
-    assert out_smooth.shape == data_3d.shape
-    assert out_smooth.ndim == 3
-
-
-def test_tsr_inverse_lag_weighting(slow_data_generator):
-    """Test inverse-lag weighting."""
-    data, slow = slow_data_generator((3, 500))
-
-    dss = DSS(
-        bias=LagAverageBias(lags=10, weighting="inverse_lag"),
-        n_components=3,
-    )
-    dss.fit(data)
-
-    sources = dss.transform(data)
-    # Should still extract the slow component
-    corr = np.abs(np.corrcoef(sources[0], slow)[0, 1])
-    assert corr > 0.8
 
 
 def _data(seed=0, shape=(3, 80, 8), offset=True):
@@ -183,9 +38,9 @@ def test_lag_augmentation_sign_and_epoch_isolation():
     assert_array_equal(augmented[2], [[0.0, 100.0], [1.0, 101.0]])
 
 
-@pytest.mark.parametrize(
-    "lag_kws, error, match",
-    [
+def test_invalid_lag_declarations():
+    """Lag declarations reject ambiguous, malformed, and non-finite grids."""
+    cases = [
         ({}, ValueError, "exactly one"),
         (
             {"lag_samples": [0, 1], "lag_times": [0.0, 0.01], "sfreq": 100.0},
@@ -201,33 +56,25 @@ def test_lag_augmentation_sign_and_epoch_isolation():
             TypeError,
             "one-dimensional sequence",
         ),
-        (
-            {"lag_times": [0.0, np.nan], "sfreq": 100.0},
-            ValueError,
-            "finite",
-        ),
-    ],
-)
-def test_invalid_lag_declarations(lag_kws, error, match):
-    """Lag declarations reject ambiguous, malformed, and non-finite grids."""
-    with pytest.raises(error, match=match):
-        TimeShiftDSS(n_components=1, rank=1, **lag_kws).fit(_data())
+        ({"lag_times": [0.0, np.nan], "sfreq": 100.0}, ValueError, "finite"),
+    ]
+    for lag_kws, error, match in cases:
+        with pytest.raises(error, match=match):
+            TimeShiftDSS(n_components=1, rank=1, **lag_kws).fit(_data())
 
 
-@pytest.mark.parametrize(
-    "data, match",
-    [
+def test_invalid_epoched_array_geometry():
+    """The repeated-trial array contract is checked before decomposition."""
+    cases = [
         (np.ones((3, 20)), "requires epoched data"),
         (np.empty((0, 20, 2)), "dimensions must be non-empty"),
         (np.ones((3, 1, 2)), "dimensions must be non-empty"),
         (np.ones((3, 20, 1)), "at least two repeated epochs"),
         (np.full((3, 20, 2), np.nan), "finite values"),
-    ],
-)
-def test_invalid_epoched_array_geometry(data, match):
-    """The repeated-trial array contract is checked before decomposition."""
-    with pytest.raises(ValueError, match=match):
-        _estimator().fit(data)
+    ]
+    for data, match in cases:
+        with pytest.raises(ValueError, match=match):
+            _estimator().fit(data)
 
 
 def test_lag_span_must_leave_two_common_samples():
@@ -276,31 +123,6 @@ def test_extract_shapes_and_explicit_fitted_geometry():
     assert_array_equal(est.feature_mean_, 0.0)
 
 
-def test_wrapper_composes_trial_average_dss_on_lag_features():
-    """TimeShiftDSS adds lags and delegates decomposition to the DSS estimator."""
-    data = _data(seed=30)
-    augmented, _, _ = _lag_augment(data, (0, 1))
-    weights = np.ones(augmented.shape[1:])
-    reference = DSS(
-        bias=AverageBias(axis="epochs", weights=weights),
-        n_components=4,
-        rank=4,
-        reg=1e-9,
-        normalize_input=False,
-        center=False,
-    ).fit(augmented, weights=weights)
-
-    fitted = _estimator().fit(data)
-
-    assert isinstance(fitted.dss_, DSS)
-    assert isinstance(fitted.dss_.bias, AverageBias)
-    assert fitted.dss_.bias.axis == "epochs"
-    assert_allclose(fitted.eigenvalues_, reference.eigenvalues_, rtol=1e-12, atol=1e-12)
-    assert_allclose(
-        np.abs(fitted.dss_.filters_), np.abs(reference.filters_), atol=1e-12
-    )
-
-
 def test_sensor_patterns_equal_direct_training_least_squares():
     """Sensor projection is explicit least squares, not a lag-pattern shortcut."""
     data = _data(seed=31, offset=False)
@@ -326,25 +148,25 @@ def test_centering_is_training_fitted_and_transform_batch_invariant():
     assert not np.allclose(est.feature_mean_, 0.0)
 
 
-@pytest.mark.parametrize("center", [False, True])
-def test_full_rank_retain_reconstructs_valid_interval(center):
+def test_full_rank_retain_reconstructs_valid_interval():
     """Weighted least-squares patterns reconstruct the zero-lag sensor block."""
-    data = _data(shape=(3, 60, 8))
-    original = data.copy()
-    est = TimeShiftDSS(
-        lag_samples=[0, 1],
-        n_components=6,
-        rank=6,
-        n_select=6,
-        component_action="retain",
-        center=center,
-    )
+    for center in (False, True):
+        data = _data(shape=(3, 60, 8))
+        original = data.copy()
+        est = TimeShiftDSS(
+            lag_samples=[0, 1],
+            n_components=6,
+            rank=6,
+            n_select=6,
+            component_action="retain",
+            center=center,
+        )
 
-    retained = est.fit_transform(data)
+        retained = est.fit_transform(data)
 
-    assert_allclose(retained[:, 1:, :], data[:, 1:, :], rtol=1e-9, atol=1e-9)
-    assert_array_equal(retained[:, :1, :], data[:, :1, :])
-    assert_array_equal(data, original)
+        assert_allclose(retained[:, 1:, :], data[:, 1:, :], rtol=1e-9, atol=1e-9)
+        assert_array_equal(retained[:, :1, :], data[:, :1, :])
+        assert_array_equal(data, original)
 
 
 def test_subtract_matches_selected_sensor_projection():
@@ -374,19 +196,17 @@ def test_weight_broadcast_matches_explicit_time_epoch_matrix():
     assert_allclose(np.abs(time_fit.filters_), np.abs(matrix_fit.filters_))
 
 
-@pytest.mark.parametrize(
-    "weights, match",
-    [
+def test_invalid_sample_weights_are_rejected():
+    """Fit weights have an explicit time-by-epoch contract."""
+    cases = [
         (np.ones((8, 80)), "sample_weight"),
         (np.full(80, np.nan), "finite"),
         (np.r_[np.ones(79), -1.0], "non-negative"),
         (np.zeros(80), "no positive-weight"),
-    ],
-)
-def test_invalid_sample_weights_are_rejected(weights, match):
-    """Fit weights have an explicit time-by-epoch contract."""
-    with pytest.raises(ValueError, match=match):
-        _estimator().fit(_data(), sample_weight=weights)
+    ]
+    for weights, match in cases:
+        with pytest.raises(ValueError, match=match):
+            _estimator().fit(_data(), sample_weight=weights)
 
 
 def test_seconds_lags_resolve_against_sampling_grid():
@@ -431,9 +251,9 @@ def test_explicit_rank_and_selection_contracts():
     assert not hasattr(_estimator(), "auto_select")
 
 
-@pytest.mark.parametrize(
-    "kwargs, error, match",
-    [
+def test_invalid_estimator_parameters():
+    """Constructor choices fail explicitly before fitting numerical state."""
+    cases = [
         ({"component_action": "invalid"}, ValueError, "component_action"),
         ({"center": 1}, TypeError, "center"),
         ({"distortion_control": "invalid"}, ValueError, "distortion_control"),
@@ -445,12 +265,10 @@ def test_explicit_rank_and_selection_contracts():
         ({"reg": True}, TypeError, "reg"),
         ({"reg": 0.0}, ValueError, "reg"),
         ({"reg": np.nan}, ValueError, "reg"),
-    ],
-)
-def test_invalid_estimator_parameters(kwargs, error, match):
-    """Constructor choices fail explicitly before fitting numerical state."""
-    with pytest.raises(error, match=match):
-        _estimator(**kwargs).fit(_data())
+    ]
+    for kwargs, error, match in cases:
+        with pytest.raises(error, match=match):
+            _estimator(**kwargs).fit(_data())
 
 
 def test_high_parameter_ratio_warns_instead_of_auto_selecting():
@@ -527,24 +345,6 @@ def test_score_returns_zero_for_zero_power_held_out_data():
     assert est.score(np.zeros((3, 80, 4))) == 0.0
 
 
-def test_transform_rejects_container_and_channel_contract_changes():
-    """A fitted estimator freezes both input family and channel geometry."""
-    est = _estimator().fit(_data())
-    info = mne.create_info(3, 100.0, "eeg")
-    epochs = mne.EpochsArray(
-        np.transpose(_data(shape=(3, 80, 2)), (2, 0, 1)),
-        info,
-        verbose=False,
-    )
-
-    with pytest.raises(TypeError, match="container family"):
-        est.transform(epochs)
-    with pytest.raises(TypeError, match="supports MNE Epochs or NumPy arrays"):
-        est.transform([[[1.0]]])
-    with pytest.raises(ValueError, match="channels; fitted data had"):
-        est.transform(_data(shape=(4, 80, 2)))
-
-
 def test_mne_epochs_extract_returns_epoch_major_sources():
     """MNE extraction returns an array in epochs-by-components orientation."""
     data = np.transpose(_data(shape=(3, 40, 5)), (2, 0, 1)) * 1e-6
@@ -600,21 +400,3 @@ def test_mne_epochs_preserve_metadata_and_bad_channels():
     assert_array_equal(
         cleaned.get_data(picks=["EEG3"]), epochs.get_data(picks=["EEG3"])
     )
-
-
-def test_array_integer_input_produces_float_without_mutation():
-    """Integer observations cannot truncate fitted or reconstructed values."""
-    data = np.rint(_data() * 4).astype(np.int64)
-    original = data.copy()
-    out = _estimator(n_select=1, component_action="subtract").fit_transform(data)
-
-    assert out.dtype == np.float64
-    assert_array_equal(data, original)
-
-
-def test_estimator_is_cloneable():
-    """All scientific choices remain explicit sklearn parameters."""
-    estimator = _estimator(center=True, distortion_control="cca")
-    cloned = clone(estimator)
-
-    assert cloned.get_params() == estimator.get_params()

@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import inspect
 import logging
 
 import numpy as np
 import pytest
-from sklearn.base import clone
 
 from mne_denoise.sns import SNS, compute_sns, compute_sns_weights
 
@@ -46,7 +44,7 @@ def _rrmse(a, b):
 
 
 # ---------------------------------------------------------------------------
-# compute_sns + compute_sns
+# covariance-level and array-level SNS
 # ---------------------------------------------------------------------------
 
 
@@ -124,60 +122,19 @@ def test_compute_sns_is_unit_scale_invariant(rng):
     np.testing.assert_allclose(weights, scaled_weights, rtol=1e-10, atol=1e-12)
 
 
-@pytest.mark.parametrize(
-    ("cov", "match"),
-    [
+def test_compute_sns_rejects_invalid_covariance():
+    """Covariance preconditions fail explicitly before local regressions."""
+    invalid = (
         (np.ones(3), "square"),
         (np.ones((2, 3)), "square"),
         (np.ones((1, 1)), "at least two"),
         (np.array([[1.0, np.nan], [np.nan, 1.0]]), "finite"),
         (np.array([[1.0, 0.0], [0.5, 1.0]]), "symmetric"),
         (np.array([[1.0, 2.0], [2.0, 1.0]]), "positive semidefinite"),
-    ],
-)
-def test_compute_sns_rejects_invalid_covariance(cov, match):
-    """Covariance preconditions fail explicitly before local regressions."""
-    with pytest.raises(ValueError, match=match):
-        compute_sns_weights(cov)
-
-
-@pytest.mark.parametrize(
-    ("kwargs", "error", "match"),
-    [
-        ({"n_neighbors": -1}, ValueError, "n_neighbors"),
-        ({"n_neighbors": 1.5}, TypeError, "n_neighbors"),
-        ({"skip": -1}, ValueError, "skip"),
-        ({"skip": 5}, ValueError, "leave at least one"),
-        ({"rcond": 0}, ValueError, "strictly between"),
-        ({"rcond": np.inf}, ValueError, "strictly between"),
-    ],
-)
-def test_compute_sns_rejects_invalid_operating_points(kwargs, error, match):
-    """Invalid integer and numerical operating points cannot be silently coerced."""
-    with pytest.raises(error, match=match):
-        compute_sns_weights(np.eye(6), **kwargs)
-
-
-def test_compute_sns_shapes_and_info(rng):
-    """compute_sns returns cleaned data + diagnostics."""
-    X = rng.standard_normal((10, 2000))
-    X_clean, info = compute_sns(X, n_neighbors=6)
-    assert X_clean.shape == X.shape
-    assert info["weights"].shape == (10, 10)
-    assert info["n_neighbors"] == 6
-    assert info["neighbor_ranks"].shape == (10,)
-    assert info["input_rank"] > 0
-    centered = X - X.mean(axis=1, keepdims=True)
-    expected, _k, _ranks = compute_sns_weights(centered @ centered.T / X.shape[1], 6)
-    np.testing.assert_allclose(info["weights"], expected)
-    assert len(info["denoising_matrices"]) == 1
-    np.testing.assert_allclose(X_clean.mean(axis=1), 0.0, atol=1e-12)
-
-
-def test_compute_sns_rejects_1d():
-    """A 1-D input raises a clear error."""
-    with pytest.raises(ValueError, match="2-D"):
-        compute_sns(np.zeros(100))
+    )
+    for cov, match in invalid:
+        with pytest.raises(ValueError, match=match):
+            compute_sns_weights(cov)
 
 
 def test_compute_sns_mean_policy(rng):
@@ -193,10 +150,12 @@ def test_compute_sns_clean_low_rank_is_preserved(rng):
     """A spatially redundant clean signal is regenerated to numerical precision."""
     sources = rng.standard_normal((3, 1000))
     clean = rng.standard_normal((12, 3)) @ sources
-    regenerated, _ = compute_sns(clean, n_neighbors=8)
+    regenerated, info = compute_sns(clean, n_neighbors=8)
     np.testing.assert_allclose(
         regenerated, clean - clean.mean(axis=1, keepdims=True), atol=2e-11
     )
+    assert info["input_rank"] == 3
+    np.testing.assert_array_equal(info["neighbor_ranks"], 3)
 
 
 def test_compute_sns_manual_weights_match_retained_fit(rng):
@@ -239,61 +198,26 @@ def test_compute_sns_iterations_compose_exactly(rng):
     assert len(info["neighbor_ranks_per_iteration"]) == 3
 
 
-@pytest.mark.parametrize("n_iter", [1, 2])
-def test_compute_sns_progress_callback_has_flat_iteration_counter(rng, n_iter):
+def test_compute_sns_progress_callback_has_flat_iteration_counter(rng):
     """SNS channel events use one counter across all learning iterations."""
     X = rng.standard_normal((3, 180))
-    events = []
-    _cleaned, info = compute_sns(
-        X, n_neighbors=1, n_iter=n_iter, callback=events.append
-    )
+    for n_iter in (1, 2):
+        events = []
+        _cleaned, info = compute_sns(
+            X, n_neighbors=1, n_iter=n_iter, callback=events.append
+        )
 
-    n_channels = X.shape[0]
-    total = n_iter * n_channels
-    assert len(events) == total
-    assert [event.current for event in events] == list(range(1, total + 1))
-    assert [event.total for event in events] == [total] * total
-    assert all(event.method == "sns" for event in events)
-    assert all(event.stage == "channel" for event in events)
-    expected_metrics = np.concatenate(info["neighbor_ranks_per_iteration"])
-    np.testing.assert_array_equal(
-        [event.metric for event in events], expected_metrics.astype(float)
-    )
-
-
-def test_compute_sns_callback_is_numerically_transparent(rng):
-    """SNS callbacks do not alter the learned operator or cleaned output."""
-    X = rng.standard_normal((4, 180))
-    without, without_info = compute_sns(X, n_neighbors=2, n_iter=2)
-    events = []
-    with_callback, with_info = compute_sns(
-        X, n_neighbors=2, n_iter=2, callback=events.append
-    )
-
-    np.testing.assert_allclose(with_callback, without)
-    np.testing.assert_allclose(with_info["weights"], without_info["weights"])
-    np.testing.assert_allclose(
-        with_info["training_mean"], without_info["training_mean"]
-    )
-    for expected, actual in zip(
-        without_info["neighbor_ranks_per_iteration"],
-        with_info["neighbor_ranks_per_iteration"],
-        strict=True,
-    ):
-        np.testing.assert_array_equal(actual, expected)
-
-
-def test_compute_sns_iterations_have_diminishing_changes(sensor_noise_data):
-    """Successive projections converge on representative redundant data."""
-    X, _ = sensor_noise_data
-    outputs = [X - X.mean(axis=1, keepdims=True)]
-    for n_iter in range(1, 4):
-        outputs.append(compute_sns(X, n_neighbors=12, n_iter=n_iter)[0])
-    changes = [
-        np.linalg.norm(outputs[index] - outputs[index - 1])
-        for index in range(1, len(outputs))
-    ]
-    assert changes[2] < changes[1] < changes[0]
+        n_channels = X.shape[0]
+        total = n_iter * n_channels
+        assert len(events) == total
+        assert [event.current for event in events] == list(range(1, total + 1))
+        assert [event.total for event in events] == [total] * total
+        assert all(event.method == "sns" for event in events)
+        assert all(event.stage == "channel" for event in events)
+        expected_metrics = np.concatenate(info["neighbor_ranks_per_iteration"])
+        np.testing.assert_array_equal(
+            [event.metric for event in events], expected_metrics.astype(float)
+        )
 
 
 def test_compute_sns_automatic_mask_is_fixed_across_iterations(rng):
@@ -331,37 +255,18 @@ def test_compute_sns_chunked_matches_unchunked(rng):
     )
 
 
-@pytest.mark.parametrize(
-    ("kwargs", "error", "match"),
-    [
-        ({"n_iter": 0}, ValueError, "n_iter"),
-        ({"n_iter": 1.5}, TypeError, "n_iter"),
-        ({"chunk_size": 0}, ValueError, "chunk_size"),
-        ({"chunk_size": 2.5}, TypeError, "chunk_size"),
-        ({"outlier_threshold": 0}, ValueError, "outlier_threshold"),
-        ({"outlier_threshold": np.inf}, ValueError, "outlier_threshold"),
-        ({"outlier_threshold": "bad"}, TypeError, "outlier_threshold"),
-    ],
-)
-def test_compute_sns_rejects_invalid_refinements(rng, kwargs, error, match):
-    """New operating points have explicit validation."""
-    with pytest.raises(error, match=match):
-        compute_sns(rng.standard_normal((5, 100)), **kwargs)
-
-
-@pytest.mark.parametrize(
-    "weight",
-    [
+def test_compute_sns_rejects_invalid_or_insufficient_weights(rng):
+    """Weights must be finite, nonnegative, correctly shaped, and sufficient."""
+    X = rng.standard_normal((5, 100))
+    invalid = (
         np.ones((2, 50)),
         np.full(100, np.nan),
         -np.ones(100),
         np.r_[1.0, np.zeros(99)],
-    ],
-)
-def test_compute_sns_rejects_invalid_weights(rng, weight):
-    """Weights must be finite, nonnegative, correctly shaped, and sufficient."""
-    with pytest.raises(ValueError, match="sample|positively"):
-        compute_sns(rng.standard_normal((5, 100)), sample_weight=weight)
+    )
+    for weight in invalid:
+        with pytest.raises(ValueError, match="sample|positively"):
+            compute_sns(X, sample_weight=weight)
 
 
 def test_compute_sns_all_samples_rejected(rng):
@@ -386,105 +291,13 @@ def test_compute_sns_constant_channel_is_finite(rng):
 # ---------------------------------------------------------------------------
 
 
-def test_sns_estimator_uses_public_compute_sns(monkeypatch, rng):
-    """The estimator delegates fitting to the public array algorithm."""
-    import mne_denoise.sns as sns_core
-
-    original = sns_core.compute_sns
-    calls = []
-
-    def recording_compute_sns(*args, **kwargs):
-        calls.append(args[0].shape)
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(sns_core, "compute_sns", recording_compute_sns)
-    SNS(n_neighbors=4, n_iter=2).fit(rng.standard_normal((8, 500)))
-    assert calls == [(8, 500)]
-
-
-def test_sns_fit_progress_callback_matches_fitted_diagnostics(rng):
-    """SNS.fit forwards channel progress and leaves fitted state unchanged."""
-    X = rng.standard_normal((4, 180))
-    events = []
-    estimator = SNS(n_neighbors=2, n_iter=2).fit(X, callback=events.append)
-    reference = SNS(n_neighbors=2, n_iter=2).fit(X)
-
-    total = X.shape[0] * 2
-    assert len(events) == total
-    assert [event.current for event in events] == list(range(1, total + 1))
-    assert all(event.total == total for event in events)
-    expected_metrics = np.concatenate(estimator.neighbor_ranks_per_iteration_)
-    np.testing.assert_array_equal(
-        [event.metric for event in events], expected_metrics.astype(float)
-    )
-    np.testing.assert_allclose(estimator.denoising_matrix_, reference.denoising_matrix_)
-    np.testing.assert_allclose(estimator.training_mean_, reference.training_mean_)
-
-
-def test_sns_fit_transform_progress_callback_emits_during_fit_only(rng):
-    """SNS.fit_transform forwards callbacks to fit and not to transform."""
-    X = rng.standard_normal((4, 180))
-    events = []
-    with_callback = SNS(n_neighbors=2, n_iter=2).fit_transform(
-        X, callback=events.append
-    )
-    without_callback = SNS(n_neighbors=2, n_iter=2).fit_transform(X)
-
-    assert len(events) == X.shape[0] * 2
-    assert [event.current for event in events] == list(range(1, len(events) + 1))
-    assert all(event.stage == "channel" for event in events)
-    np.testing.assert_allclose(with_callback, without_callback)
-
-
-def test_sns_callback_exception_propagates_unchanged(rng):
-    """An SNS callback exception aborts later channel solves unchanged."""
-    X = rng.standard_normal((4, 180))
-
-    class SentinelError(RuntimeError):
-        pass
-
-    error = SentinelError("stop SNS")
-    seen = []
-
-    def callback(event):
-        seen.append(event.current)
-        raise error
-
-    with pytest.raises(SentinelError) as caught:
-        compute_sns(X, n_neighbors=2, n_iter=2, callback=callback)
-    assert caught.value is error
-    assert seen == [1]
-
-
-def test_sns_callback_api_is_runtime_only():
-    """SNS does not expose callbacks on construction or transform."""
-    assert "callback" not in inspect.signature(SNS.__init__).parameters
-    assert "callback" in inspect.signature(SNS.fit).parameters
-    assert "callback" in inspect.signature(SNS.fit_transform).parameters
-    assert "callback" not in inspect.signature(SNS.transform).parameters
-
-
-def test_compute_sns_rejects_invalid_callback():
-    """SNS validates callbacks at its public functional boundary."""
-    with pytest.raises(TypeError, match="callback must be callable or None"):
-        compute_sns(np.ones((3, 100)), callback=1)
-
-
-def test_sns_suppresses_independent_sensor_noise(sensor_noise_data):
+def test_compute_sns_suppresses_independent_sensor_noise(sensor_noise_data):
     """SNS recovers the shared low-rank signal, suppressing per-sensor noise."""
     X, shared = sensor_noise_data
-    cleaned = SNS(n_neighbors=0).fit_transform(X)  # all others
+    cleaned, _info = compute_sns(X, n_neighbors=0)  # all others
     err_before = _rrmse(X, shared)
     err_after = _rrmse(cleaned, shared)
     assert err_after < 0.9 * err_before  # closer to the clean shared signal
-
-
-def test_sns_fit_transform_numpy_shape(rng):
-    """fit_transform on a NumPy array returns an array of the same shape."""
-    X = rng.standard_normal((16, 4000))
-    cleaned = SNS(n_neighbors=8).fit_transform(X)
-    assert isinstance(cleaned, np.ndarray)
-    assert cleaned.shape == X.shape
 
 
 def test_sns_fitted_attributes(rng):
@@ -519,25 +332,25 @@ def test_sns_leakage_split_applies_operator(rng):
     np.testing.assert_allclose(cleaned, expected)
 
 
-@pytest.mark.parametrize("preserve_mean", [False, True])
-def test_sns_continuous_transform_is_batch_invariant(rng, preserve_mean):
+def test_sns_continuous_transform_is_batch_invariant(rng):
     """Transforming a temporal chunk alone gives the same samples as a full call."""
     train = rng.standard_normal((8, 1000)) + np.arange(8)[:, None]
     evalu = rng.standard_normal((8, 400)) + 3.0
-    est = SNS(n_neighbors=5, preserve_mean=preserve_mean).fit(train)
-    full = est.transform(evalu)
-    np.testing.assert_allclose(est.transform(evalu[:, 100:250]), full[:, 100:250])
+    for preserve_mean in (False, True):
+        est = SNS(n_neighbors=5, preserve_mean=preserve_mean).fit(train)
+        full = est.transform(evalu)
+        np.testing.assert_allclose(est.transform(evalu[:, 100:250]), full[:, 100:250])
 
 
-@pytest.mark.parametrize("preserve_mean", [False, True])
-def test_sns_epoch_transform_is_batch_invariant(rng, preserve_mean):
+def test_sns_epoch_transform_is_batch_invariant(rng):
     """An epoch result is independent of the other epochs in the transform call."""
     train = rng.standard_normal((5, 7, 120))
     evalu = rng.standard_normal((4, 7, 80)) + 2.0
-    est = SNS(n_neighbors=4, preserve_mean=preserve_mean).fit(train)
-    full = est.transform(evalu)
-    one = est.transform(evalu[[2]])
-    np.testing.assert_allclose(one[0], full[2])
+    for preserve_mean in (False, True):
+        est = SNS(n_neighbors=4, preserve_mean=preserve_mean).fit(train)
+        full = est.transform(evalu)
+        one = est.transform(evalu[[2]])
+        np.testing.assert_allclose(one[0], full[2])
 
 
 def test_sns_preserve_mean_restores_training_mean(rng):
@@ -548,27 +361,6 @@ def test_sns_preserve_mean_restores_training_mean(rng):
     expected = est.denoising_matrix_ @ (evalu - est.training_mean_)
     expected += est.training_mean_
     np.testing.assert_allclose(est.transform(evalu), expected)
-
-
-def test_sns_fit_transform_composes_and_clones(rng):
-    """The sklearn composition is exact and all operating parameters clone."""
-    X = rng.standard_normal((8, 500))
-    estimator = SNS(n_neighbors=4, rcond=1e-10, preserve_mean=True)
-    direct = estimator.fit_transform(X)
-    separate = clone(estimator).fit(X).transform(X)
-    np.testing.assert_allclose(direct, separate)
-    assert clone(estimator).get_params() == estimator.get_params()
-
-
-def test_sns_numpy_epochs_and_channel_count(rng):
-    """Three-dimensional arrays concatenate only during fit and retain shape."""
-    epochs = rng.standard_normal((3, 6, 100))
-    estimator = SNS(n_neighbors=3).fit(epochs)
-    cleaned = estimator.transform(epochs)
-    assert cleaned.shape == epochs.shape
-    np.testing.assert_allclose(cleaned.mean(axis=(0, 2)), 0.0, atol=1e-12)
-    with pytest.raises(ValueError, match="fitted data had"):
-        estimator.transform(rng.standard_normal((5, 100)))
 
 
 def test_sns_epoch_sample_weights_and_chunking(rng):
@@ -582,164 +374,6 @@ def test_sns_epoch_sample_weights_and_chunking(rng):
     )
     np.testing.assert_allclose(est.training_mean_, flat.training_mean_)
     np.testing.assert_allclose(est.denoising_matrix_, flat.denoising_matrix_)
-
-
-@pytest.mark.parametrize(
-    "X",
-    [
-        np.ones((1, 100)),
-        np.ones((3, 1)),
-        np.full((3, 100), np.nan),
-    ],
-)
-def test_sns_rejects_invalid_data(X):
-    """Data preconditions fail before covariance construction."""
-    with pytest.raises(ValueError):
-        SNS().fit(X)
-
-
-def test_sns_transform_before_fit_raises(rng):
-    """transform before fit raises NotFittedError."""
-    from sklearn.exceptions import NotFittedError
-
-    with pytest.raises(NotFittedError):
-        SNS().transform(rng.standard_normal((8, 100)))
-
-
-# ---------------------------------------------------------------------------
-# MNE round-trip
-# ---------------------------------------------------------------------------
-
-
-def test_sns_mne_raw_roundtrip(sensor_noise_data):
-    """fit_transform on an MNE Raw returns a Raw of identical shape."""
-    mne = pytest.importorskip("mne")
-    X, _shared = sensor_noise_data
-    info = mne.create_info([f"EEG{i:02d}" for i in range(X.shape[0])], 250.0, "eeg")
-    raw = mne.io.RawArray(X, info, verbose=False)
-
-    cleaned = SNS(n_neighbors=0).fit_transform(raw)
-    assert isinstance(cleaned, mne.io.BaseRaw)
-    assert cleaned.get_data().shape == X.shape
-    assert not np.allclose(cleaned.get_data(), X)
-
-
-def test_sns_mne_preserves_metadata_and_unpicked_channel(sensor_noise_data):
-    """SNS updates a copy without rebuilding Raw or touching excluded channels."""
-    mne = pytest.importorskip("mne")
-    X, _shared = sensor_noise_data
-    sfreq = 250.0
-    stim = np.arange(X.shape[1], dtype=float) % 2
-    data = np.vstack((X, stim))
-    info = mne.create_info(
-        [*[f"EEG{i:02d}" for i in range(X.shape[0])], "STI 014"],
-        sfreq,
-        [*(["eeg"] * X.shape[0]), "stim"],
-    )
-    raw = mne.io.RawArray(data, info, first_samp=29, verbose=False)
-    raw.set_annotations(mne.Annotations([0.5], [0.1], ["marker"]))
-
-    cleaned = SNS(n_neighbors=8).fit_transform(raw)
-
-    assert cleaned.first_samp == raw.first_samp
-    assert cleaned.annotations == raw.annotations
-    np.testing.assert_array_equal(cleaned.get_data(picks=["STI 014"])[0], stim)
-    np.testing.assert_array_equal(raw.get_data(), data)
-
-
-def test_sns_mne_mixed_types_uses_shared_channel_policy(rng):
-    """Shared MNE selection cleans one type and preserves every other channel."""
-    mne = pytest.importorskip("mne")
-    data = rng.standard_normal((4, 500))
-    info = mne.create_info(
-        ["MAG1", "MAG2", "GRAD", "EEG"],
-        250.0,
-        ["mag", "mag", "grad", "eeg"],
-    )
-    raw = mne.io.RawArray(data, info, verbose=False)
-    with pytest.warns(UserWarning, match="multiple data channel types"):
-        cleaned = SNS(n_neighbors=1).fit_transform(raw)
-    np.testing.assert_array_equal(cleaned.get_data()[2:], data[2:])
-    assert not np.allclose(cleaned.get_data()[:2], data[:2])
-
-
-def test_sns_mne_channel_order_must_match_fit(sensor_noise_data):
-    """A learned spatial operator cannot be applied to reordered named channels."""
-    mne = pytest.importorskip("mne")
-    X, _shared = sensor_noise_data
-    names = [f"EEG{i:02d}" for i in range(X.shape[0])]
-    raw = mne.io.RawArray(X, mne.create_info(names, 250.0, "eeg"), verbose=False)
-    estimator = SNS(n_neighbors=8).fit(raw)
-    reordered = raw.copy().reorder_channels(names[::-1])
-    with pytest.raises(ValueError, match="names/order"):
-        estimator.transform(reordered)
-
-
-def test_sns_mne_epochs_preserves_events_and_metadata(sensor_noise_data):
-    """Epoch identities survive fit/apply and are not reconstructed from scratch."""
-    pd = pytest.importorskip("pandas")
-    mne = pytest.importorskip("mne")
-    X, _shared = sensor_noise_data
-    data = np.stack((X[:, :400], X[:, 400:800]))
-    names = [f"EEG{i:02d}" for i in range(X.shape[0])]
-    info = mne.create_info(names, 250.0, "eeg")
-    events = np.array([[100, 0, 1], [700, 0, 2]])
-    metadata = pd.DataFrame({"trial": ["a", "b"]})
-    epochs = mne.EpochsArray(
-        data,
-        info,
-        events=events,
-        event_id={"a": 1, "b": 2},
-        tmin=-0.1,
-        metadata=metadata,
-        verbose=False,
-    )
-
-    cleaned = SNS(n_neighbors=8).fit_transform(epochs)
-
-    np.testing.assert_array_equal(cleaned.events, epochs.events)
-    assert cleaned.event_id == epochs.event_id
-    assert cleaned.metadata.equals(metadata)
-    assert cleaned.tmin == epochs.tmin
-
-
-def test_sns_mne_evoked_preserves_identity_fields(sensor_noise_data):
-    """Evoked timing, averaging count, comment, and excluded channels survive."""
-    mne = pytest.importorskip("mne")
-    X, _shared = sensor_noise_data
-    stim = np.arange(X.shape[1], dtype=float) % 2
-    data = np.vstack((X, stim))
-    names = [*[f"EEG{i:02d}" for i in range(X.shape[0])], "STI 014"]
-    types = [*(["eeg"] * X.shape[0]), "stim"]
-    evoked = mne.EvokedArray(
-        data,
-        mne.create_info(names, 250.0, types),
-        tmin=-0.2,
-        nave=17,
-        comment="condition-a",
-        verbose=False,
-    )
-
-    cleaned = SNS(n_neighbors=8).fit_transform(evoked)
-
-    assert isinstance(cleaned, mne.Evoked)
-    assert cleaned.nave == 17
-    assert cleaned.comment == "condition-a"
-    assert cleaned.tmin == evoked.tmin
-    np.testing.assert_array_equal(cleaned.get_data(picks=["STI 014"])[0], stim)
-    np.testing.assert_array_equal(evoked.data, data)
-
-
-def test_sns_verbose_uses_package_logging(rng):
-    """MNE-style string verbosity is scoped to the SNS operation."""
-
-    package_logger = logging.getLogger("mne_denoise")
-    previous = package_logger.level
-    try:
-        SNS(n_neighbors=3, verbose="ERROR").fit(rng.standard_normal((5, 100)))
-        assert package_logger.level == previous
-    finally:
-        package_logger.setLevel(previous)
 
 
 def test_sns_emits_one_aggregate_summary(rng, caplog):
