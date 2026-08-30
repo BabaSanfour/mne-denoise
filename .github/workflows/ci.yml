@@ -43,7 +43,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -64,6 +64,20 @@ jobs:
           file: ./coverage.xml
           flags: unittests
           fail_ci_if_error: false
+
+  base-install:
+    name: Base install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Validate base installation
+        run: |
+          python -m venv "$RUNNER_TEMP/mne-denoise-base"
+          "$RUNNER_TEMP/mne-denoise-base/bin/python" -m pip install -e .
+          "$RUNNER_TEMP/mne-denoise-base/bin/python" scripts/check_base_install.py
 
   docs:
     name: Documentation

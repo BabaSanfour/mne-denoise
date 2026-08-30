@@ -10,11 +10,18 @@ Install the latest release from PyPI:
 
    pip install mne-denoise
 
+The example below works with NumPy arrays. To use MNE-Python ``Raw``,
+``Epochs``, or ``Evoked`` objects, install the MNE extra:
+
+.. code-block:: console
+
+   pip install "mne-denoise[mne]"
+
 For development work, clone the repository and install the optional extras:
 
 .. code-block:: console
 
-   pip install -e .[dev,docs]
+   pip install -e ".[dev,docs]"
    pre-commit install
 
 Basic usage
@@ -57,7 +64,8 @@ Here is a simple example of using Linear DSS to enhance an evoked response.
 MNE integration
 ---------------
 
-You can use the ``DSS`` class directly with MNE objects.
+With ``mne-denoise[mne]`` installed, you can use the ``DSS`` class directly
+with MNE objects.
 
 .. code-block:: python
 

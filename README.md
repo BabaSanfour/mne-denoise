@@ -9,9 +9,10 @@
 [![Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://mne.tools/mne-denoise/)
 [![Downloads](https://pepy.tech/badge/mne-denoise)](https://pepy.tech/project/mne-denoise)
 
-**Advanced denoising algorithms for M/EEG data in MNE-Python.**
+**Artifact removal and signal denoising for EEG and MEG.**
 
-`mne-denoise` provides powerful signal denoising techniques for the MNE-Python ecosystem, including **Denoising Source Separation (DSS)** and **ZapLine** algorithms. These methods excel at extracting signals of interest by exploiting data structure rather than just variance.
+`mne-denoise` provides spatial, spectral, and statistical methods for removing
+artifacts and suppressing noise in EEG and MEG recordings.
 
 ## Features
 
@@ -37,10 +38,34 @@
 
 ## Installation
 
-### From PyPI (recommended)
+### Base installation
 
 ```bash
 pip install mne-denoise
+```
+
+### MNE-Python objects
+
+```bash
+pip install "mne-denoise[mne]"
+```
+
+### Visualization
+
+```bash
+pip install "mne-denoise[viz]"
+```
+
+### tqdm progress bars
+
+```bash
+pip install "mne-denoise[progress]"
+```
+
+Extras can be combined:
+
+```bash
+pip install "mne-denoise[mne,viz,progress]"
 ```
 
 ### From source (development)
@@ -56,6 +81,8 @@ pip install -e ".[dev]"
 ### DSS: Enhancing Evoked Responses
 
 DSS finds spatial filters that maximize the ratio of reproducible (evoked) to total power:
+
+The example below uses the optional MNE-Python integration.
 
 ```python
 import mne

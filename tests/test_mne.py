@@ -23,8 +23,9 @@ def test_require_mne_when_unavailable(monkeypatch):
     """Requiring MNE reports the requested feature when unavailable."""
     monkeypatch.setattr(mne_compat, "mne", None)
 
-    with pytest.raises(ImportError, match="SSP-SIR.*MNE-Python"):
+    with pytest.raises(ImportError, match="SSP-SIR.*MNE-Python") as caught:
         mne_compat.require_mne("SSP-SIR")
+    assert "mne-denoise[mne]" in str(caught.value)
 
 
 def test_no_mne_imports_and_pure_numerical_cores_remain_usable():
@@ -37,7 +38,7 @@ def test_no_mne_imports_and_pure_numerical_cores_remain_usable():
 
         def blocked_import(name, *args, **kwargs):
             if name == "mne" or name.startswith("mne."):
-                raise ImportError("blocked for no-MNE test")
+                raise ModuleNotFoundError("No module named 'mne'", name="mne")
             return real_import(name, *args, **kwargs)
 
         builtins.__import__ = blocked_import
