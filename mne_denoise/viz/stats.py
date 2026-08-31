@@ -1,30 +1,4 @@
-"""Visualization helpers for grouped metrics and summary statistics.
-
-This module provides reusable, study-agnostic metric plots for grouped
-comparisons, paired subject trajectories, and distribution summaries.
-
-Input model
------------
-Grouped-stat functions in this module assume column-oriented input:
-
-1. Mapping-like object with ``.items()`` (for example: ``dict``).
-2. Columns should be 1D and aligned by row.
-3. Metric columns should be numeric when used in computations.
-
-Public plots
-------------
-1. :func:`plot_metric_bars`
-2. :func:`plot_tradeoff_scatter`
-3. :func:`plot_metric_comparison`
-4. :func:`plot_metric_slopes`
-5. :func:`plot_metric_violins`
-6. :func:`plot_null_distribution`
-7. :func:`plot_forest`
-8. :func:`plot_harmonic_attenuation` (line-noise-specific helper)
-
-Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
-         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
-"""
+"""Metric and summary-statistic plots."""
 
 from __future__ import annotations
 
@@ -119,7 +93,29 @@ def plot_window_count_series(
     show=True,
     fname=None,
 ):
-    """Plot a per-window count or metric series."""
+    """Plot a per-window count or metric series.
+
+    Parameters
+    ----------
+    counts : array-like of shape (n_windows,)
+        One scalar count or metric for each window.
+    ax : matplotlib.axes.Axes | None, default=None
+        Existing axes. If None, create a themed figure.
+    show : bool, default=True
+        Whether to display the figure.
+    fname : path-like | None, default=None
+        Optional output path.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        Figure containing the bar series.
+
+    Raises
+    ------
+    ValueError
+        If ``counts`` is not a non-empty one-dimensional array.
+    """
     counts = np.asarray(counts, dtype=float)
     if counts.ndim != 1 or counts.size == 0:
         raise ValueError("counts must be a non-empty 1D array.")
@@ -182,33 +178,23 @@ def plot_metric_bars(
         If None, no best-marker star is added.
     group_col : str
         Column name identifying comparison groups.
-    group_order : list of str | None
+    group_order : list of str | None, default=None
         Explicit order for group bars. If None, first-seen order is used.
-    group_colors, group_labels : dict | None
-        Optional color/label overrides keyed by group name.
-    title : str
+    group_colors : dict | None, default=None
+        Optional color overrides keyed by group name.
+    group_labels : dict | None, default=None
+        Optional display-label overrides keyed by group name.
+    title : str, default="Metric Comparison (group mean ± SEM)"
         Figure-level title.
-    fname : path-like | None
+    fname : path-like | None, default=None
         Optional output path.
-    show : bool
+    show : bool, default=True
         Whether to display the figure.
 
     Returns
     -------
     fig : matplotlib.figure.Figure
         Figure handle.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_metric_bars
-    >>> data = {
-    ...     "group": np.array(["A", "A", "B", "B"]),
-    ...     "score": np.array([0.9, 1.0, 0.7, 0.8]),
-    ... }
-    >>> fig = plot_metric_bars(
-    ...     data, metric_cols=["score"], group_col="group", show=False
-    ... )
     """
     columns = {name: np.asarray(values) for name, values in data.items()}
     groups = np.asarray(columns[group_col], dtype=object)
@@ -335,44 +321,39 @@ def plot_tradeoff_scatter(
     ----------
     data : mapping of str to array-like
         Columnar mapping with group and metric columns.
-    x_col, y_col : str
-        Metric columns for x and y axes.
+    x_col : str
+        Metric column for the x-axis.
+    y_col : str
+        Metric column for the y-axis.
     group_col : str
         Grouping column name.
-    group_order : list of str | None
+    group_order : list of str | None, default=None
         Optional group order. If None, first-seen order is used.
-    group_colors, group_labels : dict | None
-        Optional style overrides keyed by group name.
-    x_label, y_label : str | None
-        Axis labels. If None, derived from metric names.
-    title : str
+    group_colors : dict | None, default=None
+        Optional color overrides keyed by group name.
+    group_labels : dict | None, default=None
+        Optional display-label overrides keyed by group name.
+    x_label : str | None, default=None
+        X-axis label. If None, derived from ``x_col``.
+    y_label : str | None, default=None
+        Y-axis label. If None, derived from ``y_col``.
+    title : str, default="Metric Trade-off"
         Axes title.
-    reference_x, reference_y : float | None
-        Optional vertical/horizontal reference lines.
-    ax : matplotlib.axes.Axes | None
+    reference_x : float | None, default=None
+        Optional vertical reference line.
+    reference_y : float | None, default=None
+        Optional horizontal reference line.
+    ax : matplotlib.axes.Axes | None, default=None
         Existing axes. If None, create a new figure.
-    fname : path-like | None
+    fname : path-like | None, default=None
         Optional output path when creating a new figure.
-    show : bool
+    show : bool, default=True
         Whether to display the figure when creating a new figure.
 
     Returns
     -------
     fig : matplotlib.figure.Figure
         Figure handle.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_tradeoff_scatter
-    >>> data = {
-    ...     "group": np.array(["A", "A", "B", "B"]),
-    ...     "distortion": np.array([0.1, 0.2, 0.4, 0.3]),
-    ...     "attenuation": np.array([8.0, 9.0, 5.0, 6.0]),
-    ... }
-    >>> fig = plot_tradeoff_scatter(
-    ...     data, group_col="group", x_col="distortion", y_col="attenuation", show=False
-    ... )
     """
     columns = {name: np.asarray(values) for name, values in data.items()}
     groups = np.asarray(columns[group_col], dtype=object)
@@ -495,11 +476,13 @@ def plot_metric_comparison(
         Grouping column name.
     subject_col : str
         Subject identifier column for paired overlays.
-    group_order : list of str | None
+    group_order : list of str | None, default=None
         Optional explicit group order. If None, first-seen order is used.
-    group_colors, group_labels : dict | None
-        Optional style overrides keyed by group.
-    title : str
+    group_colors : dict | None, default=None
+        Optional color overrides keyed by group.
+    group_labels : dict | None, default=None
+        Optional display-label overrides keyed by group.
+    title : str, default="Metric Comparison"
         Axes title.
     reference_value : float | None
         Optional horizontal reference line.
@@ -516,23 +499,6 @@ def plot_metric_comparison(
     -------
     fig : matplotlib.figure.Figure
         Figure containing the plot.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_metric_comparison
-    >>> data = {
-    ...     "subject": np.array(["s1", "s1", "s2", "s2"]),
-    ...     "group": np.array(["A", "B", "A", "B"]),
-    ...     "score": np.array([1.1, 0.8, 1.0, 0.7]),
-    ... }
-    >>> fig = plot_metric_comparison(
-    ...     data,
-    ...     group_col="group",
-    ...     subject_col="subject",
-    ...     metric_col="score",
-    ...     show=False,
-    ... )
     """
     columns = {name: np.asarray(values) for name, values in data.items()}
     groups = np.asarray(columns[group_col], dtype=object)
@@ -665,11 +631,13 @@ def plot_harmonic_attenuation(
         Harmonic frequencies to evaluate.
     subject : str
         Optional subject label included in default title.
-    series_order : list[str] | None
+    series_order : list[str] | None, default=None
         Plotting order for series. If None, keys from ``cleaned_psds`` are used.
-    series_colors, series_labels : dict | None
-        Optional color/label overrides keyed by series name.
-    title : str | None
+    series_colors : dict | None, default=None
+        Optional color overrides keyed by series name.
+    series_labels : dict | None, default=None
+        Optional display-label overrides keyed by series name.
+    title : str | None, default=None
         Custom axes title.
     fname : path-like | None
         Optional output path.
@@ -680,11 +648,6 @@ def plot_harmonic_attenuation(
     -------
     fig : matplotlib.figure.Figure
         Figure handle.
-
-    Notes
-    -----
-    This helper is intentionally domain-specific (line-frequency harmonics)
-    and complements the otherwise study-agnostic grouped-stat plots.
     """
     if series_order is None:
         series_order = list(cleaned_psds.keys())
@@ -771,15 +734,19 @@ def plot_metric_slopes(
         Grouping column name.
     subject_col : str
         Subject identifier column name.
-    group_order : list of str | None
+    group_order : list of str | None, default=None
         Optional group order. If None, first-seen order is used.
-    group_colors, group_labels : dict | None
-        Optional style overrides keyed by group.
+    group_colors : dict | None, default=None
+        Optional color overrides keyed by group.
+    group_labels : dict | None, default=None
+        Optional display-label overrides keyed by group.
     reference_lines : dict | None
         Optional horizontal reference lines per metric:
         ``{metric_col: [(y_value, style_dict), ...]}``.
-    suptitle, title : str | None
-        Figure title. ``suptitle`` overrides ``title`` when provided.
+    suptitle : str | None, default=None
+        Figure-level title override.
+    title : str | None, default="Paired Subject-Level Comparison"
+        Axes title used when ``suptitle`` is not provided.
     fname : path-like | None
         Optional output path.
     show : bool
@@ -789,19 +756,6 @@ def plot_metric_slopes(
     -------
     fig : matplotlib.figure.Figure
         Figure handle.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_metric_slopes
-    >>> data = {
-    ...     "subject": np.array(["s1", "s1", "s2", "s2"]),
-    ...     "group": np.array(["A", "B", "A", "B"]),
-    ...     "metric": np.array([1.0, 0.8, 1.1, 0.7]),
-    ... }
-    >>> fig = plot_metric_slopes(
-    ...     data, metric_cols=["metric"], group_col="group", show=False
-    ... )
     """
     columns = {name: np.asarray(values) for name, values in data.items()}
     subject_values = np.asarray(columns[subject_col], dtype=object)
@@ -906,23 +860,25 @@ def plot_metric_violins(
         Grouping column name.
     subject_col : str
         Subject identifier column name.
-    group_order : list of str | None
+    group_order : list of str | None, default=None
         Optional group order. If None, first-seen order is used.
-    group_colors, group_labels : dict | None
-        Optional style overrides keyed by group.
-    baseline_group : str | None
+    group_colors : dict | None, default=None
+        Optional color overrides keyed by group.
+    group_labels : dict | None, default=None
+        Optional display-label overrides keyed by group.
+    baseline_group : str | None, default=None
         Optional group used to draw a baseline mean line.
     reference_lines : dict | None
         Optional horizontal reference lines per metric.
-    show_paired : bool
+    show_paired : bool, default=True
         Whether to draw subject-level paired lines.
-    suptitle : str | None
+    suptitle : str | None, default=None
         Figure-level title.
-    figsize : tuple | None
+    figsize : tuple | None, default=None
         Figure size in inches. Defaults to ``(4 * n_metrics, 5.5)``.
-    fname : path-like | None
+    fname : path-like | None, default=None
         Optional output path.
-    show : bool
+    show : bool, default=True
         Whether to display the figure.
 
     Returns
@@ -934,19 +890,6 @@ def plot_metric_violins(
     ------
     ImportError
         If seaborn is unavailable.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_metric_violins
-    >>> data = {
-    ...     "subject": np.array(["s1", "s1", "s2", "s2"]),
-    ...     "group": np.array(["A", "B", "A", "B"]),
-    ...     "metric": np.array([0.2, 0.6, 0.1, 0.5]),
-    ... }
-    >>> fig = plot_metric_violins(
-    ...     data, ["metric"], group_col="group", subject_col="subject", show=False
-    ... )
     """
     columns = {name: np.asarray(values) for name, values in data.items()}
     sns = _try_import_seaborn()
@@ -1141,14 +1084,6 @@ def plot_null_distribution(
         Figure handle.
     p_value : float
         Two-sided empirical p-value under ``null_values``.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_null_distribution
-    >>> rng = np.random.default_rng(0)
-    >>> null = rng.normal(0.0, 0.1, 1000)
-    >>> fig, p = plot_null_distribution(null, observed=0.25, show=False)
     """
     null_values = np.asarray(null_values)
     if figsize is None:
@@ -1272,36 +1207,27 @@ def plot_forest(
         first-seen group.
     baseline_group : str | None
         Optional baseline group to overlay with faint points and mean marker.
-    group_colors, group_labels : dict | None
-        Optional style overrides keyed by group.
-    metric_label : str | None
+    group_colors : dict | None, default=None
+        Optional color overrides keyed by group.
+    group_labels : dict | None, default=None
+        Optional display-label overrides keyed by group.
+    metric_label : str | None, default=None
         X-axis label. If None, derived from ``metric_col``.
     reference_line : float | None
         Optional vertical reference line value.
-    suptitle : str | None
+    suptitle : str | None, default=None
         Figure title override.
-    figsize : tuple | None
+    figsize : tuple | None, default=None
         Figure size in inches.
-    fname : path-like | None
+    fname : path-like | None, default=None
         Optional output path.
-    show : bool
+    show : bool, default=True
         Whether to display the figure.
 
     Returns
     -------
     fig : matplotlib.figure.Figure
         Figure handle.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_forest
-    >>> data = {
-    ...     "subject": np.array(["s1", "s2", "s1", "s2"]),
-    ...     "group": np.array(["A", "A", "B", "B"]),
-    ...     "effect": np.array([0.2, 0.4, 0.8, 0.9]),
-    ... }
-    >>> fig = plot_forest(data, metric_col="effect", group_col="group", show=False)
     """
     columns = {name: np.asarray(values) for name, values in data.items()}
     groups_col = np.asarray(columns[group_col], dtype=object)

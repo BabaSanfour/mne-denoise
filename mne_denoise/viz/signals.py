@@ -1,18 +1,4 @@
-"""Signal-domain visualization primitives.
-
-This module contains reusable, method-agnostic plots for time-domain
-comparisons between original and denoised signals.
-
-This module contains:
-1. Global field power (GFP) comparisons for 2D/3D arrays or MNE objects.
-2. Channel-level time-course overlays with explicit channel selection.
-3. Topographic power-ratio maps from per-channel variances.
-4. Single-trace overlays for reconstruction checks.
-5. Grouped grand-average evoked comparisons.
-
-Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
-         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
-"""
+"""Signal-domain visualization functions."""
 
 from __future__ import annotations
 
@@ -151,9 +137,12 @@ def plot_evoked_gfp_comparison(
 
     Parameters
     ----------
-    inst_before, inst_after : MNE object | ndarray
-        Signal inputs to compare. Supported array shapes are
+    inst_before : MNE object | ndarray
+        Signal before denoising. Supported array shapes are
         ``(n_channels, n_times)`` and ``(n_epochs, n_channels, n_times)``.
+    inst_after : MNE object | ndarray
+        Signal after denoising, with the same channel and time dimensions as
+        ``inst_before``.
     times : array-like of shape (n_times,)
         Explicit time axis.
     ci : float | None
@@ -190,18 +179,6 @@ def plot_evoked_gfp_comparison(
     ValueError
         If input shapes are invalid, if time lengths differ between inputs,
         or if ``times`` length does not match ``n_times``.
-
-    Notes
-    -----
-    GFP is computed as RMS across channels. For 3D epoched inputs,
-    epochs are averaged first.
-
-    Examples
-    --------
-    >>> from mne_denoise.viz import plot_evoked_gfp_comparison
-    >>> fig = plot_evoked_gfp_comparison(
-    ...     before_array, after_array, times=np.arange(500) / 250.0, show=False
-    ... )
     """
     data_before = _as_signal_array(inst_before)
     data_after = _as_signal_array(inst_after)
@@ -274,13 +251,17 @@ def plot_channel_time_course_comparison(
 
     Parameters
     ----------
-    inst_before, inst_after : MNE object | ndarray
-        Inputs to compare with shape ``(n_channels, n_times)`` or
+    inst_before : MNE object | ndarray
+        Signal before denoising with shape ``(n_channels, n_times)`` or
         ``(n_epochs, n_channels, n_times)``.
+    inst_after : MNE object | ndarray
+        Signal after denoising with the same channel and time dimensions.
     picks : sequence of int | sequence of str
         Channels to display. String picks require MNE inputs with ``ch_names``.
-    start, stop : int | None
-        Optional sample-index bounds applied after resolving ``times``.
+    start : int, default=0
+        First sample index to display after resolving ``times``.
+    stop : int | None, default=None
+        Exclusive final sample index to display after resolving ``times``.
     times : array-like of shape (n_times,)
         Explicit time axis.
     before_label : str
@@ -304,17 +285,6 @@ def plot_channel_time_course_comparison(
     ValueError
         If shapes are invalid or inconsistent, picks are invalid, or
         ``times`` length does not match ``n_times``.
-
-    Examples
-    --------
-    >>> from mne_denoise.viz import plot_channel_time_course_comparison
-    >>> fig = plot_channel_time_course_comparison(
-    ...     before_array,
-    ...     after_array,
-    ...     picks=[0, 2],
-    ...     times=np.arange(1000) / 250.0,
-    ...     show=False,
-    ... )
     """
     data_before = _as_signal_array(inst_before)
     data_after = _as_signal_array(inst_after)
@@ -416,10 +386,12 @@ def plot_power_ratio_map(
 
     Parameters
     ----------
-    inst_before, inst_after : MNE object | ndarray
-        Inputs used to estimate per-channel variance. Accepted forms:
-        1D channel variances, 2D channel-by-time arrays, 3D epoch arrays,
-        or MNE Raw/Epochs/Evoked objects.
+    inst_before : MNE object | ndarray
+        Signal or per-channel variance before denoising. Accepted forms are
+        1D channel variances, 2D channel-by-time arrays, 3D epoch arrays, or
+        MNE Raw/Epochs/Evoked objects.
+    inst_after : MNE object | ndarray
+        Matching signal or per-channel variance after denoising.
     info : mne.Info
         Sensor metadata used by ``mne.viz.plot_topomap``.
     vlim : tuple[float | None, float | None]
@@ -446,20 +418,6 @@ def plot_power_ratio_map(
     ------
     ValueError
         If ``info`` is missing or if channel counts do not match ``info``.
-
-    Notes
-    -----
-    Ratio values are computed as ``var_after / var_before`` channel-wise.
-
-    Examples
-    --------
-    >>> from mne_denoise.viz import plot_power_ratio_map
-    >>> fig = plot_power_ratio_map(
-    ...     before_array,
-    ...     after_array,
-    ...     info=info,
-    ...     show=False,
-    ... )
     """
     if info is None:
         raise ValueError("info must be provided explicitly.")
@@ -523,17 +481,20 @@ def plot_signal_overlay(
 
     Parameters
     ----------
-    inst_before, inst_after : MNE object | ndarray
-        Inputs to compare. Accepted array signal shapes are
-        ``(n_times,)``, ``(n_channels, n_times)``, and
-        ``(n_epochs, n_channels, n_times)``.
+    inst_before : MNE object | ndarray
+        Signal before denoising. Accepted array shapes are ``(n_times,)``,
+        ``(n_channels, n_times)``, and ``(n_epochs, n_channels, n_times)``.
+    inst_after : MNE object | ndarray
+        Signal after denoising with matching time and channel dimensions.
     times : array-like of shape (n_times,)
         Explicit time axis for both traces after length alignment.
     pick : int | str | None
         Channel to display. Required when input has more than one channel.
         String picks require MNE channel names.
-    start, stop : float | None
-        Optional lower/upper bounds applied on the time axis.
+    start : float | None, default=None
+        Optional lower bound on the time axis.
+    stop : float | None, default=None
+        Optional upper bound on the time axis.
     scale_after : bool
         If True, scale the after-trace to the before-trace standard deviation.
     before_label : str
@@ -578,22 +539,6 @@ def plot_signal_overlay(
     ValueError
         If input shapes are invalid, multi-channel data is used without
         ``pick``, or ``times`` length is inconsistent.
-
-    Notes
-    -----
-    If traces have different lengths, both are trimmed to the common prefix
-    before any time-window filtering.
-
-    Examples
-    --------
-    >>> from mne_denoise.viz import plot_signal_overlay
-    >>> fig = plot_signal_overlay(
-    ...     before_array,
-    ...     after_array,
-    ...     pick=0,
-    ...     times=np.arange(1000) / 250.0,
-    ...     show=False,
-    ... )
     """
     data_before = _extract_overlay_trace(inst_before, pick=pick)
     data_after = _extract_overlay_trace(inst_after, pick=pick)
@@ -743,21 +688,6 @@ def plot_grand_average_evokeds(
     ------
     ValueError
         If required groups/channels are missing or lists are empty.
-
-    Notes
-    -----
-    This function is MNE-evoked oriented and expects ``mne.Evoked`` inputs.
-
-    Examples
-    --------
-    >>> from mne_denoise.viz import plot_grand_average_evokeds
-    >>> fig = plot_grand_average_evokeds(
-    ...     all_evokeds,
-    ...     channels=("Cz", "Pz"),
-    ...     amplitude_scale=1.0,
-    ...     y_label="Amplitude",
-    ...     show=False,
-    ... )
     """
     if group_order is None:
         group_order = list(all_evokeds.keys())

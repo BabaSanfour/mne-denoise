@@ -1,17 +1,4 @@
-"""Spectral and time-frequency visualization primitives.
-
-This module contains reusable, method-agnostic plots focused on
-frequency-domain and time-frequency diagnostics.
-
-This module contains:
-1. PSD comparisons for before/after denoising outputs.
-2. Component-spectrum comparisons for extracted sources.
-3. Spectrogram and time-frequency mask visualizations.
-4. Narrowband scan summaries for spectral sweeps.
-
-Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
-         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
-"""
+"""Spectral visualization functions."""
 
 from __future__ import annotations
 
@@ -204,22 +191,6 @@ def plot_narrowband_score_scan(
     ValueError
         If ``frequencies`` is not 1D, if ``eigenvalues`` is not 1D/2D,
         or if their first dimensions do not match.
-
-    Notes
-    -----
-    This function is plotting-only and does not run frequency estimation.
-    ``peak_freq`` and ``true_freqs`` are optional annotations supplied
-    directly by the caller.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_narrowband_score_scan
-    >>> freqs = np.linspace(6, 40, 50)
-    >>> scores = np.exp(-0.5 * ((freqs - 12.0) / 1.5) ** 2)
-    >>> fig = plot_narrowband_score_scan(
-    ...     freqs, scores, peak_freq=12.0, true_freqs=[12.0, 24.0], show=False
-    ... )
     """
     frequencies = np.asarray(frequencies, dtype=float)
     eigenvalues = np.asarray(eigenvalues, dtype=float)
@@ -317,12 +288,16 @@ def plot_psd_comparison(
 
     Parameters
     ----------
-    inst_before, inst_after : MNE object | ndarray
-        Inputs to compare. Supported MNE inputs are Raw, Epochs, and Evoked.
-        Array inputs are interpreted with the last axis as time. When either
-        input is an array, ``sfreq`` must be provided.
-    fmin, fmax : float
-        Frequency bounds to display.
+    inst_before : MNE object | ndarray
+        Signal before denoising. Supported MNE inputs are Raw, Epochs, and
+        Evoked. Array inputs are interpreted with the last axis as time. When
+        either input is an array, ``sfreq`` must be provided.
+    inst_after : MNE object | ndarray
+        Signal after denoising with matching channel and time dimensions.
+    fmin : float, default=0
+        Lower frequency bound to display.
+    fmax : float, default=np.inf
+        Upper frequency bound to display.
     picks : str | array-like | slice | None
         Channels to include. For MNE objects, if None, one homogeneous channel type
         is automatically picked ('mag', 'grad', or 'eeg' in order) to prevent
@@ -349,20 +324,6 @@ def plot_psd_comparison(
     ------
     ValueError
         If array inputs are used without ``sfreq``.
-
-    Notes
-    -----
-    PSD backend is selected by input type:
-    - MNE inputs use ``compute_psd``.
-    - Array inputs use SciPy Welch PSD.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_psd_comparison
-    >>> before = np.random.randn(8, 2000)
-    >>> after = before * 0.8
-    >>> fig = plot_psd_comparison(before, after, sfreq=250.0, show=False)
     """
     if ax is None:
         fig, ax = themed_figure(figsize=(8, 4))
@@ -418,10 +379,14 @@ def plot_psd_zoom_comparison(
 
     Parameters
     ----------
-    freqs_before, freqs_after : array-like of shape (n_freqs,)
-        Frequency vectors for the before/after PSD curves.
-    psd_before, psd_after : array-like of shape (n_freqs,)
-        PSD vectors aligned with ``freqs_before`` and ``freqs_after``.
+    freqs_before : array-like of shape (n_freqs,)
+        Frequency vector for the before PSD curve.
+    freqs_after : array-like of shape (n_freqs,)
+        Frequency vector for the after PSD curve.
+    psd_before : array-like of shape (n_freqs,)
+        PSD vector aligned with ``freqs_before``.
+    psd_after : array-like of shape (n_freqs,)
+        PSD vector aligned with ``freqs_after``.
     series_name : str
         Series key used for optional color/label mapping.
     title : str
@@ -452,17 +417,6 @@ def plot_psd_zoom_comparison(
     ------
     ValueError
         If ``zoom_freqs`` is empty/non-1D or if ``zoom_half_width_hz <= 0``.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_psd_zoom_comparison
-    >>> freqs = np.linspace(0, 120, 512)
-    >>> before = np.exp(-freqs / 40)
-    >>> after = before * 0.7
-    >>> fig = plot_psd_zoom_comparison(
-    ...     freqs, before, freqs, after, zoom_freqs=[50.0], show=False
-    ... )
     """
     freqs_before = np.asarray(freqs_before, dtype=float)
     psd_before = np.asarray(psd_before, dtype=float)
@@ -604,15 +558,6 @@ def plot_psd_gallery(
     ------
     ValueError
         If ``zoom_freqs`` is empty/non-1D or if ``zoom_half_width_hz <= 0``.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_psd_gallery
-    >>> freqs = np.linspace(0, 120, 512)
-    >>> before = np.exp(-freqs / 40)
-    >>> series = {"A": (freqs, before * 0.8), "B": (freqs, before * 0.6)}
-    >>> fig = plot_psd_gallery(freqs, before, series, zoom_freqs=[50.0], show=False)
     """
     freqs_reference = np.asarray(freqs_reference, dtype=float)
     psd_reference = np.asarray(psd_reference, dtype=float)
@@ -779,20 +724,6 @@ def plot_psd_overlay(
     ------
     ValueError
         If ``focus_half_width_hz <= 0``.
-
-    Notes
-    -----
-    When ``series_order`` is not provided, overlay order follows the
-    insertion order of ``series_psds``.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_psd_overlay
-    >>> freqs = np.linspace(0, 120, 512)
-    >>> before = np.exp(-freqs / 40)
-    >>> series = {"A": (freqs, before * 0.8), "B": (freqs, before * 0.6)}
-    >>> fig = plot_psd_overlay(freqs, before, series, focus_freq=50.0, show=False)
     """
     freqs_reference = np.asarray(freqs_reference, dtype=float)
     psd_reference = np.asarray(psd_reference, dtype=float)
@@ -916,8 +847,10 @@ def plot_component_psd_comparison(
         and ``sfreq`` is None, ``components.info['sfreq']`` is used.
     peak_freq : float | None
         Optional frequency marker shown on both panels.
-    fmin, fmax : float
-        Frequency bounds for PSD computation.
+    fmin : float, default=1
+        Lower frequency bound for PSD computation.
+    fmax : float, default=40
+        Upper frequency bound for PSD computation.
     show : bool
         If True, display the figure.
     fname : path-like | None
@@ -933,20 +866,6 @@ def plot_component_psd_comparison(
     ValueError
         If ``component_indices`` is empty/out of range or if array inputs
         are provided without ``sfreq``.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_component_psd_comparison
-    >>> signal = np.random.randn(8, 2000)
-    >>> sources = np.random.randn(4, 2000)
-    >>> fig = plot_component_psd_comparison(
-    ...     signal,
-    ...     sources,
-    ...     component_indices=[0, 1],
-    ...     sfreq=250.0,
-    ...     show=False,
-    ... )
     """
     fig, axes = themed_figure(
         1, 2, figsize=(12, 4), sharey=True, constrained_layout=True
@@ -1034,18 +953,22 @@ def plot_spectrogram_comparison(
 
     Parameters
     ----------
-    inst_before, inst_after : MNE object | ndarray
-        Inputs to compare. Either both MNE objects or both arrays.
-        Array inputs must be 2D ``(n_channels, n_times)`` or
+    inst_before : MNE object | ndarray
+        Signal before denoising. It must be paired with the same input kind as
+        ``inst_after``. Array inputs must be 2D ``(n_channels, n_times)`` or
         3D ``(n_epochs, n_channels, n_times)``.
+    inst_after : MNE object | ndarray
+        Signal after denoising with matching channel and time dimensions.
     picks : sequence of int
         Explicit channel picks used for averaging.
     times : array-like of shape (n_times,)
         Explicit time vector used on x-axis.
     sfreq : float | None
         Sampling frequency for array inputs.
-    fmin, fmax : float
-        Frequency bounds for the spectrogram.
+    fmin : float, default=1
+        Lower frequency bound for the spectrogram.
+    fmax : float, default=40
+        Upper frequency bound for the spectrogram.
     n_freqs : int
         Number of frequencies in the display grid.
     show : bool
@@ -1063,22 +986,6 @@ def plot_spectrogram_comparison(
     ValueError
         If ``picks``/``times`` are invalid, if input types are mixed,
         if array inputs are missing ``sfreq``, or if shape constraints fail.
-
-    Notes
-    -----
-    This function enforces an explicit ``times`` input for both MNE and
-    NumPy inputs to avoid hidden axis inference.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_spectrogram_comparison
-    >>> before = np.random.randn(8, 2000)
-    >>> after = before * 0.8
-    >>> t = np.arange(before.shape[-1]) / 250.0
-    >>> fig = plot_spectrogram_comparison(
-    ...     before, after, picks=[0, 1], times=t, sfreq=250.0, show=False
-    ... )
     """
     if n_freqs < 2:
         raise ValueError("n_freqs must be at least 2.")
@@ -1261,15 +1168,6 @@ def plot_time_frequency_mask(
     ------
     ValueError
         If dimensions of ``mask``, ``times``, and ``freqs`` are inconsistent.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_time_frequency_mask
-    >>> mask = np.random.rand(20, 100)
-    >>> times = np.linspace(0, 2.0, 100)
-    >>> freqs = np.linspace(1.0, 40.0, 20)
-    >>> fig = plot_time_frequency_mask(mask, times, freqs, show=False)
     """
     mask = np.asarray(mask)
     times = np.asarray(times)

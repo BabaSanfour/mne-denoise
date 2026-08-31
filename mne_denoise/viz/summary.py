@@ -1,17 +1,4 @@
-"""Generic multi-panel summary composers.
-
-This module provides method-agnostic summary figures that compose
-precomputed inputs only. Estimator fitting and benchmark-specific defaults
-are intentionally out of scope for this plotting layer.
-
-This module contains:
-1. Dashboard-style denoising summaries.
-2. Metric trade-off summary composers.
-3. Generic component/signal/interaction/endpoint summary composers.
-
-Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
-         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
-"""
+"""Denoising summary plots."""
 
 from __future__ import annotations
 
@@ -72,10 +59,12 @@ def plot_denoising_summary(
 
     Parameters
     ----------
-    inst_before, inst_after : MNE object | ndarray
-        Signals before and after denoising. Supported array shapes are
+    inst_before : MNE object | ndarray
+        Signal before denoising. Supported array shapes are
         ``(n_channels, n_times)`` and ``(n_epochs, n_channels, n_times)``.
         MNE Raw/Epochs/Evoked inputs are also accepted.
+    inst_after : MNE object | ndarray
+        Signal after denoising with matching channel and time dimensions.
     info : mne.Info
         Channel info used for the power-ratio map panel.
     times : array-like of shape (n_times,)
@@ -96,24 +85,6 @@ def plot_denoising_summary(
     ------
     ValueError
         If ``times`` is not 1D or does not match the GFP length.
-
-    Notes
-    -----
-    The figure is composed of three panels:
-    1. Per-channel power ratio map (before/after).
-    2. PSD comparison (before/after).
-    3. GFP overlay with difference shading.
-
-    Examples
-    --------
-    >>> from mne_denoise.viz import plot_denoising_summary
-    >>> fig = plot_denoising_summary(
-    ...     before,
-    ...     after,
-    ...     info=info,
-    ...     times=times,
-    ...     show=False,
-    ... )
     """
     from matplotlib.gridspec import GridSpec
 
@@ -188,20 +159,36 @@ def plot_metric_tradeoff_summary(
         Group column name.
     subject_col : str
         Subject column name used for paired metric comparison.
-    x_col, y_col : str
-        Metric columns used for trade-off scatter axes.
+    x_col : str
+        Metric column used for the trade-off scatter x-axis.
+    y_col : str
+        Metric column used for the trade-off scatter y-axis.
     metric_col : str
         Metric column used for the right-panel comparison.
-    x_label, y_label, metric_label : str | None
-        Optional axis labels.
-    group_order : sequence of str | None
+    x_label : str | None, default=None
+        Optional trade-off x-axis label.
+    y_label : str | None, default=None
+        Optional trade-off y-axis label.
+    metric_label : str | None, default=None
+        Optional comparison-panel label.
+    group_order : sequence of str | None, default=None
         Optional group display order.
-    group_colors, group_labels : mapping | None
-        Optional color/label overrides keyed by group.
-    tradeoff_title, metric_title, suptitle : str
-        Panel and figure titles.
-    reference_x, reference_y, reference_value : float | None
-        Optional reference lines.
+    group_colors : mapping | None, default=None
+        Optional color overrides keyed by group.
+    group_labels : mapping | None, default=None
+        Optional display-label overrides keyed by group.
+    tradeoff_title : str, default="Metric Trade-off"
+        Trade-off panel title.
+    metric_title : str, default="Metric Comparison"
+        Metric comparison panel title.
+    suptitle : str, default="Trade-off Analysis"
+        Figure title.
+    reference_x : float | None, default=None
+        Optional vertical reference line in the trade-off panel.
+    reference_y : float | None, default=None
+        Optional horizontal reference line in the trade-off panel.
+    reference_value : float | None, default=None
+        Optional reference line in the metric panel.
     reference_label : str
         Label for the metric reference line.
     show : bool
@@ -213,12 +200,6 @@ def plot_metric_tradeoff_summary(
     -------
     fig : matplotlib.figure.Figure
         Figure handle.
-
-    Notes
-    -----
-    This is a composition wrapper around:
-    - :func:`mne_denoise.viz.plot_tradeoff_scatter`
-    - :func:`mne_denoise.viz.plot_metric_comparison`
     """
     columns = {name: np.asarray(values) for name, values in data.items()}
     fig, axes = themed_figure(1, 2, figsize=(16, 6))
@@ -306,8 +287,10 @@ def plot_component_cleaning_summary(
         Sampling frequency for source/segment time axes.
     freqs : array-like | None
         Frequency axis for PSD panel.
-    psd_before, psd_after : array-like | None
-        PSD values for before/after comparison.
+    psd_before : array-like | None, default=None
+        PSD values before denoising.
+    psd_after : array-like | None, default=None
+        PSD values after denoising.
     line_freq : float | None
         Optional line frequency marker in PSD panel.
     fmax : float
@@ -338,31 +321,6 @@ def plot_component_cleaning_summary(
     ValueError
         If panel inputs are incompatible with expected dimensions or metadata
         requirements (for example invalid source/pattern/segment shapes).
-
-    Notes
-    -----
-    This function is a thin composer around internal panel painters in
-    :mod:`mne_denoise.viz._summary_panels`. It does not run fitting or
-    denoising; all inputs are expected to be precomputed by the caller.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_component_cleaning_summary
-    >>> rng = np.random.default_rng(0)
-    >>> freqs = np.linspace(0, 80, 161)
-    >>> fig = plot_component_cleaning_summary(
-    ...     scores=np.array([2.0, 1.2, 0.7]),
-    ...     selected_count=1,
-    ...     patterns=rng.standard_normal((5, 3)),
-    ...     removed=rng.standard_normal((5, 200)),
-    ...     sources=rng.standard_normal((3, 200)),
-    ...     sfreq=200.0,
-    ...     freqs=freqs,
-    ...     psd_before=rng.random((5, freqs.size)),
-    ...     psd_after=rng.random((5, freqs.size)),
-    ...     show=False,
-    ... )
     """
     fig, gs = _new_summary_grid(figsize=figsize, dpi=dpi, hspace=0.40)
 
@@ -496,8 +454,10 @@ def plot_signal_diagnostics_summary(
         Explicit group plotting order.
     reference_group : str
         Explicit reference group used for the difference panel.
-    group_colors, group_labels : mapping
-        Explicit color and display-label mappings keyed by group.
+    group_colors : mapping
+        Explicit color mapping keyed by group.
+    group_labels : mapping
+        Explicit display-label mapping keyed by group.
     windows : sequence of tuple[float, float, str] | None
         Optional highlighted windows. Each entry must be
         ``(start, stop, label)``.
@@ -519,35 +479,6 @@ def plot_signal_diagnostics_summary(
         If ``signals`` is empty, ``times`` is shape-incompatible, channel
         metadata is insufficient for the requested selector, or group ordering
         is invalid.
-
-    Notes
-    -----
-    This is a strict explicit API: ``group_order``, ``reference_group``,
-    ``group_colors``, and ``group_labels`` are caller-owned inputs.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_signal_diagnostics_summary
-    >>> rng = np.random.default_rng(0)
-    >>> n_times = 200
-    >>> times = np.arange(n_times) / 200.0
-    >>> signals = {
-    ...     "before": rng.standard_normal((3, n_times)),
-    ...     "after": rng.standard_normal((3, n_times)),
-    ... }
-    >>> fig = plot_signal_diagnostics_summary(
-    ...     signals,
-    ...     channel=1,
-    ...     channel_label="C2",
-    ...     times=times,
-    ...     group_order=["before", "after"],
-    ...     reference_group="before",
-    ...     group_colors={"before": "#4C72B0", "after": "#55A868"},
-    ...     group_labels={"before": "Before", "after": "After"},
-    ...     windows=[(0.08, 0.14, "early")],
-    ...     show=False,
-    ... )
     """
     if not isinstance(signals, Mapping) or len(signals) == 0:
         raise ValueError("signals must be a non-empty mapping.")
@@ -714,10 +645,12 @@ def plot_condition_interaction_summary(
         Optional nested mapping ``condition -> group -> standard error``.
     condition_order : sequence of str | None
         Optional condition order. Defaults to first-seen order.
-    group_order : sequence of str | None
+    group_order : sequence of str | None, default=None
         Optional group order. Defaults to first-seen order across conditions.
-    group_colors, group_labels : mapping | None
-        Optional color/label overrides keyed by group.
+    group_colors : mapping | None, default=None
+        Optional color overrides keyed by group.
+    group_labels : mapping | None, default=None
+        Optional display-label overrides keyed by group.
     windows : sequence of tuple[float, float, str] | None
         Optional highlighted windows as explicit ``(start, stop, label)`` tuples.
     title : str
@@ -737,27 +670,6 @@ def plot_condition_interaction_summary(
     ValueError
         If ``traces`` is empty, ``times`` is not 1D, or trace/error arrays do
         not match the expected time dimension.
-
-    Notes
-    -----
-    Conditions are rendered as separate panels and groups as overlaid lines
-    within each panel.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_condition_interaction_summary
-    >>> times = np.linspace(-0.2, 0.5, 300)
-    >>> traces = {
-    ...     "A": {"before": np.sin(times), "after": 0.7 * np.sin(times)},
-    ...     "B": {"before": np.cos(times), "after": 0.6 * np.cos(times)},
-    ... }
-    >>> fig = plot_condition_interaction_summary(
-    ...     traces,
-    ...     times=times,
-    ...     windows=[(0.08, 0.14, "w1")],
-    ...     show=False,
-    ... )
     """
     if not isinstance(traces, Mapping) or len(traces) == 0:
         raise ValueError("traces must be a non-empty mapping of conditions.")
@@ -881,27 +793,6 @@ def plot_group_condition_interaction_summary(
     ValueError
         If ``traces`` is empty, ``times`` is not 1D, or trace/error arrays do
         not match the expected time dimension.
-
-    Notes
-    -----
-    Groups are rendered as separate panels and conditions as overlaid lines
-    within each panel.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_group_condition_interaction_summary
-    >>> times = np.linspace(-0.2, 0.5, 300)
-    >>> traces = {
-    ...     "before": {"A": np.sin(times), "B": np.cos(times)},
-    ...     "after": {"A": 0.7 * np.sin(times), "B": 0.6 * np.cos(times)},
-    ... }
-    >>> fig = plot_group_condition_interaction_summary(
-    ...     traces,
-    ...     times=times,
-    ...     windows=[(0.08, 0.14, "w1")],
-    ...     show=False,
-    ... )
     """
     if not isinstance(traces, Mapping) or len(traces) == 0:
         raise ValueError("traces must be a non-empty mapping of groups.")
@@ -999,10 +890,12 @@ def plot_endpoint_metrics_summary(
         Group identifier column.
     subject_col : str
         Subject identifier column.
-    group_order : sequence of str | None
+    group_order : sequence of str | None, default=None
         Optional group order. Defaults to first-seen order.
-    group_colors, group_labels : mapping | None
-        Optional color/label overrides keyed by group.
+    group_colors : mapping | None, default=None
+        Optional color overrides keyed by group.
+    group_labels : mapping | None, default=None
+        Optional display-label overrides keyed by group.
     reference_value : float | None
         Optional horizontal reference line for metric panels.
     reference_label : str
@@ -1030,27 +923,6 @@ def plot_endpoint_metrics_summary(
     ValueError
         If numeric conversion or plotting operations receive incompatible
         shapes.
-
-    Notes
-    -----
-    The output is a 2x2 storyboard combining grouped means, paired subject
-    trajectories, per-group distributions, and optional null-distribution
-    diagnostics.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.viz import plot_endpoint_metrics_summary
-    >>> data = {
-    ...     "subject": np.array(["s1", "s1", "s2", "s2"]),
-    ...     "group": np.array(["A", "B", "A", "B"]),
-    ...     "score": np.array([1.2, 0.9, 1.1, 0.8]),
-    ... }
-    >>> fig = plot_endpoint_metrics_summary(
-    ...     data,
-    ...     metric_col="score",
-    ...     show=False,
-    ... )
     """
     columns = {name: np.asarray(values) for name, values in data.items()}
     metric = np.asarray(columns[metric_col], dtype=float)

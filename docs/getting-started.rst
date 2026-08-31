@@ -4,92 +4,59 @@ Getting started
 Installation
 ------------
 
-Install the latest release from PyPI:
+Install the base package and optional integrations as needed:
 
 .. code-block:: console
 
    pip install mne-denoise
-
-The example below works with NumPy arrays. To use MNE-Python ``Raw``,
-``Epochs``, or ``Evoked`` objects, install the MNE extra:
-
-.. code-block:: console
-
    pip install "mne-denoise[mne]"
+   pip install "mne-denoise[viz]"
+   pip install "mne-denoise[progress]"
 
-For development work, clone the repository and install the development
-dependency group:
+Estimator pattern
+-----------------
 
-.. code-block:: console
-
-   python -m pip install --upgrade pip
-   python -m pip install -e . --group dev
-   prek install
-
-Basic usage
------------
-
-Here is a simple example of using Linear DSS to enhance an evoked response.
+Most estimators follow the scikit-learn pattern: configure, fit on data used
+to learn an operator, then transform compatible data. Use fit_transform when
+the method has a fixed fitted operator.
 
 .. code-block:: python
 
    import numpy as np
-   from mne_denoise import compute_covariance
-   from mne_denoise.dss import compute_dss
+   from mne_denoise.dss import BandpassBias, DSS
 
-   # Simulate data: (n_channels, n_times, n_trials)
-   n_ch, n_times, n_trials = 10, 1000, 50
-   data = np.random.randn(n_ch, n_times, n_trials)
+   data = np.random.default_rng(0).standard_normal((8, 2000))
+   bias = BandpassBias((8.0, 12.0), sfreq=250.0)
+   clean = DSS(bias=bias, n_components=3).fit_transform(data)
 
-   # Add a signal component to the first few channels
-   t = np.linspace(0, 1, n_times)
-   signal = np.sin(2 * np.pi * 10 * t)  # 10 Hz signal
-   data[:3, :, :] += signal[None, :, None] * 0.5
+MNE-Python integration
+----------------------
 
-   # 1. Compute Base Variace (Covariance over all data)
-   data_2d = data.reshape(n_ch, -1)
-   cov_baseline = compute_covariance(data_2d)
-
-   # 2. Compute Biased Variance (Covariance of the trial average)
-   #    This 'bias' selects for activity consistent across trials
-   data_avg = data.mean(axis=2)
-   cov_biased = compute_covariance(data_avg)
-
-   # 3. Compute DSS
-   #    Returns filters to extract the signal
-   filters, patterns, eigenvalues = compute_dss(
-       cov_baseline, cov_biased, n_components=3
-   )
-
-   print(f"Top 3 eigenvalues (score): {eigenvalues}")
-
-MNE integration
----------------
-
-With ``mne-denoise[mne]`` installed, you can use the ``DSS`` class directly
-with MNE objects.
+Pass supported MNE objects directly; estimators preserve container metadata and
+return copies. For example, with a preloaded Raw object named raw:
 
 .. code-block:: python
 
-   import mne
-   from mne_denoise.dss import DSS, TrialAverageBias
+   from mne_denoise.spectrum_interpolation import SpectrumInterpolation
 
-   # Load epochs
-   epochs = mne.read_epochs("sample_epochs.fif")
+   clean_raw = SpectrumInterpolation(
+       line_freq=60.0, n_harmonics=3
+   ).fit_transform(raw)
 
-   # Apply DSS to enhance evoked response
-   dss = DSS(
-       bias=TrialAverageBias(),
-       n_components=5,
-       n_select=2,
-       component_action="subtract",
-   )
+Choosing a method
+-----------------
 
-   # Remove the leading two biased components in sensor space.
-   epochs_clean = dss.fit_transform(epochs)
+The method pages summarize assumptions and minimal workflows for:
 
-Example gallery
----------------
+* ASR for transient, high-variance subspace changes;
+* the DSS family for reproducible, spectral, temporal, and lagged-trial
+  structure;
+* BSS-CCA and iCanClean for lagged or reference-shared components;
+* SNS and SOUND for spatially or forward-model-predicted sensor noise;
+* spectrum interpolation and ZapLine for line noise;
+* SSA for channel-wise delay-coordinate decompositions; and
+* SSP-SIR for source-informed TMS-evoked artifact reconstruction.
 
-The repository ships with runnable scripts in ``examples/``. Start with
-``examples/dss/plot_01_dss_fundamentals.py`` to see the functional API end-to-end.
+See the :doc:`api` reference for exact contracts, the
+:doc:`auto_examples/index` gallery for complete workflows, and
+:doc:`citing` for citation guidance.

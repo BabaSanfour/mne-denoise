@@ -1,20 +1,4 @@
-"""Temporal bias functions for DSS.
-
-Implements lag-averaging and smoothing biases for extracting temporally
-extended structure (slow waves, autocorrelated signals).
-
-Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
-         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
-
-References
-----------
-.. [1] de Cheveigné, A. & Simon, J.Z. (2008). Denoising based on spatial filtering.
-       Journal of Neuroscience Methods, 171(2), 331-339.
-.. [2] de Cheveigné, A. (2020). ZapLine: A simple and effective method to remove
-       power line artifacts. NeuroImage, 207, 116356. (Period-matched
-       smooth/residual decomposition: spatially clean only the residual branch
-       and add the smooth branch back.)
-"""
+"""Temporal bias functions for DSS."""
 
 from __future__ import annotations
 
@@ -26,32 +10,15 @@ from .base import LinearDenoiser, NonlinearDenoiser
 
 
 class LagAverageBias(LinearDenoiser):
-    """Lag-averaging bias for emphasizing temporally smooth signals.
-
-    Creates a bias by averaging time-shifted versions of the data,
-    emphasizing signals that remain similar across the selected lags. This is
-    a lightweight package bias for ordinary sensor-space DSS; it is not the
-    lag-augmented :class:`~mne_denoise.dss.TimeShiftDSS` estimator.
+    """Lag-averaging bias for ordinary sensor-space DSS.
 
     Parameters
     ----------
-    lags : int or array-like
-        If int, use lags from 1 through ``lags``.
-        If array, use specified lag values in samples.
-        Default 10.
-    weighting : {'uniform', 'inverse_lag'}
-        Weight every lag equally or weight it by inverse absolute lag.
-        Neither option estimates an autocorrelation function or fits prediction
-        coefficients.
-
-    Examples
-    --------
-    >>> bias = LagAverageBias(lags=[1, 2, 5, 10], weighting="inverse_lag")
-    >>> biased_data = bias.apply(data)
-
-    See Also
-    --------
-    SmoothingBias : Bias for low-frequency signals.
+    lags : int or array-like, default=10
+        An integer uses samples from 1 through ``lags``; an array supplies the
+        sample lags directly.
+    weighting : {"uniform", "inverse_lag"}, default="uniform"
+        Equal or inverse-absolute-lag weighting.
     """
 
     def __init__(
@@ -168,32 +135,21 @@ class LagAverageBias(LinearDenoiser):
 
 
 class SmoothingBias(LinearDenoiser):
-    """Unified temporal smoothing bias (Moving Average).
-
-    Uses a boxcar moving average filter to smooth the data. When used to split
-    the signal into a smooth branch and a residual (``data - smooth``), fitting
-    DSS on the residual and adding the smooth branch back follows ZapLine's
-    period-matched decomposition (de Cheveigné, 2020): with
-    ``window = round(sfreq / f_line)`` the smoother has zeros at ``f_line`` and
-    its harmonics, so the residual concentrates the narrowband artifact.
+    """Causal running-mean bias for DSS.
 
     Parameters
     ----------
-    window : int
-        Smoothing window size in samples.
-        Note: If you want to cancel a specific frequency (e.g. 50Hz line noise),
-        set window = int(sfreq / 50).
-    iterations : int
-        Number of smoothing passes. Repeated smoothing approximates a Gaussian filter
-        and provides sharper frequency cutoff. Default 1.
+    window : int, default=10
+        Smoothing-window length in samples.
+    iterations : int, default=1
+        Number of smoothing passes.
 
-    Examples
-    --------
-    >>> bias = SmoothingBias(window=20)  # Simple smoothing
-    >>> biased = bias.apply(data)
-
-    >>> # To remove 50Hz line noise (Period smoothing)
-    >>> bias = SmoothingBias(window=int(1000 / 50), iterations=1)
+    Notes
+    -----
+    For 3D channel-first input, the implementation reshapes
+    ``(n_channels, n_times, n_epochs)`` to ``(n_channels, -1)`` before smoothing,
+    so the time and epoch axes are concatenated rather than smoothed independently.
+    The original shape is restored on return.
     """
 
     def __init__(self, window: int = 10, iterations: int = 1) -> None:
@@ -201,12 +157,17 @@ class SmoothingBias(LinearDenoiser):
         self.iterations = iterations
 
     def apply(self, data: np.ndarray) -> np.ndarray:
-        """Apply smoothing bias.
+        """Apply the causal running-mean bias.
 
-        Uses a causal running-mean filter:
-        ``y[t] = mean(x[t-W+1 : t+1])`` for ``t >= W``, with an expanding
-        window for the first ``W`` samples.  Repeated ``iterations`` passes
-        approximate a Gaussian kernel.
+        Parameters
+        ----------
+        data : ndarray, shape (n_channels, n_times) or (n_channels, n_times, n_epochs)
+            Channel-first data.
+
+        Returns
+        -------
+        ndarray
+            Smoothed data with the input shape.
         """
         orig_shape = data.shape
         if data.ndim == 3:
@@ -236,35 +197,16 @@ class SmoothingBias(LinearDenoiser):
 
 
 class DCTDenoiser(NonlinearDenoiser):
-    """DCT domain denoiser (MATLAB denoise_dct.m).
-
-    Applies a mask in the DCT (Discrete Cosine Transform) domain.
-    Useful for temporal smoothness without explicit bandpass.
+    """DCT-domain denoiser.
 
     Parameters
     ----------
-    mask : ndarray or None
-        DCT domain mask. Must have same length as signal, or will be
-        expanded/truncated. If None, creates lowpass mask.
-        If mask is None, this fraction of DCT coefficients are kept.
-        Default 0.5 (lowpass, keep first 50% of coefficients).
-
-    cutoff_fraction : float
-        Fraction of DCT coefficients to keep. If mask is None,
-        this fraction of DCT coefficients are kept.
-        Default 0.5 (lowpass, keep first 50% of coefficients).
-
-    Examples
-    --------
-    >>> from mne_denoise.dss.denoisers import DCTDenoiser
-    >>> # Keep only the lowest 20% of DCT coefficients (smooth signal)
-    >>> denoiser = DCTDenoiser(cutoff_fraction=0.2)
-    >>> smooth_source = denoiser.denoise(source)
-
-
-    References
-    ----------
-    Särelä & Valpola (2005). Section 4.1.2 "DENOISING BASED ON FREQUENCY CONTENT"
+    mask : ndarray or None, default=None
+        Optional DCT-domain mask. If its length differs from the source length,
+        the implementation interpolates it.
+    cutoff_fraction : float, default=0.5
+        Fraction of low-frequency DCT coefficients retained when ``mask`` is
+        ``None``. Ignored when an explicit mask is supplied.
     """
 
     def __init__(
@@ -276,7 +218,18 @@ class DCTDenoiser(NonlinearDenoiser):
         self._cached_len = None
 
     def denoise(self, source: np.ndarray) -> np.ndarray:
-        """Apply DCT filtering."""
+        """Apply the configured DCT-domain mask.
+
+        Parameters
+        ----------
+        source : ndarray, shape (n_times,) or (n_times, n_epochs)
+            Source time series; columns of 2D input are processed separately.
+
+        Returns
+        -------
+        ndarray
+            Reconstructed source with the input shape.
+        """
         from scipy.fftpack import dct, idct
 
         n = len(source)

@@ -1,16 +1,4 @@
-"""Quality assurance metrics for denoising evaluation.
-
-This module contains:
-1. Low-level spectral metrics operating on pre-computed PSD arrays.
-2. A high-level benchmark helper operating on
-   :class:`~mne.io.BaseRaw` objects.
-
-All metrics are estimator-agnostic and can be used with any denoising output
-as long as before/after PSDs (or Raw objects) are available.
-
-Authors: Sina Esmaeili (sina.esmaeili@umontreal.ca)
-         Hamza Abdelhedi (hamza.abdelhedi@umontreal.ca)
-"""
+"""Quality-assurance metrics for denoising."""
 
 from __future__ import annotations
 
@@ -49,48 +37,27 @@ def peak_attenuation_db(
     target_freq: float,
     bandwidth: float = 2.0,
 ) -> np.ndarray:
-    """Attenuation (dB) of the dominant peak around a target frequency.
+    """Compute peak attenuation around a target frequency.
+
+    The metric is 10 * log10(max(psd_before) / max(psd_after)) within the selected
+    band; positive values indicate attenuation.
 
     Parameters
     ----------
-    freqs : array of shape (n_freqs,)
-        Frequency vector.
-    psd_before : array of shape (n_channels, n_freqs) or (n_freqs,)
-        PSD before cleaning.
-    psd_after : array of shape (n_channels, n_freqs) or (n_freqs,)
-        PSD after cleaning.
+    freqs : ndarray, shape (n_freqs,)
+        Frequency vector in Hz.
+    psd_before, psd_after : ndarray, shape (n_freqs,) or (n_channels, n_freqs)
+        PSDs before and after cleaning.
     target_freq : float
-        Centre frequency of the peak (Hz).
-    bandwidth : float
-        Half-bandwidth (Hz) around *target_freq* to search for the peak.
+        Center frequency in Hz.
+    bandwidth : float, default=2.0
+        Half-width of the search band in Hz.
 
     Returns
     -------
-    attenuation : ndarray | float
-        Per-channel attenuation in dB for 2D PSD input, or a scalar value for
-        1D PSD input.
-
-    Notes
-    -----
-    This metric compares the maximum PSD value in a narrow band around
-    ``target_freq``:
-
-    ``10 * log10(max_before / max_after)``
-
-    Positive values indicate suppression of the target peak.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.qa import peak_attenuation_db
-    >>> freqs = np.arange(0, 100, 0.5)
-    >>> before = np.ones_like(freqs) * 0.01
-    >>> after = before.copy()
-    >>> band = (freqs >= 49) & (freqs <= 51)
-    >>> before[band] = 1.0
-    >>> after[band] = 0.5
-    >>> float(peak_attenuation_db(freqs, before, after, 50.0)) > 0
-    True
+    float or ndarray
+        Scalar for 1-D PSD input, otherwise one value per channel. Empty bands
+        return NaN; after-power is floored at 1e-30.
     """
     mask = (freqs >= target_freq - bandwidth) & (freqs <= target_freq + bandwidth)
     if not mask.any():
@@ -111,40 +78,27 @@ def suppression_ratio(
     target_freq: float,
     bandwidth: float = 2.0,
 ) -> float:
-    """Suppression ratio (dB) of mean band power around a target frequency.
+    """Compute the dB ratio of mean band power before and after cleaning.
+
+    The metric is 10 * log10(mean_before / mean_after); positive values indicate
+    suppression.
 
     Parameters
     ----------
-    freqs : array of shape (n_freqs,)
-        Frequency vector.
-    psd_before, psd_after : ndarray
+    freqs : ndarray, shape (n_freqs,)
+        Frequency vector in Hz.
+    psd_before, psd_after : ndarray, shape (n_freqs,) or (n_channels, n_freqs)
         PSDs before and after cleaning.
     target_freq : float
-        Center frequency (Hz).
-    bandwidth : float
-        Half-bandwidth (Hz).
+        Center frequency in Hz.
+    bandwidth : float, default=2.0
+        Half-width of the band in Hz.
 
     Returns
     -------
-    ratio_db : float
-        Suppression ratio in dB.
-
-    Notes
-    -----
-    For 2D PSD input, channels are averaged first. The ratio is computed from
-    mean power in the selected band:
-
-    ``10 * log10(mean_before / mean_after)``
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.qa import suppression_ratio
-    >>> freqs = np.arange(0, 100, 0.5)
-    >>> before = np.ones_like(freqs)
-    >>> after = before * 0.1
-    >>> suppression_ratio(freqs, before, after, 50.0)
-    10.0
+    float
+        Scalar ratio after averaging channels when input is 2-D. Empty bands return
+        NaN; non-positive after-power returns positive infinity.
     """
     mask = (freqs >= target_freq - bandwidth) & (freqs <= target_freq + bandwidth)
     if not mask.any():
@@ -168,43 +122,27 @@ def noise_surround_ratio(
     peak_bw: float = 2.0,
     surround_bw: float = 5.0,
 ) -> np.ndarray:
-    """Residual peak-to-surround power ratio around a target frequency.
-
-    Values near ``1`` indicate the target peak is close to its surrounding
-    spectral floor. Values above ``1`` indicate residual narrow-band peak power.
+    """Compute target-band power divided by surrounding power.
 
     Parameters
     ----------
-    freqs : array of shape (n_freqs,)
-        Frequency vector.
-    psd_after : array of shape (n_channels, n_freqs) or (n_freqs,)
+    freqs : ndarray, shape (n_freqs,)
+        Frequency vector in Hz.
+    psd_after : ndarray, shape (n_freqs,) or (n_channels, n_freqs)
         PSD after cleaning.
     target_freq : float
-        Centre frequency of the line-noise peak (Hz).
-    peak_bw : float
-        Half-bandwidth (Hz) of the peak region.
-    surround_bw : float
-        Half-bandwidth (Hz) of the surrounding region (measured from the
-        outer edge of *peak_bw*).
+        Center frequency in Hz.
+    peak_bw : float, default=2.0
+        Half-width of the target band in Hz.
+    surround_bw : float, default=5.0
+        Half-width of each surrounding region in Hz.
 
     Returns
     -------
-    ratio : ndarray | float
-        Per-channel ratio for 2D PSD input, or a scalar for 1D PSD input.
-
-    Notes
-    -----
-    The metric compares mean power in a peak window to mean power in two
-    surrounding windows (left/right of the peak window).
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.qa import noise_surround_ratio
-    >>> freqs = np.arange(0, 100, 0.5)
-    >>> psd = np.ones((2, len(freqs)))
-    >>> noise_surround_ratio(freqs, psd, 50.0).shape
-    (2,)
+    float or ndarray
+        Scalar for 1-D input, otherwise one value per channel. Values near one
+        indicate a flat target region; larger values indicate a residual peak.
+        Missing surrounding power uses a 1e-30 denominator.
     """
     peak_mask = (freqs >= target_freq - peak_bw) & (freqs <= target_freq + peak_bw)
     surr_mask = (
@@ -239,50 +177,31 @@ def below_noise_distortion_db(
     fmax: float = 45.0,
     n_harmonics: int = 0,
 ) -> np.ndarray:
-    """Broadband spectral distortion (dB) outside excluded noise bands.
+    """Compute mean absolute log-power distortion outside excluded bands.
 
-    Computed as the mean absolute log-ratio:
-    ``|10 * log10(psd_after / psd_before)|`` over selected frequencies.
-    Lower values indicate less collateral broadband distortion.
+    The metric is the mean of abs(10 * log10(psd_after / psd_before)) over the
+    selected frequency mask; lower values indicate less broadband change.
 
     Parameters
     ----------
-    freqs : array of shape (n_freqs,)
-        Frequency vector.
-    psd_before : array of shape (n_channels, n_freqs) or (n_freqs,)
-        PSD before cleaning.
-    psd_after : array of shape (n_channels, n_freqs) or (n_freqs,)
-        PSD after cleaning.
-    exclude_freq : float | None
-        Fundamental line-noise frequency to exclude (together with its
-        harmonics).  If ``None`` no exclusion is applied.
-    exclude_bw : float
-        Half-bandwidth (Hz) to exclude around each harmonic.
-    fmin, fmax : float
-        Frequency range for the broadband comparison.
-    n_harmonics : int
-        Number of harmonics of *exclude_freq* to also exclude
-        (0 = fundamental only).
+    freqs : ndarray, shape (n_freqs,)
+        Frequency vector in Hz.
+    psd_before, psd_after : ndarray, shape (n_freqs,) or (n_channels, n_freqs)
+        PSDs before and after cleaning.
+    exclude_freq : float or None, default=None
+        Fundamental frequency whose harmonics are excluded.
+    exclude_bw : float, default=5.0
+        Half-width of each excluded band in Hz.
+    fmin, fmax : float, default=1.0, 45.0
+        Inclusive frequency range in Hz.
+    n_harmonics : int, default=0
+        Additional harmonics to exclude.
 
     Returns
     -------
-    distortion : ndarray | float
-        Per-channel distortion for 2D PSD input, or a scalar for 1D PSD input.
-
-    Notes
-    -----
-    This metric is useful as a signal-preservation indicator while
-    line-noise-focused metrics capture artifact suppression.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.qa import below_noise_distortion_db
-    >>> freqs = np.arange(0, 100, 0.5)
-    >>> before = np.ones((2, len(freqs)))
-    >>> after = before.copy()
-    >>> np.allclose(below_noise_distortion_db(freqs, before, after), 0.0)
-    True
+    float or ndarray
+        Scalar for 1-D input, otherwise one value per channel. An empty mask returns
+        zero; before-power is floored at 1e-30.
     """
     mask = (freqs >= fmin) & (freqs <= fmax)
     if exclude_freq is not None:
@@ -306,42 +225,25 @@ def spectral_distortion(
     n_harmonics: int = 3,
     bandwidth: float = 2.0,
 ) -> float:
-    """Spectral distortion (dB RMS) at non-harmonic frequencies.
-
-    This measures how much the cleaning process changed the spectrum
-    outside of the target line-noise frequencies.
+    """Compute RMS log-power distortion away from line-noise harmonics.
 
     Parameters
     ----------
-    freqs : array of shape (n_freqs,)
-        Frequency vector.
-    psd_before, psd_after : array
-        PSDs before and after cleaning.
-    line_freq : float
-        Fundamental line frequency (Hz).
-    n_harmonics : int
+    freqs : ndarray, shape (n_freqs,)
+        Frequency vector in Hz.
+    psd_before, psd_after : ndarray, shape (n_freqs,) or (n_channels, n_freqs)
+        PSDs before and after cleaning; channels are averaged for 2-D input.
+    line_freq : float, default=50.0
+        Fundamental line frequency in Hz.
+    n_harmonics : int, default=3
         Number of harmonics to exclude.
-    bandwidth : float
-        Base exclusion bandwidth (Hz).
+    bandwidth : float, default=2.0
+        Base half-width; the implementation excludes line_freq * k +/- 2 * bandwidth.
 
     Returns
     -------
-    distortion : float
-        RMS distortion in dB.
-
-    Notes
-    -----
-    This is an RMS variant of broadband distortion using channel-averaged PSDs.
-    Evaluation is restricted to 2-160 Hz and excludes line-frequency harmonics.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.qa import spectral_distortion
-    >>> freqs = np.arange(0, 200, 0.5)
-    >>> psd = np.ones((2, len(freqs)))
-    >>> spectral_distortion(freqs, psd, psd, line_freq=50.0, n_harmonics=3)
-    0.0
+    float
+        RMS distortion in dB over 2--160 Hz. An empty mask returns 0.0.
     """
     safe = np.ones(len(freqs), dtype=bool)
     for k in range(1, n_harmonics + 1):
@@ -369,39 +271,28 @@ def overclean_proportion(
     bandwidth: float = 2.0,
     threshold_db: float = 3.0,
 ) -> float:
-    """Fraction of channels where the spectral floor is over-suppressed.
+    """Compute the fraction of channels whose surrounding floor is over-suppressed.
+
+    A channel is flagged when surrounding-band attenuation exceeds threshold_db.
 
     Parameters
     ----------
-    freqs : array of shape (n_freqs,)
-        Frequency vector.
-    psd_before, psd_after : ndarray
+    freqs : ndarray, shape (n_freqs,)
+        Frequency vector in Hz.
+    psd_before, psd_after : ndarray, shape (n_freqs,) or (n_channels, n_freqs)
         PSDs before and after cleaning.
     target_freq : float
-        Centre frequency (Hz) of the line-noise peak.
-    bandwidth : float
-        Half-bandwidth (Hz) used for peak identification.
-    threshold_db : float
-        Attenuation threshold in dB.
+        Center frequency in Hz.
+    bandwidth : float, default=2.0
+        Half-width used to define the target band.
+    threshold_db : float, default=3.0
+        Surrounding-floor attenuation threshold in dB.
 
     Returns
     -------
-    proportion : float
-        Value in [0, 1].
-
-    Notes
-    -----
-    A channel is flagged as over-cleaned when attenuation in the surrounding
-    floor region exceeds ``threshold_db``.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.qa import overclean_proportion
-    >>> freqs = np.arange(0, 100, 0.5)
-    >>> psd = np.ones((4, len(freqs)))
-    >>> overclean_proportion(freqs, psd, psd, 50.0)
-    0.0
+    float
+        Indicator for 1-D input or channel fraction in [0, 1] for 2-D input.
+    No surrounding frequencies returns 0.0.
     """
     surr_mask = (
         (freqs >= target_freq - bandwidth * 2) & (freqs < target_freq - bandwidth)
@@ -427,39 +318,30 @@ def underclean_proportion(
     surround_bw: float = 5.0,
     threshold_ratio: float = 2.0,
 ) -> float:
-    """Fraction of channels where the line-noise peak remains prominent.
+    """Compute the fraction of channels with a residual target peak.
+
+    A channel is flagged when noise_surround_ratio exceeds threshold_ratio.
 
     Parameters
     ----------
-    freqs : array of shape (n_freqs,)
-        Frequency vector.
-    psd_after : ndarray
+    freqs : ndarray, shape (n_freqs,)
+        Frequency vector in Hz.
+    psd_after : ndarray, shape (n_freqs,) or (n_channels, n_freqs)
         PSD after cleaning.
     target_freq : float
-        Centre frequency (Hz).
-    peak_bw, surround_bw : float
-        Bandwidths for peak and surround.
-    threshold_ratio : float
-        Ratio above which a channel is considered under-cleaned.
+        Center frequency in Hz.
+    peak_bw : float, default=2.0
+        Half-width of the target band in Hz.
+    surround_bw : float, default=5.0
+        Half-width of the surrounding bands in Hz.
+    threshold_ratio : float, default=2.0
+        Residual peak ratio threshold.
 
     Returns
     -------
-    proportion : float
-        Value in [0, 1].
-
-    Notes
-    -----
-    A channel is flagged as under-cleaned when
-    :func:`noise_surround_ratio` exceeds ``threshold_ratio``.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.qa import underclean_proportion
-    >>> freqs = np.arange(0, 100, 0.5)
-    >>> psd = np.ones((4, len(freqs)))
-    >>> underclean_proportion(freqs, psd, 50.0)
-    0.0
+    float
+        Indicator for 1-D input or channel fraction in [0, 1] for 2-D input.
+    Missing peak power yields an unflagged ratio of zero.
     """
     nsr = noise_surround_ratio(freqs, psd_after, target_freq, peak_bw, surround_bw)
     if np.ndim(nsr) == 0:
@@ -474,37 +356,23 @@ def geometric_mean_psd_ratio(
     fmin: float = 1.0,
     fmax: float = 45.0,
 ) -> np.ndarray:
-    """Geometric mean of ``psd_after / psd_before`` across broadband.
+    """Compute the geometric mean of psd_after / psd_before over a frequency range.
 
     Parameters
     ----------
-    freqs : array of shape (n_freqs,)
-        Frequency vector.
-    psd_before, psd_after : ndarray
+    freqs : ndarray, shape (n_freqs,)
+        Frequency vector in Hz.
+    psd_before, psd_after : ndarray, shape (n_freqs,) or (n_channels, n_freqs)
         PSDs before and after cleaning.
-    fmin, fmax : float
-        Frequency range.
+    fmin, fmax : float, default=1.0, 45.0
+        Inclusive frequency bounds in Hz.
 
     Returns
     -------
-    gm_ratio : ndarray | float
-        Per-channel geometric-mean ratio for 2D PSD input, or a scalar for 1D
-        PSD input.
-
-    Notes
-    -----
-    Values near ``1`` indicate small broadband spectral changes. Values below
-    ``1`` indicate net broadband attenuation.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.qa import geometric_mean_psd_ratio
-    >>> freqs = np.arange(0, 100, 0.5)
-    >>> before = np.ones((2, len(freqs)))
-    >>> after = before * 0.5
-    >>> np.allclose(geometric_mean_psd_ratio(freqs, before, after), 0.5)
-    True
+    float or ndarray
+        Scalar for 1-D input, otherwise one value per channel. Values below one
+        indicate net attenuation; an empty mask returns one. PSDs are floored at
+        1e-30 before logarithms.
     """
     mask = (freqs >= fmin) & (freqs <= fmax)
     if not mask.any():
@@ -517,32 +385,20 @@ def geometric_mean_psd_ratio(
 
 
 def variance_removed(data_before: np.ndarray, data_after: np.ndarray) -> float:
-    """Percentage of total variance removed after denoising.
+    """Compute percentage of total variance removed.
+
+    The definition is 100 * (1 - var(data_after) / var(data_before)).
 
     Parameters
     ----------
-    data_before : ndarray
-        Data before denoising.
-    data_after : ndarray
-        Data after denoising.
+    data_before, data_after : ndarray
+        Data before and after cleaning with matching shapes.
 
     Returns
     -------
-    pct_removed : float
-        Percentage of variance removed:
-        ``100 * (1 - var(data_after) / var(data_before))``.
-
-    Notes
-    -----
-    Returns ``0.0`` when ``data_before`` has zero variance.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from mne_denoise.qa import variance_removed
-    >>> x = np.array([1.0, -1.0, 1.0, -1.0])
-    >>> variance_removed(x, 0.5 * x)
-    75.0
+    float
+        Percentage removed. Positive values indicate reduced variance, negative
+        values increased variance, and zero input variance returns 0.0.
     """
     var_before = np.var(data_before)
     if var_before == 0:
@@ -568,37 +424,24 @@ def compute_all_qa_metrics(
     n_harmonics: int = 0,
     fmax: float = 125.0,
 ) -> dict:
-    """Compute all QA metrics for a line-noise removal benchmark.
+    """Compute the package QA summary for two MNE Raw objects.
 
     Parameters
     ----------
     raw_before, raw_after : mne.io.BaseRaw
-        Raw recordings before and after cleaning.
-    line_freq : float
-        Fundamental line-noise frequency (Hz).
-    n_harmonics : int
-        Number of harmonics above the fundamental to evaluate.
-    fmax : float
-        Maximum frequency for PSD computation.
+        Recordings before and after cleaning.
+    line_freq : float, default=50.0
+        Fundamental line frequency in Hz.
+    n_harmonics : int, default=0
+        Number of harmonics above the fundamental.
+    fmax : float, default=125.0
+        Maximum PSD frequency in Hz.
 
     Returns
     -------
-    metrics : dict
-        Dictionary with scalar summary metrics and per-harmonic vectors.
-        Scalar keys:
-        ``peak_attenuation_db``, ``R_f0``, ``below_noise_distortion_db``,
-        ``overclean_proportion``, ``underclean_proportion``,
-        ``geometric_mean_psd_ratio``.
-
-    Notes
-    -----
-    ``peak_attenuation_db`` and ``R_f0`` scalar outputs correspond to the
-    first evaluated harmonic (fundamental line frequency).
-
-    Examples
-    --------
-    >>> # metrics = compute_all_qa_metrics(raw_before, raw_after, line_freq=50.0)
-    >>> # float(metrics["peak_attenuation_db"])
+    dict
+        Median summary metrics and per-harmonic attenuation/ratio arrays. PSDs are
+        computed with the Raw objects' compute_psd method.
     """
     _mne.require_mne("MNE QA metrics")
     freqs, psd_b, psd_a = _compute_psd_pair(raw_before, raw_after, fmax=fmax)
@@ -640,33 +483,57 @@ def compute_all_qa_metrics(
 
 
 def rms_change(data_before: np.ndarray, data_after: np.ndarray) -> float:
-    """Root mean square (RMS) of the difference between before and after signals.
+    """Compute the RMS of data_before - data_after.
 
     Parameters
     ----------
-    data_before : ndarray
-        Data before denoising.
-    data_after : ndarray
-        Data after denoising.
+    data_before, data_after : ndarray
+        Matching data arrays.
 
     Returns
     -------
-    rms : float
-        RMS of the difference (data_before - data_after).
+    float
+        RMS in the input data units. Empty input produces NaN.
     """
     delta = data_before - data_after
     return float(np.sqrt(np.mean(delta**2)))
 
 
 def max_abs_change(data_before: np.ndarray, data_after: np.ndarray) -> float:
-    """Maximum absolute change between before and after signals."""
+    """Compute the largest absolute sample-wise change.
+
+    Parameters
+    ----------
+    data_before, data_after : ndarray
+        Matching data arrays.
+
+    Returns
+    -------
+    float
+        max(abs(data_before - data_after)) in input units. Empty input raises the
+        NumPy maximum error.
+    """
     return float(np.max(np.abs(data_before - data_after)))
 
 
 def channel_variance_ratio(
     data_before: np.ndarray, data_after: np.ndarray
 ) -> np.ndarray:
-    """Per-channel variance ratio: var(after) / var(before)."""
+    """Compute after/before variance for each channel.
+
+    Parameters
+    ----------
+    data_before : ndarray, shape (n_channels, n_times) or (n_epochs, n_channels, n_times)
+        Data before cleaning.
+    data_after : ndarray
+        Data after cleaning with the same shape.
+
+    Returns
+    -------
+    ndarray, shape (n_channels,)
+        Variance ratio pooled over time, or epochs and time. Zero denominators are
+        replaced with machine epsilon.
+    """
     axis = (0, 2) if data_before.ndim == 3 else 1
     var_before = np.var(data_before, axis=axis)
     var_after = np.var(data_after, axis=axis)
