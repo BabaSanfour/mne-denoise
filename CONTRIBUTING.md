@@ -23,14 +23,16 @@ with the Code of Conduct.
 
 ## AI-assisted contributions
 
-Fully automated issue or pull-request generation without human review is not
-acceptable. The contributor is responsible for every submitted line and must
-understand, review, and test AI-assisted work. Scientific algorithm changes
-deserve particular scrutiny for correctness, provenance, and licensing.
+AI-assisted development has been used substantially in mne-denoise and is
+welcome when it remains under active human supervision. The contributor is
+responsible for every submitted line and must understand, review, and test
+AI-assisted work. Scientific algorithm changes deserve particular scrutiny
+for correctness, provenance, and licensing.
 
-If AI tools were used, disclose the tool, manner, and scope of assistance in
-the pull-request description. Do not use AI-generated text as a substitute for
-understanding reviewer discussion.
+Material AI assistance must be disclosed in the pull-request description,
+including the tool and scope of assistance. Fully automated submissions
+without human review are not acceptable, and AI-generated text is not a
+substitute for understanding reviewer discussion.
 
 ## Development setup
 
@@ -84,11 +86,10 @@ should support scientific claims. `spin docs` is the canonical full check.
 
 ## Changelog
 
-For changes that need a release note, add a fragment under
-`docs/changes/devel/` using the `<PR>.<type>.rst` naming scheme. The available
-types are `feature`, `bugfix`, `doc`, `removal`, and `misc`. Do not edit
-`CHANGELOG.md` in a pull request. See [docs/changes/README.md](https://github.com/mne-tools/mne-denoise/blob/main/docs/changes/README.md)
-for details and local draft instructions.
+Add a 1–2 line Towncrier fragment under `docs/changes/devel/` for changes that
+belong in the release notes. If no changelog entry is warranted, apply the
+`no-changelog-entry-needed` label; see [docs/changes/README.md](https://github.com/mne-tools/mne-denoise/blob/main/docs/changes/README.md)
+for fragment naming.
 
 ## Pull requests
 

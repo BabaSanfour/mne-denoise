@@ -34,6 +34,20 @@ validated files and does not check out the repository or rebuild anything.
 PyPI is the canonical distribution location; package files are not uploaded
 to the GitHub Release.
 
+## Documentation publishing
+
+The documentation workflow (`.github/workflows/docs.yml`) publishes the
+current `main` build to `/dev/` and redirects the site root to `/stable/`.
+When a GitHub Release is published, it builds from that exact release tag once
+and updates both `/stable/` and `/X.Y.Z/`. Existing development and archived
+release directories are preserved.
+
+`docs/_static/versions.json` is the readable source of truth for the version
+selector. Before publishing a new release, update it with the next development
+label, the new preferred stable entry, and all previous release directories.
+The publishing helper carries the same list into the deployed `/dev/` and
+`/stable/` sites without replacing unrelated Pages directories.
+
 ## Before the release
 
 1. Ensure `main` is current and clean.

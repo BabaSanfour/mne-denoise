@@ -1,8 +1,13 @@
+:orphan:
+
 Citing mne-denoise
 ==================
 
-1. Cite the mne-denoise software version or commit used.
-2. Cite the primary scientific publication for each method used.
-3. Use the central bibliography in docs/references.bib for method metadata.
+When using mne-denoise in research:
 
-The repository's software citation metadata is in CITATION.cff.
+1. report the mne-denoise version or commit used;
+2. cite the primary scientific publication for each method used.
+
+The individual method pages list their primary scientific references.
+Software citation metadata is available in the repository's
+`CITATION.cff <https://github.com/mne-tools/mne-denoise/blob/main/CITATION.cff>`__.

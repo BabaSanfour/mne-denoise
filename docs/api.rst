@@ -1,323 +1,266 @@
 API reference
 =============
 
-API stability
--------------
+.. note::
 
-The public API is the set of names documented here or exposed by the package
-facades. Names beginning with an underscore are private. APIs marked
-experimental have weaker stability guarantees.
+   **mne-denoise is under active development.** Until version 1.0, the
+   public API may evolve between releases. For reproducible analyses,
+   record the mne-denoise version used in your work.
 
-Package utilities
------------------
+Names documented in this reference are public unless explicitly marked
+experimental. Underscore-prefixed implementation details are private.
+
+Primary denoising API
+---------------------
+
+The main interfaces follow the artifact and method flow in the
+:doc:`Methods guide <methods>` and are listed here first.
+
+Artifact Subspace Reconstruction
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. currentmodule:: mne_denoise.asr
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_no_members.rst
+   :nosignatures:
+
+   ASR
+   AdaptiveASR
+   JugglerASR
+   GuidedASR
 
 .. autosummary::
    :toctree: generated/
    :nosignatures:
 
-   mne_denoise.compute_covariance
+   calibrate_asr
+   process_asr
 
-Progress callbacks
-------------------
+Sensor Noise Suppression
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-Callbacks receive immutable ProgressEvent objects after completed work units.
-The callback is supplied at runtime and is independent of verbose logging.
+.. currentmodule:: mne_denoise.sns
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_no_members.rst
+   :nosignatures:
+
+   SNS
 
 .. autosummary::
    :toctree: generated/
    :nosignatures:
 
-   mne_denoise.progress.ProgressEvent
-   mne_denoise.progress.TqdmProgress
-
-.. code-block:: python
-
-   events = []
-   model.fit(data, callback=events.append)
-
-ASR
----
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   mne_denoise.asr.ASR
-   mne_denoise.asr.AdaptiveASR
-   mne_denoise.asr.JugglerASR
-   mne_denoise.asr.GuidedASR
-   mne_denoise.asr.calibrate_asr
-   mne_denoise.asr.compute_clean_window_mask
-   mne_denoise.asr.fit_rms_distribution
-   mne_denoise.asr.process_asr
-   mne_denoise.asr.process_guided_asr
-   mne_denoise.asr.select_juggler_reference_samples
-
-DSS
----
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   mne_denoise.dss.compute_dss
-   mne_denoise.dss.DSS
-   mne_denoise.dss.TimeShiftDSS
-   mne_denoise.dss.iterative_dss
-   mne_denoise.dss.iterative_dss_one
-   mne_denoise.dss.IterativeDSS
-
-DSS segmentation
-~~~~~~~~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   mne_denoise.dss.segmentation.CovarianceSegmenter
-   mne_denoise.dss.segmentation.FixedWindowSegmenter
-
-DSS component selection
-~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   mne_denoise.dss.selection.auto_select_components
-   mne_denoise.dss.selection.auto_select_components_robust
-   mne_denoise.dss.selection.detect_eigenvalue_knee
-   mne_denoise.dss.selection.iterative_outlier_removal
-
-Denoisers
-~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   mne_denoise.dss.denoisers.LinearDenoiser
-   mne_denoise.dss.denoisers.AverageBias
-   mne_denoise.dss.denoisers.CycleAverageBias
-   mne_denoise.dss.denoisers.BandpassBias
-   mne_denoise.dss.denoisers.LineNoiseBias
-   mne_denoise.dss.denoisers.PeakFilterBias
-   mne_denoise.dss.denoisers.CombFilterBias
-   mne_denoise.dss.denoisers.LagAverageBias
-   mne_denoise.dss.denoisers.SmoothingBias
-   mne_denoise.dss.denoisers.SpectrogramBias
-   mne_denoise.dss.denoisers.NonlinearDenoiser
-   mne_denoise.dss.denoisers.TanhMaskDenoiser
-   mne_denoise.dss.denoisers.RobustTanhDenoiser
-   mne_denoise.dss.denoisers.KurtosisDenoiser
-   mne_denoise.dss.denoisers.SkewDenoiser
-   mne_denoise.dss.denoisers.GaussDenoiser
-   mne_denoise.dss.denoisers.WienerMaskDenoiser
-   mne_denoise.dss.denoisers.VarianceMaskDenoiser
-   mne_denoise.dss.denoisers.SpectrogramDenoiser
-   mne_denoise.dss.denoisers.DCTDenoiser
-   mne_denoise.dss.denoisers.QuasiPeriodicDenoiser
-   mne_denoise.dss.denoisers.SmoothTanhDenoiser
-   mne_denoise.dss.denoisers.beta_tanh
-   mne_denoise.dss.denoisers.beta_pow3
-   mne_denoise.dss.denoisers.beta_gauss
-
-Variants
-~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   mne_denoise.dss.variants.smooth_dss
-   mne_denoise.dss.variants.narrowband_dss
-   mne_denoise.dss.variants.narrowband_scan
-   mne_denoise.dss.variants.ssvep_dss
-
-ZapLine
--------
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   mne_denoise.zapline.ZapLine
-
-Spectrum interpolation
-----------------------
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   mne_denoise.spectrum_interpolation.SpectrumInterpolation
-   mne_denoise.spectrum_interpolation.interpolate_spectrum
-
-iCanClean
----------
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   mne_denoise.icanclean.ICanClean
-   mne_denoise.icanclean.compute_icanclean
-   mne_denoise.icanclean.null_r2_threshold
+   compute_sns
 
 SOUND
------
+~~~~~
+
+.. currentmodule:: mne_denoise.sound
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_no_members.rst
+   :nosignatures:
+
+   SOUND
 
 .. autosummary::
    :toctree: generated/
    :nosignatures:
 
-   mne_denoise.sound.SOUND
-   mne_denoise.sound.compute_sound
-   mne_denoise.sound.compute_sound_ref_best
+   compute_sound
 
-SSP-SIR
--------
+Spectrum interpolation
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. currentmodule:: mne_denoise.spectrum_interpolation
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_no_members.rst
+   :nosignatures:
+
+   SpectrumInterpolation
 
 .. autosummary::
    :toctree: generated/
    :nosignatures:
 
-   mne_denoise.sspsir.SSPSIR
-   mne_denoise.sspsir.compute_sspsir
-   mne_denoise.sspsir.compute_sir
+   interpolate_spectrum
 
-Overcorrection metrics
-----------------------
+ZapLine
+~~~~~~~
+
+.. currentmodule:: mne_denoise.zapline
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_no_members.rst
+   :nosignatures:
+
+   ZapLine
+
+DSS
+~~~
+
+Core
+^^^^
+
+.. currentmodule:: mne_denoise.dss
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_no_members.rst
+   :nosignatures:
+
+   DSS
+   IterativeDSS
+   TimeShiftDSS
 
 .. autosummary::
    :toctree: generated/
    :nosignatures:
 
-   mne_denoise.quantify_overcorrection
+   compute_dss
+   iterative_dss
+
+Biases and linear denoisers
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. currentmodule:: mne_denoise.dss
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_no_members.rst
+   :nosignatures:
+
+   LinearDenoiser
+   AverageBias
+   CycleAverageBias
+   BandpassBias
+   LineNoiseBias
+   PeakFilterBias
+   CombFilterBias
+   LagAverageBias
+   SmoothingBias
+   SpectrogramBias
+
+Nonlinear denoisers
+^^^^^^^^^^^^^^^^^^^
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_no_members.rst
+   :nosignatures:
+
+   NonlinearDenoiser
+   TanhMaskDenoiser
+   RobustTanhDenoiser
+   KurtosisDenoiser
+   SkewDenoiser
+   GaussDenoiser
+   WienerMaskDenoiser
+   VarianceMaskDenoiser
+   SpectrogramDenoiser
+   DCTDenoiser
+   QuasiPeriodicDenoiser
+   SmoothTanhDenoiser
+
+Singular Spectrum Analysis
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. currentmodule:: mne_denoise.ssa
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_no_members.rst
+   :nosignatures:
+
+   SingularSpectrumAnalysis
+   LocalSingularSpectrumAnalysis
+
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   compute_basic_ssa
+   compute_local_ssa
 
 BSS-CCA
--------
+~~~~~~~
+
+.. currentmodule:: mne_denoise.bss_cca
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_no_members.rst
+   :nosignatures:
+
+   BSSCCA
 
 .. autosummary::
    :toctree: generated/
    :nosignatures:
 
-   mne_denoise.bss_cca.BSSCCA
-   mne_denoise.bss_cca.compute_bss_cca
+   compute_bss_cca
 
-SNS
----
+iCanClean
+~~~~~~~~~
+
+.. currentmodule:: mne_denoise.icanclean
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_no_members.rst
+   :nosignatures:
+
+   ICanClean
 
 .. autosummary::
    :toctree: generated/
    :nosignatures:
 
-   mne_denoise.sns.SNS
-   mne_denoise.sns.compute_sns
-   mne_denoise.sns.compute_sns_weights
+   compute_icanclean
 
-SSA
----
+SSP-SIR
+~~~~~~~
+
+.. currentmodule:: mne_denoise.sspsir
+
+.. autosummary::
+   :toctree: generated/
+   :template: autosummary/class_no_members.rst
+   :nosignatures:
+
+   SSPSIR
 
 .. autosummary::
    :toctree: generated/
    :nosignatures:
 
-   mne_denoise.ssa.SingularSpectrumAnalysis
-   mne_denoise.ssa.LocalSingularSpectrumAnalysis
-   mne_denoise.ssa.ssa_decompose
-   mne_denoise.ssa.ssa_w_correlation
-   mne_denoise.ssa.compute_basic_ssa
-   mne_denoise.ssa.ssa_clean_channel
-   mne_denoise.ssa.compute_local_ssa
-   mne_denoise.ssa.local_ssa_clean_channel
+   compute_sspsir
+   compute_sir
 
-Quality assurance
------------------
+Additional API
+--------------
 
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
+.. toctree::
+   :hidden:
+   :maxdepth: 1
 
-   mne_denoise.qa.peak_attenuation_db
-   mne_denoise.qa.suppression_ratio
-   mne_denoise.qa.noise_surround_ratio
-   mne_denoise.qa.below_noise_distortion_db
-   mne_denoise.qa.spectral_distortion
-   mne_denoise.qa.overclean_proportion
-   mne_denoise.qa.underclean_proportion
-   mne_denoise.qa.geometric_mean_psd_ratio
-   mne_denoise.qa.variance_removed
-   mne_denoise.qa.compute_all_qa_metrics
-   mne_denoise.qa.rms_change
-   mne_denoise.qa.max_abs_change
-   mne_denoise.qa.channel_variance_ratio
+   Advanced method helpers <api/helpers>
+   Evaluation and QA <api/evaluation>
+   Visualization <api/visualization>
+   Utilities <api/utilities>
 
-Visualization
--------------
+The secondary reference pages collect reusable building blocks and supporting
+interfaces:
 
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   mne_denoise.viz.plot_asr_repair_timeline
-   mne_denoise.viz.plot_asr_calibration_fraction
-   mne_denoise.viz.plot_asr_component_reconstruction
-   mne_denoise.viz.plot_guided_asr_weights
-   mne_denoise.viz.plot_component_summary
-   mne_denoise.viz.plot_component_selector
-   mne_denoise.viz.plot_component_time_series
-   mne_denoise.viz.plot_component_spectrogram
-   mne_denoise.viz.plot_component_score_curve
-   mne_denoise.viz.plot_window_score_traces
-   mne_denoise.viz.plot_component_patterns
-   mne_denoise.viz.plot_component_epochs_image
-   mne_denoise.viz.plot_psd_comparison
-   mne_denoise.viz.plot_psd_gallery
-   mne_denoise.viz.plot_psd_overlay
-   mne_denoise.viz.plot_psd_zoom_comparison
-   mne_denoise.viz.plot_evoked_gfp_comparison
-   mne_denoise.viz.plot_channel_time_course_comparison
-   mne_denoise.viz.plot_power_ratio_map
-   mne_denoise.viz.plot_spectrogram_comparison
-   mne_denoise.viz.plot_signal_overlay
-   mne_denoise.viz.plot_component_psd_comparison
-   mne_denoise.viz.plot_grand_average_evokeds
-   mne_denoise.viz.plot_narrowband_score_scan
-   mne_denoise.viz.plot_time_frequency_mask
-   mne_denoise.viz.plot_metric_bars
-   mne_denoise.viz.plot_window_count_series
-   mne_denoise.viz.plot_tradeoff_scatter
-   mne_denoise.viz.plot_metric_comparison
-   mne_denoise.viz.plot_metric_slopes
-   mne_denoise.viz.plot_metric_violins
-   mne_denoise.viz.plot_null_distribution
-   mne_denoise.viz.plot_forest
-   mne_denoise.viz.plot_harmonic_attenuation
-   mne_denoise.viz.plot_metric_tradeoff_summary
-   mne_denoise.viz.plot_denoising_summary
-   mne_denoise.viz.plot_component_cleaning_summary
-   mne_denoise.viz.plot_signal_diagnostics_summary
-   mne_denoise.viz.plot_condition_interaction_summary
-   mne_denoise.viz.plot_group_condition_interaction_summary
-   mne_denoise.viz.plot_endpoint_metrics_summary
-
-Visualization theme
-~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-   :nosignatures:
-
-   mne_denoise.viz.set_theme
-   mne_denoise.viz.use_theme
-   mne_denoise.viz.get_theme_rc
-   mne_denoise.viz.get_color
-   mne_denoise.viz.get_series_color
-   mne_denoise.viz.style_axes
-   mne_denoise.viz.themed_figure
-   mne_denoise.viz.themed_legend
-
-.. autoclass:: mne_denoise.viz.ComponentSelector
-   :members: apply, excluded
-   :exclude-members: __init__
+* :doc:`Advanced method helpers <api/helpers>`
+* :doc:`Evaluation and QA <api/evaluation>`
+* :doc:`Visualization <api/visualization>`
+* :doc:`Utilities <api/utilities>`
