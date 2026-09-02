@@ -1,37 +1,15 @@
-DSS Examples
+DSS examples
 ============
 
-Overview
---------
+These examples show four scientifically distinct ways to define structure of
+interest with Denoising Source Separation.
 
-Examples demonstrating Denoising Source Separation (DSS) across evoked,
-spectral, temporal, and blind-separation use cases.
+The evoked example uses trial reproducibility on real held-out MEG data. The
+cardiac example uses event locking for artifact subtraction with an independent
+clean-input preservation control. The narrowband example uses spectral
+structure to recover a known target source. The TimeShiftDSS example extends
+reproducibility into lag-augmented spatiotemporal space and uses held-out and
+surrogate validation.
 
-Files
------
-
-- ``plot_01_dss_fundamentals.py``: Core DSS concepts with trial-average and bandpass biases.
-- ``plot_02_artifact_correction.py``: Blink and heartbeat correction with DSS.
-- ``plot_03_evoked_responses.py``: Evoked-response denoising and contrast-focused DSS.
-- ``plot_04_spectral_dss.py``: Frequency-specific component extraction on synthetic and real data.
-- ``plot_05_periodic_dss.py``: Periodic signal extraction for SSVEP and quasi-periodic structure.
-- ``plot_06_temporal_dss.py``: Time-shift and smoothness biases for temporally structured signals.
-- ``plot_07_spectrogram_dss.py``: Time-frequency masking with spectrogram-based DSS.
-- ``plot_08_blind_source_separation.py``: Blind source separation and FastICA equivalence.
-- ``plot_09_custom_bias.py``: Defining custom DSS biases.
-- ``plot_11_wiener_masking.py``: Adaptive Wiener masking for bursty signals.
-- ``plot_12_joint_dss.py``: Joint DSS for multi-dataset repeatability.
-- ``plot_13_cardiac_composition.py``: Explicit, held-out cardiac DSS composition with attenuation and preservation checks.
-
-Data Requirements
------------------
-
-- Synthetic sections run directly with no external data.
-- Examples using MNE datasets download and cache them through MNE when needed.
-
-References
-----------
-
-- Särelä & Valpola (2005). Denoising Source Separation. J. Mach. Learn. Res.
-- de Cheveigné & Simon (2008). Denoising based on spatial filtering. J. Neurosci. Methods.
-- de Cheveigné & Parra (2014). Joint decorrelation. NeuroImage.
+A DSS bias defines what the decomposition emphasizes; it does not by itself
+establish that a selected component is neural signal or artifact.
