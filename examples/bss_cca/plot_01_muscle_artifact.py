@@ -9,13 +9,14 @@ spatially structured muscle-like processes active in known time windows.
 
 BSS-CCA orders components by their lagged temporal correlation. Broadband
 muscle-like activity can occupy the low-correlation end, but low correlation is
-a selection heuristic rather than an artifact label. The unmodified filtered
-recording is a reference substrate for this controlled comparison, not
-noise-free neural ground truth.
+a selection heuristic rather than an artifact label. The unmodified
+average-referenced recording is a reference substrate for this controlled
+comparison, not noise-free neural ground truth.
 
-The two removed components are known only because this construction contains two
-muscle-like latent processes. Real recordings require independent validation of
-the removal rule.
+Because this controlled construction injects two independent muscle-like
+processes, we use ``n_remove=2`` as a transparent operating choice. This does
+not imply that CCA components correspond one-to-one with the injected sources,
+and real recordings require independent validation of the removal rule.
 
 The use case is motivated by
 :footcite:p:`declercq2006_bss_cca,vergult2007_bss_cca`.
@@ -42,11 +43,12 @@ raw = mne.io.read_raw_fif(
     preload=True,
     verbose="ERROR",
 )
-raw.pick("eeg").crop(0.0, 20.0).resample(200.0, verbose="ERROR")
+raw.pick("eeg", exclude="bads").crop(0.0, 20.0).resample(250.0, verbose="ERROR")
 raw.filter(1.0, 45.0, verbose="ERROR")
+raw.set_eeg_reference("average", projection=False, verbose="ERROR")
 
-# The unmodified filtered recording is the reference substrate, not perfect
-# neural ground truth.
+# The unmodified average-referenced recording is the reference substrate, not
+# perfect neural ground truth.
 reference_data = raw.get_data()
 sfreq = raw.info["sfreq"]
 n_channels = reference_data.shape[0]
@@ -80,6 +82,7 @@ for start_seconds, stop_seconds in ((4.0, 6.0), (12.0, 14.0)):
 muscle_sources *= artifact_envelope
 
 artifact_spatial = rng.standard_normal((n_channels, 2))
+artifact_spatial -= artifact_spatial.mean(axis=0, keepdims=True)
 artifact_spatial /= np.linalg.norm(artifact_spatial, axis=0, keepdims=True)
 channel_scale = np.median(np.std(reference_data, axis=1))
 artifact_multiplier = 4.0
@@ -133,7 +136,7 @@ removed_mask = ~model.kept_mask_
 removed_correlations = model.correlations_[removed_mask]
 removed_autocorrelations = model.autocorrelations_[removed_mask]
 print(f"Artifact residual ratio: {artifact_residual_ratio:.3f}")
-print(f"Quiet/untouched relative error: {quiet_relative_error:.3f}")
+print(f"Quiet-period relative error: {quiet_relative_error:.3f}")
 print(f"Number of components removed: {model.n_removed_}")
 print(
     f"Canonical correlations of removed components: {np.round(removed_correlations, 3)}"

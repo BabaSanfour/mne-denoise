@@ -37,7 +37,7 @@ raw = mne.io.read_raw_fif(
     preload=True,
     verbose="ERROR",
 )
-raw.pick("eeg").crop(0.0, 20.0).resample(200.0, verbose="ERROR")
+raw.pick("eeg", exclude="bads").crop(0.0, 20.0).resample(200.0, verbose="ERROR")
 raw.filter(1.0, 45.0, verbose="ERROR")
 
 # The untouched recording is the reference substrate for both endpoints below.

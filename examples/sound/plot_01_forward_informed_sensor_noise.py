@@ -10,9 +10,10 @@ forward solution, then plants independent broadband noise in three sensors.
 SOUND uses forward-model consistency to estimate channel-specific noise; a
 signal that the forward model explains poorly is not thereby proven to be
 noise. Forward-model mismatch is a reason to evaluate preservation of the
-signal of interest separately. The unmodified average-referenced recording is
-the reference substrate for this controlled comparison, not noise-free neural
-ground truth.
+signal of interest separately. The unmodified filtered recording is the
+reference substrate for this controlled comparison, not noise-free neural
+ground truth. Quantitative and visual comparisons use a common average
+reference because ``reference="best"`` returns that representation.
 
 The use case is motivated by
 :footcite:p:`mutanen2018_sound,mutanen2022_source_artifact`.
@@ -54,15 +55,11 @@ forward = mne.read_forward_solution(
 raw.pick("eeg", exclude="bads").crop(0.0, 20.0).resample(200.0, verbose="ERROR")
 raw.filter(1.0, 45.0, verbose="ERROR")
 
-# Keep an unreferenced copy for planting sensor-level noise. The Sample file's
-# pre-marked bad EEG channel is excluded before building the reference.
-unreferenced = raw.copy()
-raw.set_eeg_reference("average", projection=True, verbose="ERROR")
-raw.apply_proj(verbose="ERROR")
-
-# The unmodified filtered recording is the reference substrate, not a claim of
-# noise-free neural ground truth.
-reference_data = raw.get_data()
+# Keep the filtered, good-channel recording in its original sensor coordinates
+# for planting noise. The unmodified recording is the reference substrate, not
+# a claim of noise-free neural ground truth.
+reference = raw.copy()
+reference_data = reference.get_data()
 n_channels = reference_data.shape[0]
 
 # %%
@@ -73,7 +70,7 @@ channel_scale = np.median(np.std(reference_data, axis=1))
 corrupted_indices = np.array([5, n_channels // 2, n_channels - 5])
 noise_multiplier = 3.0
 
-corrupted_data = unreferenced.get_data().copy()
+corrupted_data = reference_data.copy()
 
 for index in corrupted_indices:
     corrupted_data[index] += (
@@ -82,91 +79,138 @@ for index in corrupted_indices:
 
 corrupted = mne.io.RawArray(
     corrupted_data,
-    unreferenced.info.copy(),
-    first_samp=unreferenced.first_samp,
+    reference.info.copy(),
+    first_samp=reference.first_samp,
     verbose=False,
 )
-corrupted.set_annotations(raw.annotations.copy())
-corrupted.set_eeg_reference("average", projection=True, verbose="ERROR")
-corrupted.apply_proj(verbose="ERROR")
-corrupted_data = corrupted.get_data()
-corrupted_channel_names = [raw.ch_names[index] for index in corrupted_indices]
-untouched_indices = np.setdiff1d(np.arange(n_channels), corrupted_indices)
+corrupted.set_annotations(reference.annotations.copy())
+corrupted_channel_names = [reference.ch_names[index] for index in corrupted_indices]
 
 # %%
-# Fit SOUND and inspect its channel-wise noise estimates
-# --------------------------------------------------------
-sound = SOUND(
+# Fit SOUND on the corrupted recording and on the clean-input control
+# --------------------------------------------------------------------
+sound_corrupted = SOUND(
     forward=forward,
-    reference="average",
+    reference="best",
     n_iter=5,
     random_state=0,
     verbose=False,
 )
-cleaned = sound.fit_transform(corrupted)
-cleaned_data = cleaned.get_data()
+cleaned_corrupted = sound_corrupted.fit_transform(corrupted)
 
-corrupted_error = rms_change(
-    corrupted_data[corrupted_indices],
-    reference_data[corrupted_indices],
+sound_control = SOUND(
+    forward=forward,
+    reference="best",
+    n_iter=5,
+    random_state=0,
+    verbose=False,
 )
-cleaned_error = rms_change(
-    cleaned_data[corrupted_indices],
-    reference_data[corrupted_indices],
-)
-reference_scale = np.sqrt(np.mean(reference_data[corrupted_indices] ** 2))
-corrupted_relative_error = corrupted_error / reference_scale
-cleaned_relative_error = cleaned_error / reference_scale
+cleaned_control = sound_control.fit_transform(reference)
 
-untouched_change = rms_change(
-    cleaned_data[untouched_indices],
-    reference_data[untouched_indices],
+# SOUND with reference="best" returns an average-referenced representation.
+# Put both the clean substrate and corrupted input in that same coordinate
+# system before computing recovery and preservation metrics.
+reference_avg = reference.copy().set_eeg_reference(
+    "average", projection=False, verbose="ERROR"
 )
-untouched_scale = np.sqrt(np.mean(reference_data[untouched_indices] ** 2))
-untouched_relative_change = untouched_change / untouched_scale
+corrupted_avg = corrupted.copy().set_eeg_reference(
+    "average", projection=False, verbose="ERROR"
+)
+reference_avg_data = reference_avg.get_data()
+corrupted_avg_data = corrupted_avg.get_data()
+cleaned_corrupted_data = cleaned_corrupted.get_data()
+cleaned_control_data = cleaned_control.get_data()
 
-rank_order = np.argsort(sound.sigmas_)[::-1]
+error_before = rms_change(
+    corrupted_avg_data,
+    reference_avg_data,
+)
+error_after = rms_change(
+    cleaned_corrupted_data,
+    reference_avg_data,
+)
+reference_scale = np.sqrt(np.mean(reference_avg_data**2))
+relative_error_before = error_before / reference_scale
+relative_error_after = error_after / reference_scale
+
+control_change = rms_change(
+    cleaned_control_data,
+    reference_avg_data,
+)
+control_relative_change = control_change / reference_scale
+
+sigma_channel_indices = np.flatnonzero(
+    np.arange(n_channels) != sound_corrupted.best_channel_
+)
+sigma_channel_names = [reference.ch_names[index] for index in sigma_channel_indices]
+rank_order = np.argsort(sound_corrupted.sigmas_)[::-1]
 top_indices = rank_order[:5]
 print(f"Planted corrupted channels: {corrupted_channel_names}")
-print(f"Corrupted-channel error before SOUND: {corrupted_relative_error:.3f}")
-print(f"Corrupted-channel error after SOUND:  {cleaned_relative_error:.3f}")
-print(f"Untouched-channel relative change:    {untouched_relative_change:.3f}")
+print(
+    "Selected best-reference channel: "
+    f"{reference.ch_names[sound_corrupted.best_channel_]}"
+)
+print(f"Whole-recording error before SOUND: {relative_error_before:.3f}")
+print(f"Whole-recording error after SOUND:  {relative_error_after:.3f}")
+print(f"Clean-input relative change:        {control_relative_change:.3f}")
 print("Top channels by estimated sigma:")
 for position, index in enumerate(top_indices, start=1):
-    print(f"  {position}. {raw.ch_names[index]}: {sound.sigmas_[index]:.3e}")
+    print(
+        f"  {position}. {sigma_channel_names[index]}: "
+        f"{sound_corrupted.sigmas_[index]:.3e}"
+    )
 for index in corrupted_indices:
-    rank = int(np.flatnonzero(rank_order == index)[0] + 1)
-    print(f"Rank of planted channel {raw.ch_names[index]}: {rank}")
-print(f"Final convergence value: {sound.convergence_[-1]:.3e}")
+    if index == sound_corrupted.best_channel_:
+        print(
+            f"Rank of planted channel {reference.ch_names[index]}: selected reference"
+        )
+    else:
+        sigma_position = int(np.flatnonzero(sigma_channel_indices == index)[0])
+        rank = int(np.flatnonzero(rank_order == sigma_position)[0] + 1)
+        print(f"Rank of planted channel {reference.ch_names[index]}: {rank}")
+print(f"Final convergence value: {sound_corrupted.convergence_[-1]:.3e}")
 
 # %%
 # Plot the fitted channel-noise diagnostic
 # ------------------------------------------
-sigma_colors = [COLORS["primary"] for _ in range(n_channels)]
+sigma_colors = [COLORS["primary"] for _ in range(len(sigma_channel_indices))]
 for index in corrupted_indices:
-    sigma_colors[index] = COLORS["accent"]
+    if index != sound_corrupted.best_channel_:
+        sigma_position = int(np.flatnonzero(sigma_channel_indices == index)[0])
+        sigma_colors[sigma_position] = COLORS["accent"]
 
 fig, ax = themed_figure(figsize=(10.0, 3.8))
-ax.bar(np.arange(n_channels), sound.sigmas_, color=sigma_colors)
-tick_step = max(1, n_channels // 12)
-tick_positions = np.arange(0, n_channels, tick_step)
+sigma_positions = np.arange(len(sigma_channel_indices))
+ax.bar(sigma_positions, sound_corrupted.sigmas_, color=sigma_colors)
+tick_step = max(1, len(sigma_channel_indices) // 12)
+tick_positions = np.arange(0, len(sigma_channel_indices), tick_step)
 ax.set_xticks(tick_positions)
-ax.set_xticklabels([raw.ch_names[index] for index in tick_positions], rotation=90)
+ax.set_xticklabels(
+    [sigma_channel_names[index] for index in tick_positions], rotation=90
+)
 ax.set_xlabel("EEG channel")
 ax.set_ylabel("Estimated noise amplitude")
-ax.set_title("SOUND channel-noise estimates")
+ax.set_title(
+    "SOUND channel-noise estimates "
+    f"(best reference: {reference.ch_names[sound_corrupted.best_channel_]})"
+)
 for index in corrupted_indices:
-    ax.annotate(
-        "planted",
-        xy=(index, sound.sigmas_[index]),
-        xytext=(index, float(np.max(sound.sigmas_)) * 1.08),
-        ha="center",
-        va="bottom",
-        rotation=90,
-        fontsize=FONTS["annotation"],
-        color=COLORS["accent"],
-        arrowprops={"arrowstyle": "-", "color": COLORS["accent"]},
-    )
+    if index != sound_corrupted.best_channel_:
+        sigma_position = int(np.flatnonzero(sigma_channel_indices == index)[0])
+        ax.annotate(
+            "planted",
+            xy=(sigma_position, sound_corrupted.sigmas_[sigma_position]),
+            xytext=(
+                sigma_position,
+                float(np.max(sound_corrupted.sigmas_)) * 1.08,
+            ),
+            ha="center",
+            va="bottom",
+            rotation=90,
+            fontsize=FONTS["annotation"],
+            color=COLORS["accent"],
+            arrowprops={"arrowstyle": "-", "color": COLORS["accent"]},
+        )
 themed_legend(
     ax,
     handles=[
@@ -182,17 +226,17 @@ fig.tight_layout()
 # Inspect one reconstructed sensor
 # ---------------------------------
 plot_signal_overlay(
-    corrupted,
-    cleaned,
-    raw.times,
+    corrupted_avg,
+    cleaned_corrupted,
+    reference.times,
     pick=corrupted_channel_names[0],
     start=2.0,
     stop=4.0,
     scale_after=False,
-    before_label="corrupted",
+    before_label="corrupted (average reference)",
     after_label="SOUND",
-    reference=reference_data[corrupted_indices[0]],
-    reference_label="unmodified recording",
+    reference=reference_avg_data[corrupted_indices[0]],
+    reference_label="unmodified (average reference)",
     x_label="Time (s)",
     y_label="Amplitude (V)",
     title=f"Forward-informed reconstruction at {corrupted_channel_names[0]}",
