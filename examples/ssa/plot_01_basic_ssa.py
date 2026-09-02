@@ -53,9 +53,9 @@ drift_after = np.dot(cleaned, drift) / drift_denominator
 drift_residual_ratio = abs(drift_after / drift_before)
 
 alpha_denominator = np.dot(alpha, alpha)
-alpha_before = np.dot(observed, alpha) / alpha_denominator
+alpha_reference = np.dot(desired, alpha) / alpha_denominator
 alpha_after = np.dot(cleaned, alpha) / alpha_denominator
-alpha_gain = alpha_after / alpha_before
+alpha_gain = alpha_after / alpha_reference
 
 dropped_frequencies = np.asarray(cleaner.dropped_frequencies_[0])
 print(f"Additive reconstruction error: {reconstruction_error:.3e}")

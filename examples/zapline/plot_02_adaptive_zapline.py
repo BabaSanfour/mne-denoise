@@ -39,10 +39,8 @@ rng = np.random.default_rng(20260902)
 # The clean substrate is one continuous background-plus-target process shared by
 # all regimes. The 10-Hz component is a known signal-of-interest template.
 channel_phases = rng.uniform(0.0, 2.0 * np.pi, n_channels)
-background = (
-    0.08 * rng.standard_normal((n_channels, n_times))
-    + 0.12
-    * np.sin(2.0 * np.pi * 3.0 * times[None, :] + channel_phases[:, None])
+background = 0.08 * rng.standard_normal((n_channels, n_times)) + 0.12 * np.sin(
+    2.0 * np.pi * 3.0 * times[None, :] + channel_phases[:, None]
 )
 target_pattern = rng.standard_normal(n_channels)
 target_pattern /= np.linalg.norm(target_pattern)
@@ -68,15 +66,14 @@ for name, start, stop, frequency, amplitude, topography in regimes:
     interval = slice(int(start * sfreq), int(stop * sfreq))
     envelope = np.ones(interval.stop - interval.start)
     if name == "C":
-        # The final regime is intermittent as well as spatially distinct.
+        # The final regime has a weaker baseline with stronger bursts and is
+        # spatially distinct.
         local_times = times[interval]
         envelope = 0.25 + 0.75 * (
             ((local_times >= 64.0) & (local_times < 72.0))
             | ((local_times >= 78.0) & (local_times < 86.0))
         )
-    source = amplitude * envelope * np.sin(
-        2.0 * np.pi * frequency * times[interval]
-    )
+    source = amplitude * envelope * np.sin(2.0 * np.pi * frequency * times[interval])
     line_artifact[:, interval] = topography[:, None] * source[None, :]
 
 contaminated = clean_reference + line_artifact
@@ -121,20 +118,38 @@ for name, start, stop, frequency, _amplitude, _topography in regimes:
     regime_labels.append(name)
     global_ratios.append(global_ratio)
     adaptive_ratios.append(adaptive_ratio)
+    regime_target_template = target_template[:, interval]
+    regime_target_energy = np.sum(regime_target_template**2)
+    regime_reference_projection = (
+        np.sum(clean_reference[:, interval] * regime_target_template)
+        / regime_target_energy
+    )
+    regime_global_projection = (
+        np.sum(global_clean[:, interval] * regime_target_template)
+        / regime_target_energy
+    )
+    regime_adaptive_projection = (
+        np.sum(adaptive_clean[:, interval] * regime_target_template)
+        / regime_target_energy
+    )
+    regime_global_gain = regime_global_projection / regime_reference_projection
+    regime_adaptive_gain = regime_adaptive_projection / regime_reference_projection
     print(
         f"  Regime {name} ({start:.0f}-{stop:.0f} s, {frequency:.2f} Hz): "
         f"contaminated error={contaminated_error:.4f}; "
         f"global error={global_error:.4f}, residual ratio={global_ratio:.3f}; "
         f"adaptive error={adaptive_error:.4f}, residual ratio={adaptive_ratio:.3f}"
     )
+    print(
+        f"  Regime {name} target gain — global / adaptive: "
+        f"{regime_global_gain:.3f} / {regime_adaptive_gain:.3f}"
+    )
 
 # Project the known 10-Hz component, rather than treating lower 50-Hz power as
 # evidence of preservation. Adaptive mode is transductive, so this uses the
 # clean-reference reconstruction endpoint instead of a second transform call.
 target_energy = np.sum(target_template**2)
-reference_target_projection = (
-    np.sum(clean_reference * target_template) / target_energy
-)
+reference_target_projection = np.sum(clean_reference * target_template) / target_energy
 global_target_projection = np.sum(global_clean * target_template) / target_energy
 adaptive_target_projection = np.sum(adaptive_clean * target_template) / target_energy
 global_target_gain = global_target_projection / reference_target_projection
@@ -153,10 +168,7 @@ print(
     f"Adaptive segment/component passes: {len(chunk_info)} segments / "
     f"{adaptive_model.n_removed_} component passes"
 )
-print(
-    "Adaptive reported segment frequencies (Hz): "
-    f"{reported_frequencies}"
-)
+print(f"Adaptive reported segment frequencies (Hz): {reported_frequencies}")
 print(f"10-Hz target-signal retention - global:   {global_target_gain:.3f}")
 print(f"10-Hz target-signal retention - adaptive: {adaptive_target_gain:.3f}")
 

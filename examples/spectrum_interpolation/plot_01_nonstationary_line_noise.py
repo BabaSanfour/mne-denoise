@@ -11,9 +11,10 @@ as a contextual reference.
 Spectrum interpolation replaces amplitudes around selected Fourier frequencies
 while retaining the original Fourier phase at those bins
 :footcite:p:`leske_dalal2019_spectrum`. That implementation property is distinct
-from a guarantee of time-domain preservation, so line attenuation and
-reconstruction error are evaluated separately here. The paper's nonstationary
-line-noise use case motivates the changing envelope and abrupt transitions.
+from a guarantee of time-domain preservation, so artifact attenuation,
+clean-reference reconstruction, and clean-substrate preservation are evaluated
+separately here. The paper's nonstationary line-noise use case motivates the
+changing envelope and abrupt transitions.
 
 This controlled example illustrates one nonstationary line-noise regime. Filter
 choice and parameters should be evaluated against the recording and the
@@ -106,14 +107,21 @@ cleaned_notch = mne.filter.notch_filter(
     verbose="ERROR",
     **notch_config,
 )
+preserved_si = model.transform(clean_reference)
+preserved_notch = mne.filter.notch_filter(
+    clean_reference,
+    Fs=sfreq,
+    freqs=60.0,
+    copy=True,
+    verbose="ERROR",
+    **notch_config,
+)
 
 # %%
 # Evaluate line attenuation and time-domain preservation separately
 # ------------------------------------------------------------------
 nperseg = int(2.0 * sfreq)
-freqs, psd_contaminated = signal.welch(
-    contaminated, fs=sfreq, nperseg=nperseg, axis=-1
-)
+freqs, psd_contaminated = signal.welch(contaminated, fs=sfreq, nperseg=nperseg, axis=-1)
 _, psd_si = signal.welch(cleaned_si, fs=sfreq, nperseg=nperseg, axis=-1)
 _, psd_notch = signal.welch(cleaned_notch, fs=sfreq, nperseg=nperseg, axis=-1)
 
@@ -133,20 +141,34 @@ notch_suppression = suppression_ratio(
 )
 
 reference_scale = np.sqrt(np.mean(clean_reference**2))
-si_error = rms_change(cleaned_si, clean_reference)
-notch_error = rms_change(cleaned_notch, clean_reference)
-si_relative_error = si_error / reference_scale
-notch_relative_error = notch_error / reference_scale
+si_reconstruction_error = rms_change(cleaned_si, clean_reference)
+notch_reconstruction_error = rms_change(cleaned_notch, clean_reference)
+si_relative_reconstruction_error = si_reconstruction_error / reference_scale
+notch_relative_reconstruction_error = notch_reconstruction_error / reference_scale
+si_preservation_error = rms_change(preserved_si, clean_reference) / reference_scale
+notch_preservation_error = (
+    rms_change(preserved_notch, clean_reference) / reference_scale
+)
 
 # The interval contains both the abrupt line-noise onset and the known transient.
 local_mask = (times >= 2.35) & (times <= 2.95)
 local_reference_scale = np.sqrt(np.mean(clean_reference[:, local_mask] ** 2))
-si_local_error = rms_change(
-    cleaned_si[:, local_mask], clean_reference[:, local_mask]
-) / local_reference_scale
-notch_local_error = rms_change(
-    cleaned_notch[:, local_mask], clean_reference[:, local_mask]
-) / local_reference_scale
+si_local_reconstruction_error = (
+    rms_change(cleaned_si[:, local_mask], clean_reference[:, local_mask])
+    / local_reference_scale
+)
+notch_local_reconstruction_error = (
+    rms_change(cleaned_notch[:, local_mask], clean_reference[:, local_mask])
+    / local_reference_scale
+)
+si_local_preservation_error = (
+    rms_change(preserved_si[:, local_mask], clean_reference[:, local_mask])
+    / local_reference_scale
+)
+notch_local_preservation_error = (
+    rms_change(preserved_notch[:, local_mask], clean_reference[:, local_mask])
+    / local_reference_scale
+)
 
 print(f"SpectrumInterpolation target frequencies (Hz): {model.freqs_}")
 print(
@@ -154,23 +176,39 @@ print(
     "'ftype': 'butter'}, notch_widths=1.0 Hz, trans_bandwidth=1.0 Hz, "
     "phase='zero'"
 )
-print(f"60-Hz suppression - SpectrumInterpolation: {si_suppression:.2f} dB")
-print(f"60-Hz suppression - notch comparator:       {notch_suppression:.2f} dB")
+print(f"60-Hz suppression — SpectrumInterpolation: {si_suppression:.2f} dB")
+print(f"60-Hz suppression — notch comparator:       {notch_suppression:.2f} dB")
 print(
-    "Whole-recording relative error - SpectrumInterpolation: "
-    f"{si_relative_error:.3f}"
+    "Clean-reference reconstruction error — SpectrumInterpolation: "
+    f"{si_relative_reconstruction_error:.3f}"
 )
 print(
-    "Whole-recording relative error - notch comparator:       "
-    f"{notch_relative_error:.3f}"
+    "Clean-reference reconstruction error — notch comparator:       "
+    f"{notch_relative_reconstruction_error:.3f}"
 )
 print(
-    "Local onset/transient relative error - SpectrumInterpolation: "
-    f"{si_local_error:.3f}"
+    "Clean-substrate preservation error — SpectrumInterpolation: "
+    f"{si_preservation_error:.3f}"
 )
 print(
-    "Local onset/transient relative error - notch comparator:       "
-    f"{notch_local_error:.3f}"
+    "Clean-substrate preservation error — notch comparator:       "
+    f"{notch_preservation_error:.3f}"
+)
+print(
+    "Local clean-reference reconstruction error — SpectrumInterpolation: "
+    f"{si_local_reconstruction_error:.3f}"
+)
+print(
+    "Local clean-reference reconstruction error — notch comparator:       "
+    f"{notch_local_reconstruction_error:.3f}"
+)
+print(
+    "Local clean-substrate preservation error — SpectrumInterpolation: "
+    f"{si_local_preservation_error:.3f}"
+)
+print(
+    "Local clean-substrate preservation error — notch comparator:       "
+    f"{notch_local_preservation_error:.3f}"
 )
 
 # %%
@@ -201,7 +239,7 @@ psd_axis.set_title("Nonstationary 60-Hz line noise: spectral comparison")
 fig_psd.tight_layout()
 
 representative_channel = int(np.argmax(np.abs(line_pattern)))
-plot_signal_overlay(
+fig_signal = plot_signal_overlay(
     contaminated,
     cleaned_si,
     times,
@@ -218,3 +256,23 @@ plot_signal_overlay(
     title="Abrupt line-noise onset and known transient",
     show=False,
 )
+signal_axis = fig_signal.axes[0]
+display_time_mask = (times >= 2.35) & (times <= 2.95)
+signal_axis.plot(
+    times[display_time_mask],
+    cleaned_notch[representative_channel, display_time_mask],
+    color="C2",
+    linestyle="-.",
+    label="IIR notch comparator",
+)
+signal_axis.legend()
+fig_signal.tight_layout()
+
+# %%
+# Interpret attenuation and preservation separately
+# --------------------------------------------------
+# Suppression at 60 Hz measures attenuation of the target line process. The
+# clean-reference reconstruction error combines residual line artifact with
+# any change to the desired signal. Applying the same fitted settings to the
+# clean substrate isolates the method's signal-preservation change. This one
+# controlled comparison does not establish a universal filter ranking.

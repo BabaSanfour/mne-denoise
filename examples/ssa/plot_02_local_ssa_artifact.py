@@ -118,3 +118,12 @@ plot_signal_overlay(
     title="Local SSA around an EOG-like artifact and neural transient",
     show=False,
 )
+
+# %%
+# Interpret the overlap stress test
+# ----------------------------------
+# In this deliberately difficult overlapping case, Local SSA strongly reduces
+# the high-amplitude EOG-like artifact but also substantially attenuates the
+# known neural transient. This is the intended preservation stress test:
+# high-amplitude neural structure that overlaps the learned local artifact
+# subspaces is not guaranteed to survive.
