@@ -1,29 +1,9 @@
-Spectrum Interpolation Examples
-===============================
+Spectrum interpolation example
+==============================
 
-Overview
---------
+This example uses controlled nonstationary 60-Hz interference with abrupt
+changes in amplitude to illustrate the use case for spectrum interpolation.
 
-Examples demonstrating spectrum-interpolation line-noise removal
-(Leske & Dalal, 2019). The power-line frequency and its harmonics are removed by
-interpolating the amplitude spectrum across a narrow band while preserving the
-phase, leaving broadband activity around the line frequency largely intact.
-The FFT-based method is best suited to continuous recordings or long segments;
-short epochs should be inspected for edge effects.
-
-Files
------
-
-- ``plot_01_spectrum_interpolation.py``: Basic spectrum interpolation on
-  synthetic data with 60 Hz line noise and harmonics.
-
-Data Requirements
------------------
-
-- The example runs directly on synthetic data with no external downloads.
-
-References
-----------
-
-- Leske, S., & Dalal, S. S. (2019). Reducing power line noise in EEG and MEG
-  data via spectrum interpolation. NeuroImage, 189, 763-776.
+Known clean data provide a time-domain preservation reference, and a public
+notch filter is included only as a contextual comparison. The example
+evaluates line attenuation and signal distortion separately.
