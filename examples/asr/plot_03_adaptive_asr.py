@@ -100,10 +100,13 @@ for onset in (2.0, 6.0, 10.0):
 # %%
 # Calibrate once, adapt once, and evaluate only on the independent test chunk
 # ---------------------------------------------------------------------------
+# AdaptiveASR uses unfiltered statistics internally. Match that setting in
+# the frozen comparator so the comparison isolates the calibration update.
 frozen = ASR(
     sfreq=sfreq,
     cutoff=20.0,
     calibration="manual",
+    filter_kind="none",
     picks=None,
     verbose=False,
 )

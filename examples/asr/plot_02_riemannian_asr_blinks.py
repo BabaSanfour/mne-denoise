@@ -6,7 +6,7 @@ Can a robust covariance geometry change the calibration of ASR on a real EEG
 recording with eye blinks? This example compares standard ASR with the public
 ``method="riemannian_windowed"`` backend on the MNE Sample dataset.
 
-Blink coupling to an EOG channel is the artifact endpoint. Samples in
+Blink coupling to an EOG channel is the artifact endpoint. Samples outside
 blink-centered exclusion windows provide a complementary preservation
 control: a small change there is reassuring, but it is not neural ground
 truth. The comparison illustrates the calibration difference on one

@@ -81,8 +81,11 @@ cleaned_juggler = np.asarray(juggler.fit_transform(contaminated))
 
 # The public mask accessor returns each estimator's native representation:
 # clean windows for standard ASR and reference samples for Juggler ASR.
-standard_calibration_fraction = standard.get_calibration_mask().mean()
-juggler_reference_fraction = juggler.get_calibration_mask().mean()
+standard_clean_window_fraction = standard.get_calibration_mask().mean()
+juggler_reference_sample_fraction = juggler.get_calibration_mask().mean()
+# These percentages summarize each method in its native calibration unit;
+# they describe retained calibration support rather than directly comparable
+# sample fractions.
 
 artifact_before = rms_change(
     contaminated[:, burst_mask],
@@ -117,12 +120,14 @@ juggler_quiet_relative_error = (
 )
 
 print(
-    f"Standard ASR: reference fraction={standard_calibration_fraction:.1%}, "
+    "Standard ASR clean-window fraction: "
+    f"{standard_clean_window_fraction:.1%}, "
     f"artifact residual ratio={standard_artifact_residual_ratio:.3f}, "
     f"quiet relative error={standard_quiet_relative_error:.3f}"
 )
 print(
-    f"Juggler ASR: reference fraction={juggler_reference_fraction:.1%}, "
+    "Juggler ASR reference-sample fraction: "
+    f"{juggler_reference_sample_fraction:.1%}, "
     f"artifact residual ratio={juggler_artifact_residual_ratio:.3f}, "
     f"quiet relative error={juggler_quiet_relative_error:.3f}"
 )
@@ -132,8 +137,11 @@ print(
 # -----------------------------------------------
 plot_asr_calibration_fraction(
     [standard, juggler],
-    labels=["Standard ASR", "Juggler ASR"],
-    title="Window-based versus pointwise calibration support",
+    labels=[
+        "Standard ASR\n(clean windows)",
+        "Juggler ASR\n(reference samples)",
+    ],
+    title="Calibration support retained by each method",
     show=False,
 )
 
