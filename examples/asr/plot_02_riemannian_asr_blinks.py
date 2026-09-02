@@ -6,11 +6,13 @@ Can a robust covariance geometry change the calibration of ASR on a real EEG
 recording with eye blinks? This example compares standard ASR with the public
 ``method="riemannian_windowed"`` backend on the MNE Sample dataset.
 
-Blink coupling to an EOG channel is the artifact endpoint. Samples with a
-quiet EOG provide a complementary preservation control: a small change there
-is reassuring, but it is not neural ground truth. The comparison illustrates
-the calibration difference on one recording; it is not a benchmark establishing
-global superiority of either backend.
+Blink coupling to an EOG channel is the artifact endpoint. Samples in
+blink-centered exclusion windows provide a complementary preservation
+control: a small change there is reassuring, but it is not neural ground
+truth. The comparison illustrates the calibration difference on one
+recording; it is not a benchmark establishing global superiority of either
+backend. Samples outside the exclusion windows are a practical control, not a
+claim that the recording is perfectly artifact-free there.
 
 The use case is motivated by the Riemannian ASR evaluation of
 :footcite:p:`blum2019_riemannian_asr` and the standard ASR evaluation of
@@ -24,11 +26,13 @@ References
 # %%
 # Load real EEG with an EOG channel
 # ---------------------------------
-import matplotlib.pyplot as plt
 import mne
 import numpy as np
+from mne.preprocessing import find_eog_events
 
 from mne_denoise.asr import ASR
+from mne_denoise.qa import rms_change
+from mne_denoise.viz import plot_signal_overlay
 
 sample_path = mne.datasets.sample.data_path()
 raw = mne.io.read_raw_fif(
@@ -41,144 +45,120 @@ raw.set_eeg_reference("average", verbose="ERROR")
 raw.filter(1.0, None, verbose="ERROR")
 
 eeg = raw.get_data(picks="eeg")
-eeg_names = [
-    raw.ch_names[index] for index in mne.pick_types(raw.info, eeg=True, exclude=[])
-]
-eog = raw.get_data(picks="eog")[0]
+eeg_picks = mne.pick_types(raw.info, eeg=True, exclude=[])
+eeg_names = [raw.ch_names[index] for index in eeg_picks]
+eog_channel = "EOG 061"
+eog = raw.get_data(picks=eog_channel)[0]
 
 
-def _absolute_correlations(data, reference):
-    """Return absolute channel-wise correlations with an EOG reference."""
-    return np.asarray([abs(np.corrcoef(channel, reference)[0, 1]) for channel in data])
+def absolute_eog_correlation(data, eog_signal):
+    """Return absolute channel-wise correlations with the EOG signal."""
+    return np.asarray([abs(np.corrcoef(channel, eog_signal)[0, 1]) for channel in data])
 
 
-eog_coupling_before = _absolute_correlations(eeg, eog)
+# Use MNE's EOG detector to define a transparent preservation control. Each
+# event excludes 250 ms before through 500 ms after the detected EOG peak.
+eog_events = find_eog_events(raw, ch_name=eog_channel, verbose=False)
+blink_mask = np.zeros(raw.n_times, dtype=bool)
+pre = int(round(0.25 * raw.info["sfreq"]))
+post = int(round(0.50 * raw.info["sfreq"]))
+for event in eog_events:
+    sample = int(event[0] - raw.first_samp)
+    start = max(0, sample - pre)
+    stop = min(raw.n_times, sample + post)
+    blink_mask[start:stop] = True
+quiet_mask = ~blink_mask
+
+eog_coupling_before = absolute_eog_correlation(eeg, eog)
 top_channels = np.argsort(eog_coupling_before)[-8:]
 blink_channel_index = int(np.argmax(eog_coupling_before))
 blink_channel = eeg_names[blink_channel_index]
-quiet_mask = np.abs(eog) <= np.quantile(np.abs(eog), 0.75)
 blink_sample = int(np.argmax(np.abs(eog)))
-window_start = max(0, blink_sample - int(round(1.0 * raw.info["sfreq"])))
-window_stop = min(eeg.shape[1], blink_sample + int(round(2.0 * raw.info["sfreq"])))
+window_start = max(0.0, raw.times[blink_sample] - 1.0)
+window_stop = min(raw.times[-1], raw.times[blink_sample] + 2.0)
 
-print(f"Blink-dominated channel: {blink_channel} (|r|={eog_coupling_before.max():.3f})")
-print(f"EOG-quiet preservation control: {quiet_mask.mean():.1%} of samples")
+print(f"Detected EOG events: {len(eog_events)}")
+print(f"Quiet preservation control: {quiet_mask.mean():.1%} of samples")
+print(
+    f"Blink-dominated channel: {blink_channel} "
+    f"(|r|={eog_coupling_before[blink_channel_index]:.3f})"
+)
 
 # %%
 # Compare standard and Riemannian-windowed calibration
 # -----------------------------------------------------
-models = {
-    "standard": ASR(
-        cutoff=20.0,
-        method="standard",
-        picks="eeg",
-        verbose=False,
-    ),
-    "riemannian": ASR(
-        cutoff=20.0,
-        method="riemannian_windowed",
-        picks="eeg",
-        verbose=False,
-    ),
-}
-cleaned = {
-    name: model.fit_transform(raw.copy()).get_data(picks="eeg")
-    for name, model in models.items()
-}
+standard = ASR(
+    cutoff=20.0,
+    method="standard",
+    picks="eeg",
+    verbose=False,
+)
+riemannian = ASR(
+    cutoff=20.0,
+    method="riemannian_windowed",
+    picks="eeg",
+    verbose=False,
+)
 
+# Keeping Raw objects here preserves the natural MNE workflow. Numerical
+# arrays are extracted only when the metrics need them.
+standard_clean = standard.fit_transform(raw.copy())
+riemannian_clean = riemannian.fit_transform(raw.copy())
+standard_eeg = standard_clean.get_data(picks="eeg")
+riemannian_eeg = riemannian_clean.get_data(picks="eeg")
 
-def _mean_eog_coupling(data):
-    """Measure residual coupling for the eight most blink-linked channels."""
-    return float(np.mean(_absolute_correlations(data[top_channels], eog)))
+mean_eog_coupling_before = float(np.mean(eog_coupling_before[top_channels]))
+mean_eog_coupling_standard = float(
+    np.mean(absolute_eog_correlation(standard_eeg[top_channels], eog))
+)
+mean_eog_coupling_riemannian = float(
+    np.mean(absolute_eog_correlation(riemannian_eeg[top_channels], eog))
+)
 
-
-def _quiet_relative_change(data):
-    """Measure change during EOG-quiet samples relative to input RMS."""
-    delta = data[:, quiet_mask] - eeg[:, quiet_mask]
-    input_rms = float(np.sqrt(np.mean(eeg[:, quiet_mask] ** 2)))
-    return float(np.sqrt(np.mean(delta**2)) / input_rms)
-
-
-coupling = {"raw": _mean_eog_coupling(eeg)}
-quiet_change = {"raw": 0.0}
-for name, data in cleaned.items():
-    coupling[name] = _mean_eog_coupling(data)
-    quiet_change[name] = _quiet_relative_change(data)
-
-for name in ("raw", *models):
-    print(
-        f"  {name:12s}: mean |r(EEG, EOG)|={coupling[name]:.3f}, "
-        f"quiet relative change={quiet_change[name]:.3f}"
+quiet_scale = np.sqrt(np.mean(eeg[:, quiet_mask] ** 2))
+quiet_change_standard = (
+    rms_change(
+        standard_eeg[:, quiet_mask],
+        eeg[:, quiet_mask],
     )
+    / quiet_scale
+)
+quiet_change_riemannian = (
+    rms_change(
+        riemannian_eeg[:, quiet_mask],
+        eeg[:, quiet_mask],
+    )
+    / quiet_scale
+)
+
+print(f"Mean EOG coupling before ASR: {mean_eog_coupling_before:.3f}")
+print(f"Mean EOG coupling after standard ASR: {mean_eog_coupling_standard:.3f}")
+print(
+    "Mean EOG coupling after Riemannian-windowed ASR: "
+    f"{mean_eog_coupling_riemannian:.3f}"
+)
+print(f"Blink-free change, standard ASR: {quiet_change_standard:.3f}")
+print(f"Blink-free change, Riemannian-windowed ASR: {quiet_change_riemannian:.3f}")
 
 # %%
-# Plot the blink endpoint and the preservation control
-# -----------------------------------------------------
-times = raw.times
-scale = 1e6
-fig = plt.figure(figsize=(11, 7), layout="constrained")
-grid = fig.add_gridspec(2, 2, height_ratios=(1.3, 1.0))
-trace_ax = fig.add_subplot(grid[0, :])
-coupling_ax = fig.add_subplot(grid[1, 0])
-quiet_ax = fig.add_subplot(grid[1, 1])
-
-trace_ax.plot(
-    times[window_start:window_stop],
-    scale * eeg[blink_channel_index, window_start:window_stop],
-    color="0.55",
-    lw=0.8,
-    label="input",
-)
-trace_ax.plot(
-    times[window_start:window_stop],
-    scale * cleaned["standard"][blink_channel_index, window_start:window_stop],
-    color="C1",
-    lw=0.9,
-    label="standard ASR",
-)
-trace_ax.plot(
-    times[window_start:window_stop],
-    scale * cleaned["riemannian"][blink_channel_index, window_start:window_stop],
-    color="C0",
-    lw=0.9,
-    label="Riemannian-windowed ASR",
-)
-trace_ax.axvspan(
-    times[blink_sample] - 0.25,
-    times[blink_sample] + 0.25,
-    color="C3",
-    alpha=0.12,
-    label="strongest EOG sample ± 250 ms",
-)
-trace_ax.set(
+# Inspect the blink endpoint with the quiet control in mind
+# ----------------------------------------------------------
+plot_signal_overlay(
+    raw,
+    riemannian_clean,
+    raw.times,
+    pick=blink_channel,
+    start=window_start,
+    stop=window_stop,
+    scale_after=False,
+    before_label="input",
+    after_label="Riemannian-windowed ASR",
+    reference=standard_eeg[blink_channel_index],
+    reference_label="standard ASR",
+    highlight_mask=blink_mask,
+    highlight_label="blink exclusion window",
+    x_label="Time (s)",
+    y_label="Amplitude (V)",
     title=f"Blink-dominated channel {blink_channel}",
-    xlabel="Time (s)",
-    ylabel="Amplitude (µV)",
+    show=False,
 )
-trace_ax.legend(loc="upper right", ncol=2)
-
-labels = list(coupling)
-coupling_ax.bar(
-    labels,
-    [coupling[label] for label in labels],
-    color=["0.55", "C1", "C0"],
-)
-coupling_ax.set(
-    title="Artifact endpoint",
-    ylabel="mean |correlation with EOG|",
-)
-coupling_ax.tick_params(axis="x", labelrotation=20)
-
-quiet_ax.bar(
-    labels,
-    [quiet_change[label] for label in labels],
-    color=["0.55", "C1", "C0"],
-)
-quiet_ax.set(
-    title="Preservation control",
-    ylabel="quiet relative change",
-)
-quiet_ax.tick_params(axis="x", labelrotation=20)
-
-fig.suptitle("Riemannian ASR: blink attenuation with an EOG-quiet control")
-plt.show()
