@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>API reference &#8212; mne-denoise 0.1.dev329+gb92629895 documentation</title>
+    <title>API reference &#8212; mne-denoise 0.1.dev344+ga09bb5160 documentation</title>
   
   
   
@@ -32,12 +32,12 @@
 
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="_static/sg_gallery.css?v=fd6457a4" />
+    <link rel="stylesheet" type="text/css" href="_static/sg_gallery.css?v=c83e6b79" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-binder.css?v=f4aeca0c" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-dataframe.css?v=2082cf3c" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-rendered-html.css?v=1277b6f3" />
     <link rel="stylesheet" type="text/css" href="_static/sphinx-design.min.css?v=95c83b7e" />
-    <link rel="stylesheet" type="text/css" href="_static/style.css?v=e305a2df" />
+    <link rel="stylesheet" type="text/css" href="_static/style.css?v=fc7d3997" />
   
   <!-- So that users can add custom icons -->
   <script defer src="_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -45,7 +45,7 @@
   <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
 
-    <script src="_static/documentation_options.js?v=86705226"></script>
+    <script src="_static/documentation_options.js?v=565f5376"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -64,10 +64,10 @@
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="mne_denoise.asr.ASR" href="generated/mne_denoise.asr.ASR.html" />
-    <link rel="prev" title="SSP-SIR: Recovering TMS-Evoked Responses Buried Under Muscle Artifacts" href="auto_examples/sspsir/plot_01_sspsir_basics.html" />
+    <link rel="prev" title="Suppressing a TMS-like muscle artifact with SSP-SIR" href="auto_examples/sspsir/plot_01_tms_muscle_artifact.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.1.dev329+gb92629895" />
+  <meta name="docsearch:version" content="0.1.dev344+ga09bb5160" />
   
     
     <script src="_static/searchtools.js"></script>
@@ -178,6 +178,13 @@
 <li class="nav-item current active">
   <a class="nav-link nav-internal" href="#">
     API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="release-notes.html">
+    Release notes
   </a>
 </li>
 
@@ -334,6 +341,13 @@
 <li class="nav-item current active">
   <a class="nav-link nav-internal" href="#">
     API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="release-notes.html">
+    Release notes
   </a>
 </li>
 
@@ -520,10 +534,6 @@
 </ul>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="generated/mne_denoise.sspsir.SSPSIR.html">mne_denoise.sspsir.SSPSIR</a></li>
-</ul>
-<ul class="nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="generated/mne_denoise.sspsir.compute_sspsir.html">mne_denoise.sspsir.compute_sspsir</a></li>
-<li class="toctree-l1"><a class="reference internal" href="generated/mne_denoise.sspsir.compute_sir.html">mne_denoise.sspsir.compute_sir</a></li>
 </ul>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1 has-children"><a class="reference internal" href="api/helpers.html">Advanced method helpers</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -962,17 +972,6 @@ experimental. Underscore-prefixed implementation details are private.</p>
 </tbody>
 </table>
 </div>
-<div class="pst-scrollable-table-container"><table class="autosummary longtable table">
-<tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="generated/mne_denoise.sspsir.compute_sspsir.html#mne_denoise.sspsir.compute_sspsir" title="mne_denoise.sspsir.compute_sspsir"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_sspsir</span></code></a></p></td>
-<td><p>Build the projected SSP-SIR reconstruction operator.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="generated/mne_denoise.sspsir.compute_sir.html#mne_denoise.sspsir.compute_sir" title="mne_denoise.sspsir.compute_sir"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_sir</span></code></a></p></td>
-<td><p>Build the unprojected source-informed reconstruction operator.</p></td>
-</tr>
-</tbody>
-</table>
-</div>
 </section>
 </section>
 <section id="additional-api">
@@ -1001,12 +1000,12 @@ interfaces:</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="auto_examples/sspsir/plot_01_sspsir_basics.html"
+       href="auto_examples/sspsir/plot_01_tms_muscle_artifact.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">SSP-SIR: Recovering TMS-Evoked Responses Buried Under Muscle Artifacts</p>
+        <p class="prev-next-title">Suppressing a TMS-like muscle artifact with SSP-SIR</p>
       </div>
     </a>
     <a class="right-next"
@@ -1068,9 +1067,7 @@ interfaces:</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#icanclean">iCanClean</a><ul class="nav section-nav flex-column">
 </ul>
 </li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ssp-sir">SSP-SIR</a><ul class="nav section-nav flex-column">
-</ul>
-</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ssp-sir">SSP-SIR</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#additional-api">Additional API</a></li>

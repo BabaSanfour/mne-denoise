@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Getting started &#8212; mne-denoise 0.1.dev329+gb92629895 documentation</title>
+    <title>Getting started &#8212; mne-denoise 0.1.dev344+ga09bb5160 documentation</title>
   
   
   
@@ -32,12 +32,12 @@
 
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="_static/sg_gallery.css?v=fd6457a4" />
+    <link rel="stylesheet" type="text/css" href="_static/sg_gallery.css?v=c83e6b79" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-binder.css?v=f4aeca0c" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-dataframe.css?v=2082cf3c" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-rendered-html.css?v=1277b6f3" />
     <link rel="stylesheet" type="text/css" href="_static/sphinx-design.min.css?v=95c83b7e" />
-    <link rel="stylesheet" type="text/css" href="_static/style.css?v=e305a2df" />
+    <link rel="stylesheet" type="text/css" href="_static/style.css?v=fc7d3997" />
   
   <!-- So that users can add custom icons -->
   <script defer src="_static/scripts/fontawesome.js?digest=cb8930eaaf36d9849b67"></script>
@@ -45,7 +45,7 @@
   <link rel="preload" as="script" href="_static/scripts/bootstrap.js?digest=cb8930eaaf36d9849b67" />
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=cb8930eaaf36d9849b67" />
 
-    <script src="_static/documentation_options.js?v=86705226"></script>
+    <script src="_static/documentation_options.js?v=565f5376"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -67,7 +67,7 @@
     <link rel="prev" title="mne-denoise" href="index.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
-  <meta name="docsearch:version" content="0.1.dev329+gb92629895" />
+  <meta name="docsearch:version" content="0.1.dev344+ga09bb5160" />
   
     
     <script src="_static/searchtools.js"></script>
@@ -178,6 +178,13 @@
 <li class="nav-item ">
   <a class="nav-link nav-internal" href="api.html">
     API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="release-notes.html">
+    Release notes
   </a>
 </li>
 
@@ -339,6 +346,13 @@
 
 
 <li class="nav-item ">
+  <a class="nav-link nav-internal" href="release-notes.html">
+    Release notes
+  </a>
+</li>
+
+
+<li class="nav-item ">
   <a class="nav-link nav-internal" href="development.html">
     Development
   </a>
@@ -468,6 +482,7 @@
 <h1>Getting started<a class="headerlink" href="#getting-started" title="Link to this heading">#</a></h1>
 <section id="install">
 <h2>Install<a class="headerlink" href="#install" title="Link to this heading">#</a></h2>
+<p>Python 3.11 or newer is required.</p>
 <p>Install the base package and optional integrations with the package manager
 you use:</p>
 <div class="sd-tab-set mdn-install-tabs docutils">
@@ -490,6 +505,10 @@ pip</label><div class="sd-tab-content docutils">
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">pip install "mne-denoise[progress]"</span>
 </pre></div>
 </div>
+<p>All optional integrations:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">pip install "mne-denoise[mne,viz,progress]"</span>
+</pre></div>
+</div>
 </div>
 <input id="sd-tab-item-1" name="sd-tab-set-0" type="radio">
 <label class="sd-tab-label" for="sd-tab-item-1">
@@ -510,6 +529,10 @@ uv</label><div class="sd-tab-content docutils">
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">uv pip install "mne-denoise[progress]"</span>
 </pre></div>
 </div>
+<p>All optional integrations:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">uv pip install "mne-denoise[mne,viz,progress]"</span>
+</pre></div>
+</div>
 </div>
 <input id="sd-tab-item-2" name="sd-tab-set-0" type="radio">
 <label class="sd-tab-label" for="sd-tab-item-2">
@@ -525,7 +548,7 @@ mne-denoise:</p>
 </pre></div>
 </div>
 <p>Visualization:</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">conda install -c conda-forge mne-denoise matplotlib</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">conda install -c conda-forge mne-denoise matplotlib seaborn</span>
 </pre></div>
 </div>
 <p>Progress bars:</p>
